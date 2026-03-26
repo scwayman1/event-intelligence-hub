@@ -316,6 +316,19 @@ export default function EventLayout() {
           </div>
         )}
       </div>
+      {/* Satellite Capture Modal */}
+      {showSatelliteCapture && (
+        <Suspense fallback={null}>
+          <VenueCapture
+            onCapture={(imageDataUrl, mpp) => {
+              setVenueImage(imageDataUrl);
+              setMetersPerPixel(mpp);
+              setShowSatelliteCapture(false);
+            }}
+            onClose={() => setShowSatelliteCapture(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
