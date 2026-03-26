@@ -3,12 +3,16 @@ import { useEventStore } from '@/data/store';
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X, Satellite
+  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+<<<<<<< HEAD
 import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
+=======
+import { buildEventAnalytics } from '@/lib/event-analytics';
+>>>>>>> a64e347 (feat: upgrade event planning command center and workflows)
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
@@ -87,6 +91,15 @@ export default function EventLayout() {
     setVenueImage(url);
     e.target.value = '';
   };
+
+  const analytics = event ? buildEventAnalytics({
+    event,
+    guests: useEventStore.getState().guests,
+    versions: useEventStore.getState().versions,
+    layoutObjects: useEventStore.getState().layoutObjects,
+    seatingAssignments: useEventStore.getState().seatingAssignments,
+    seatingRules: useEventStore.getState().seatingRules,
+  }) : null;
 
   const selected = objects.find((o) => o.id === selectedId);
 
@@ -237,6 +250,31 @@ export default function EventLayout() {
             ))}
           </div>
         </div>
+
+        {analytics && (
+          <div className="border-b border-border bg-card/30 px-4 py-3 grid gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground"><Sparkles className="w-3 h-3" /> Readiness</div>
+              <div className="text-lg font-semibold text-foreground mt-1">{analytics.readinessScore}</div>
+              <div className="text-xs text-muted-foreground">{analytics.progressLabel}</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground"><Users className="w-3 h-3" /> Seating coverage</div>
+              <div className="text-lg font-semibold text-foreground mt-1">{analytics.assignedConfirmed}/{analytics.confirmedGuests.length}</div>
+              <div className="text-xs text-muted-foreground">Confirmed guests seated</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Front tables</div>
+              <div className="text-lg font-semibold text-foreground mt-1">{analytics.frontTables.length}</div>
+              <div className="text-xs text-muted-foreground">High-visibility tables near stage</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">FOH coverage</div>
+              <div className="text-lg font-semibold text-foreground mt-1">{analytics.frontOfHouseReady ? 'Ready' : 'Missing'}</div>
+              <div className="text-xs text-muted-foreground">Check-in / registration footprint</div>
+            </div>
+          </div>
+        )}
 
         {/* Canvas area */}
         <div
@@ -410,6 +448,25 @@ export default function EventLayout() {
               <label className="text-xs text-muted-foreground">Notes</label>
               <textarea className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" rows={2} value={selected.notes} onChange={(e) => updateLayoutObject(selected.id, { notes: e.target.value })} />
             </div>
+            {selected.type === 'round_table' || selected.type === 'rect_table' ? (
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Table assignments</p>
+                  <p className="text-xs font-mono text-muted-foreground">{getTableGuests(selected.id, versionId).length}/{selected.capacity}</p>
+                </div>
+                <div className="space-y-1.5">
+                  {getTableGuests(selected.id, versionId).map((guest) => (
+                    <div key={guest.id} className="rounded-md bg-card/80 border border-border/60 px-2 py-2">
+                      <p className="text-sm text-foreground">{guest.displayName}</p>
+                      <p className="text-xs text-muted-foreground">{guest.organization || guest.seatingPreference || 'No note'}</p>
+                    </div>
+                  ))}
+                  {getTableGuests(selected.id, versionId).length === 0 && (
+                    <p className="text-xs text-muted-foreground">No guests assigned yet.</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => updateLayoutObject(selected.id, { locked: !selected.locked })}>
                 {selected.locked ? <Lock className="w-3.5 h-3.5 mr-1" /> : <Unlock className="w-3.5 h-3.5 mr-1" />}
@@ -466,3 +523,5 @@ export default function EventLayout() {
     </div>
   );
 }
+
+
