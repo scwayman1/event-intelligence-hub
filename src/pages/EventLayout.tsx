@@ -71,6 +71,8 @@ export default function EventLayout() {
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [venueImage, setVenueImage] = useState<string | null>(null);
   const [imageOpacity, setImageOpacity] = useState(0.35);
+  const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
+  const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
