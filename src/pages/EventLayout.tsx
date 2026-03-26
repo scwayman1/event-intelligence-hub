@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useState, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
   Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X, Satellite
