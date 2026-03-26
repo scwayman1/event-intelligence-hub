@@ -422,9 +422,17 @@ export default function EventLayout() {
       {showSatelliteCapture && (
         <Suspense fallback={null}>
           <VenueCapture
-            onCapture={(imageDataUrl, mpp) => {
+            onCapture={(imageDataUrl, mpp, imgW, imgH) => {
               setVenueImage(imageDataUrl);
               setMetersPerPixel(mpp);
+              // Resize canvas to match captured image aspect ratio
+              if (imgW && imgH) {
+                const maxW = 1200;
+                const scale = Math.min(maxW / imgW, 1);
+                setCanvasSize({ width: Math.round(imgW * scale), height: Math.round(imgH * scale) });
+                // Adjust metersPerPixel for the scaled canvas
+                if (mpp) setMetersPerPixel(mpp / scale);
+              }
               setShowSatelliteCapture(false);
             }}
             onClose={() => setShowSatelliteCapture(false)}
