@@ -24,7 +24,7 @@ function loadGoogleMapsScript(): Promise<void> {
 }
 
 export function useGoogleMaps() {
-  const [loaded, setLoaded] = useState(!!window.google?.maps);
+  const [loaded, setLoaded] = useState(!!(window as any).google?.maps);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

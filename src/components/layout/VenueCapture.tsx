@@ -128,8 +128,6 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
       setCapturing(false);
       alert('Could not capture the map. Try using the "Upload Map" option instead.');
     };
-    // Build static maps URL with the key from config
-    const { GOOGLE_MAPS_API_KEY } = require('@/config/google-maps');
     img.src = `https://maps.googleapis.com/maps/api/staticmap?center=${center.lat()},${center.lng()}&zoom=${zoom}&size=${staticW}x${staticH}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
   }, [onCapture]);
 
