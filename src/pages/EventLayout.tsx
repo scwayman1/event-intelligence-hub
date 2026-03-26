@@ -96,6 +96,24 @@ export default function EventLayout() {
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (resizing && canvasRef.current) {
+      const dx = (e.clientX - resizing.startX) / zoom;
+      const dy = (e.clientY - resizing.startY) / zoom;
+      const handle = resizing.handle;
+      let newW = resizing.startW;
+      let newH = resizing.startH;
+      let newX = resizing.startObjX;
+      let newY = resizing.startObjY;
+
+      if (handle.includes('e')) newW = Math.max(30, resizing.startW + dx);
+      if (handle.includes('w')) { newW = Math.max(30, resizing.startW - dx); newX = resizing.startObjX + (resizing.startW - newW); }
+      if (handle.includes('s')) newH = Math.max(30, resizing.startH + dy);
+      if (handle.includes('n')) { newH = Math.max(30, resizing.startH - dy); newY = resizing.startObjY + (resizing.startH - newH); }
+
+      const snap = (v: number) => showGrid ? Math.round(v / 20) * 20 : Math.round(v);
+      updateLayoutObject(resizing.id, { width: snap(newW), height: snap(newH), x: snap(newX), y: snap(newY) });
+      return;
+    }
     if (!dragging || !canvasRef.current) return;
     const canvasRect = canvasRef.current.getBoundingClientRect();
     const x = (e.clientX - canvasRect.left - dragging.offsetX) / zoom;
@@ -104,9 +122,9 @@ export default function EventLayout() {
       x: showGrid ? Math.round(x / 20) * 20 : Math.round(x),
       y: showGrid ? Math.round(y / 20) * 20 : Math.round(y),
     });
-  }, [dragging, zoom, showGrid, updateLayoutObject]);
+  }, [dragging, resizing, zoom, showGrid, updateLayoutObject]);
 
-  const handleMouseUp = useCallback(() => setDragging(null), []);
+  const handleMouseUp = useCallback(() => { setDragging(null); setResizing(null); }, []);
 
   // Delete/Backspace keyboard shortcut
   useEffect(() => {
