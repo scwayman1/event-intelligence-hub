@@ -5,7 +5,7 @@ import { useGoogleMaps } from '@/hooks/use-google-maps';
 import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
 
 interface VenueCaptureProps {
-  onCapture: (imageDataUrl: string, metersPerPixel: number | null) => void;
+  onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number) => void;
   onClose: () => void;
 }
 
