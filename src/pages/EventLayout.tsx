@@ -3,7 +3,7 @@ import { useEventStore } from '@/data/store';
 import { useState, useRef, useCallback } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, RotateCw, Grid3X3, Layers
+  Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
