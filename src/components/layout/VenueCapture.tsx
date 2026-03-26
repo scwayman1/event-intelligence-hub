@@ -3,6 +3,7 @@ import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move, ZoomIn, Z
 import { Button } from '@/components/ui/button';
 import { useGoogleMaps } from '@/hooks/use-google-maps';
 import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
+import { type UnitSystem, formatDistance, formatScale } from '@/lib/units';
 
 interface VenueCaptureProps {
   onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number) => void;
