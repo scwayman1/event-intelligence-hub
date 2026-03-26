@@ -107,6 +107,24 @@ export default function EventLayout() {
 
   const handleMouseUp = useCallback(() => setDragging(null), []);
 
+  // Delete/Backspace keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        const obj = layoutObjects.find((o) => o.id === selectedId);
+        if (obj?.locked) return;
+        removeLayoutObject(selectedId);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, layoutObjects, removeLayoutObject]);
+
   const handleAddObject = (type: LayoutObjectType) => {
     const id = `lo-${Date.now()}`;
     addLayoutObject({
