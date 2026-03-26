@@ -217,8 +217,14 @@ export default function EventLayout() {
                 <X className="w-3 h-3 text-muted-foreground" />
               </Button>
               {metersPerPixel && (
-                <span className="text-[10px] font-mono text-muted-foreground ml-1">{metersPerPixel.toFixed(2)} m/px</span>
+                <span className="text-[10px] font-mono text-muted-foreground ml-1">{formatScale(metersPerPixel, unitSystem)}</span>
               )}
+              <button
+                onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
+                className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
+              >
+                {unitSystem === 'imperial' ? 'ft' : 'm'}
+              </button>
             </>
           )}
           <div className="w-px h-6 bg-border mx-1" />
