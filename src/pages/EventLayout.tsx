@@ -3,13 +3,14 @@ import { useEventStore } from '@/data/store';
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users
+  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from '@/lib/layout-presets';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
@@ -42,16 +43,10 @@ const typeLabels: Record<string, string> = {
 };
 
 const objectPalette: { type: LayoutObjectType; label: string }[] = [
-  { type: 'round_table', label: 'Round Table' },
-  { type: 'rect_table', label: 'Rect Table' },
   { type: 'stage', label: 'Stage' },
-  { type: 'podium', label: 'Podium' },
-  { type: 'checkin', label: 'Check-In' },
-  { type: 'bar', label: 'Bar' },
   { type: 'vip_area', label: 'VIP Area' },
-  { type: 'tent', label: 'Tent' },
   { type: 'catering', label: 'Catering' },
-  { type: 'dance_floor', label: 'Dance Floor' },
+  { type: 'signage', label: 'Signage' },
 ];
 
 export default function EventLayout() {
@@ -77,6 +72,7 @@ export default function EventLayout() {
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
   const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
+  const [snapMode, setSnapMode] = useState<'grid' | 'measured'>('grid');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,6 +95,24 @@ export default function EventLayout() {
   }) : null;
 
   const selected = objects.find((o) => o.id === selectedId);
+  const selectedAssignments = selected ? useEventStore.getState().seatingAssignments.filter((a) => a.tableId === selected.id && a.versionId === versionId) : [];
+
+  const snapIncrement = metersPerPixel && snapMode === 'measured'
+    ? Math.max(4, Math.round(0.5 / metersPerPixel))
+    : 20;
+
+  const snapValue = (v: number) => showGrid ? Math.round(v / snapIncrement) * snapIncrement : Math.round(v);
+
+  const nearestNeighborDistance = selected
+    ? objects
+        .filter((o) => o.id !== selected.id)
+        .map((o) => {
+          const dx = (o.x + o.width / 2) - (selected.x + selected.width / 2);
+          const dy = (o.y + o.height / 2) - (selected.y + selected.height / 2);
+          return Math.sqrt(dx * dx + dy * dy);
+        })
+        .sort((a, b) => a - b)[0] ?? null
+    : null;
 
   const handleMouseDown = useCallback((e: React.MouseEvent, obj: LayoutObject) => {
     if (obj.locked) return;
@@ -123,8 +137,7 @@ export default function EventLayout() {
       if (handle.includes('s')) newH = Math.max(30, resizing.startH + dy);
       if (handle.includes('n')) { newH = Math.max(30, resizing.startH - dy); newY = resizing.startObjY + (resizing.startH - newH); }
 
-      const snap = (v: number) => showGrid ? Math.round(v / 20) * 20 : Math.round(v);
-      updateLayoutObject(resizing.id, { width: snap(newW), height: snap(newH), x: snap(newX), y: snap(newY) });
+      updateLayoutObject(resizing.id, { width: snapValue(newW), height: snapValue(newH), x: snapValue(newX), y: snapValue(newY) });
       return;
     }
     if (!dragging || !canvasRef.current) return;
@@ -132,10 +145,10 @@ export default function EventLayout() {
     const x = (e.clientX - canvasRect.left - dragging.offsetX) / zoom;
     const y = (e.clientY - canvasRect.top - dragging.offsetY) / zoom;
     updateLayoutObject(dragging.id, {
-      x: showGrid ? Math.round(x / 20) * 20 : Math.round(x),
-      y: showGrid ? Math.round(y / 20) * 20 : Math.round(y),
+      x: snapValue(x),
+      y: snapValue(y),
     });
-  }, [dragging, resizing, zoom, showGrid, updateLayoutObject]);
+  }, [dragging, resizing, zoom, snapValue, updateLayoutObject]);
 
   const handleMouseUp = useCallback(() => { setDragging(null); setResizing(null); }, []);
 
@@ -157,36 +170,49 @@ export default function EventLayout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedId, layoutObjects, removeLayoutObject]);
 
-  const handleAddObject = (type: LayoutObjectType) => {
+  const handleAddObject = (type: LayoutObjectType, preset?: ObjectPreset) => {
     const id = `lo-${Date.now()}`;
-    
-    // Real-world sizes in meters for scaled placement
-    const realSizes: Partial<Record<LayoutObjectType, { w: number; h: number }>> = {
-      round_table: { w: 1.52, h: 1.52 },   // 60" round
-      rect_table: { w: 2.44, h: 0.76 },     // 8' x 30" banquet
-      stage: { w: 6, h: 3 },
-      podium: { w: 0.6, h: 0.6 },
-      tent: { w: 12, h: 9 },
-      checkin: { w: 2.44, h: 0.76 },
-      bar: { w: 2.44, h: 0.76 },
-      chair: { w: 0.5, h: 0.5 },
+
+    const fallbackSizes: Partial<Record<LayoutObjectType, { w: number; h: number }>> = {
+      round_table: { w: 80, h: 80 },
+      rect_table: { w: 120, h: 40 },
+      stage: { w: 180, h: 90 },
+      podium: { w: 40, h: 40 },
+      tent: { w: 240, h: 180 },
+      checkin: { w: 120, h: 40 },
+      bar: { w: 120, h: 40 },
+      chair: { w: 28, h: 28 },
+      dance_floor: { w: 180, h: 180 },
+      signage: { w: 40, h: 24 },
+      vip_area: { w: 160, h: 100 },
+      catering: { w: 120, h: 60 },
     };
 
-    let w: number, h: number;
-    if (metersPerPixel && realSizes[type]) {
-      const rs = realSizes[type]!;
-      w = Math.round(rs.w / metersPerPixel);
-      h = Math.round(rs.h / metersPerPixel);
-    } else {
-      w = type === 'tent' ? 200 : type.includes('table') ? 80 : 60;
-      h = type === 'tent' ? 150 : type.includes('table') ? (type === 'rect_table' ? 40 : 80) : 40;
-    }
+    const fallback = fallbackSizes[type] ?? { w: 60, h: 40 };
+    const w = preset ? metersToPixels(preset.widthMeters, metersPerPixel, fallback.w) : fallback.w;
+    const h = preset ? metersToPixels(preset.heightMeters, metersPerPixel, fallback.h) : fallback.h;
+    const capacity = preset?.capacity ?? (type.includes('table') ? 8 : 0);
+
+    const existing = objects.length;
+    const column = existing % 4;
+    const row = Math.floor(existing / 4);
 
     addLayoutObject({
-      id, versionId, type, name: typeLabels[type],
-      x: 200, y: 200, width: w, height: h,
-      rotation: 0, capacity: type.includes('table') ? 8 : 0, notes: '', category: '',
-      locked: false, visible: true, zIndex: objects.length,
+      id,
+      versionId,
+      type,
+      name: preset?.label ?? typeLabels[type],
+      x: 120 + column * 140,
+      y: 140 + row * 110,
+      width: w,
+      height: h,
+      rotation: 0,
+      capacity,
+      notes: '',
+      category: type.includes('table') ? 'seating' : 'layout',
+      locked: false,
+      visible: true,
+      zIndex: objects.length,
     });
   };
 
@@ -239,7 +265,25 @@ export default function EventLayout() {
             </>
           )}
           <div className="w-px h-6 bg-border mx-1" />
+          <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
+            <Ruler className="w-3.5 h-3.5" />{snapMode === 'grid' ? 'Grid Snap' : 'Measured Snap'}
+          </Button>
+          <div className="text-[10px] text-muted-foreground font-mono">{metersPerPixel ? `snap ${formatDimension(snapIncrement, metersPerPixel, unitSystem)}` : 'set map scale for precise snap'}</div>
+          <div className="w-px h-6 bg-border mx-1" />
           <div className="flex gap-1">
+            {tablePresets.map((preset) => (
+              <Button key={preset.label} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(preset.type, preset)}>
+                <Plus className="w-3 h-3 mr-1" />{preset.label}
+              </Button>
+            ))}
+          </div>
+          <div className="w-px h-6 bg-border mx-1" />
+          <div className="flex gap-1">
+            {supportPresets.map((preset) => (
+              <Button key={preset.label} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(preset.type, preset)}>
+                <Plus className="w-3 h-3 mr-1" />{preset.label}
+              </Button>
+            ))}
             {objectPalette.map((item) => (
               <Button key={item.type} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(item.type)}>
                 <Plus className="w-3 h-3 mr-1" />{item.label}
@@ -272,6 +316,11 @@ export default function EventLayout() {
             </div>
           </div>
         )}
+
+        <div className="border-b border-border bg-card/20 px-4 py-2 flex items-center justify-between gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2"><WandSparkles className="w-3.5 h-3.5" /> New objects now drop into organized rows using standard preset sizes instead of piling up at one point.</div>
+          <div className="font-mono">{selected && nearestNeighborDistance && metersPerPixel ? `nearest object ${formatDimension(nearestNeighborDistance, metersPerPixel, unitSystem)}` : 'select an object to inspect spacing'}</div>
+        </div>
 
         {/* Canvas area */}
         <div
@@ -446,21 +495,28 @@ export default function EventLayout() {
               <textarea className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" rows={2} value={selected.notes} onChange={(e) => updateLayoutObject(selected.id, { notes: e.target.value })} />
             </div>
             {selected.type === 'round_table' || selected.type === 'rect_table' ? (
-              <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-2">
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">Table assignments</p>
                   <p className="text-xs font-mono text-muted-foreground">{getTableGuests(selected.id, versionId).length}/{selected.capacity}</p>
                 </div>
-                <div className="space-y-1.5">
-                  {getTableGuests(selected.id, versionId).map((guest) => (
-                    <div key={guest.id} className="rounded-md bg-card/80 border border-border/60 px-2 py-2">
-                      <p className="text-sm text-foreground">{guest.displayName}</p>
-                      <p className="text-xs text-muted-foreground">{guest.organization || guest.seatingPreference || 'No note'}</p>
-                    </div>
-                  ))}
-                  {getTableGuests(selected.id, versionId).length === 0 && (
-                    <p className="text-xs text-muted-foreground">No guests assigned yet.</p>
-                  )}
+                <div className="grid grid-cols-2 gap-2">
+                  {Array.from({ length: Math.max(selected.capacity, 1) }).map((_, index) => {
+                    const assignment = selectedAssignments.find((item) => (item.seatNumber ?? 0) === index + 1);
+                    const guest = assignment ? getTableGuests(selected.id, versionId).find((g) => g.id === assignment.guestId) : undefined;
+                    return (
+                      <div key={index} className={cn('rounded-md border px-2 py-2', guest ? 'border-primary/30 bg-card/80' : 'border-dashed border-border/70 bg-background/40')}>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Seat {index + 1}</p>
+                        <p className="text-sm text-foreground mt-1">{guest?.displayName ?? 'Open seat'}</p>
+                        <p className="text-xs text-muted-foreground">{guest?.organization || guest?.seatingPreference || 'Available for assignment'}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="rounded-md border border-border/70 bg-background/40 px-2 py-2 text-xs text-muted-foreground">
+                  {metersPerPixel && nearestNeighborDistance
+                    ? `Nearest object spacing: ${formatDimension(nearestNeighborDistance, metersPerPixel, unitSystem)}`
+                    : 'Set map scale to understand spacing between tables and structures precisely.'}
                 </div>
               </div>
             ) : null}
