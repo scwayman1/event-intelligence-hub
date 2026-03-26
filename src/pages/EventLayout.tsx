@@ -1,14 +1,16 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X
+  Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X, Satellite
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
+
+const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
 
 const objectColors: Record<string, string> = {
   tent: 'border-info/40 bg-info/5',
