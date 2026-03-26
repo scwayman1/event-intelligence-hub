@@ -3,6 +3,7 @@ import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move, ZoomIn, Z
 import { Button } from '@/components/ui/button';
 import { useGoogleMaps } from '@/hooks/use-google-maps';
 import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
+import { type UnitSystem, formatDistance, formatScale } from '@/lib/units';
 
 interface VenueCaptureProps {
   onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number) => void;
@@ -32,6 +33,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
   const [currentZoom, setCurrentZoom] = useState(19);
   const [currentLat, setCurrentLat] = useState(0);
   const [placeName, setPlaceName] = useState('');
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
 
   // Capture region state
   const [region, setRegion] = useState<CaptureRegion>({ x: 100, y: 60, width: 600, height: 400 });
@@ -231,7 +233,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
   const regionWidthM = mpp * region.width;
   const regionHeightM = mpp * region.height;
 
-  const formatDist = (m: number) => m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`;
+  const fmtDist = (m: number) => formatDistance(m, unitSystem);
 
   if (error) {
     return (
@@ -277,9 +279,15 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
         {/* Region dimensions */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground mr-4">
           <Ruler className="w-3.5 h-3.5" />
-          <span className="font-mono">{formatDist(regionWidthM)} × {formatDist(regionHeightM)}</span>
+          <span className="font-mono">{fmtDist(regionWidthM)} × {fmtDist(regionHeightM)}</span>
           <span className="text-border">|</span>
-          <span className="font-mono">{mpp.toFixed(2)} m/px</span>
+          <span className="font-mono">{formatScale(mpp, unitSystem)}</span>
+          <button
+            onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
+            className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
+          >
+            {unitSystem === 'imperial' ? 'ft' : 'm'}
+          </button>
         </div>
 
         {placeName && (
@@ -373,10 +381,10 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
 
               {/* Dimension labels */}
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap">
-                {formatDist(regionWidthM)}
+                {fmtDist(regionWidthM)}
               </div>
               <div className="absolute -right-14 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap">
-                {formatDist(regionHeightM)}
+                {fmtDist(regionHeightM)}
               </div>
 
               {/* Corner handles */}

@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
@@ -74,6 +75,7 @@ export default function EventLayout() {
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
   const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -216,8 +218,14 @@ export default function EventLayout() {
                 <X className="w-3 h-3 text-muted-foreground" />
               </Button>
               {metersPerPixel && (
-                <span className="text-[10px] font-mono text-muted-foreground ml-1">{metersPerPixel.toFixed(2)} m/px</span>
+                <span className="text-[10px] font-mono text-muted-foreground ml-1">{formatScale(metersPerPixel, unitSystem)}</span>
               )}
+              <button
+                onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
+                className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
+              >
+                {unitSystem === 'imperial' ? 'ft' : 'm'}
+              </button>
             </>
           )}
           <div className="w-px h-6 bg-border mx-1" />
@@ -265,13 +273,7 @@ export default function EventLayout() {
               const tableGuests = isTable ? getTableGuests(obj.id, versionId) : [];
               const isSelected = selectedId === obj.id;
 
-              const formatDim = (px: number) => {
-                if (metersPerPixel) {
-                  const m = px * metersPerPixel;
-                  return m >= 1 ? `${m.toFixed(1)}m` : `${(m * 100).toFixed(0)}cm`;
-                }
-                return `${px}px`;
-              };
+              const formatDim = (px: number) => formatDimension(px, metersPerPixel, unitSystem);
 
               const resizeHandles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
               const handleCursors: Record<string, string> = {
