@@ -233,7 +233,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
   const regionWidthM = mpp * region.width;
   const regionHeightM = mpp * region.height;
 
-  const formatDist = (m: number) => m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`;
+  const fmtDist = (m: number) => formatDistance(m, unitSystem);
 
   if (error) {
     return (
