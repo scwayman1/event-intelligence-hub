@@ -74,6 +74,7 @@ export default function EventLayout() {
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
   const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
