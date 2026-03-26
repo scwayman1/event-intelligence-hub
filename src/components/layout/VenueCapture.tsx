@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Satellite, MapPin, Download, X, Loader2, Ruler } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useGoogleMaps } from '@/hooks/use-google-maps';
-import { cn } from '@/lib/utils';
+import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
 
 interface VenueCaptureProps {
   onCapture: (imageDataUrl: string, metersPerPixel: number | null) => void;
