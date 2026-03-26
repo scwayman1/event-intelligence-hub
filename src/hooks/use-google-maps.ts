@@ -5,7 +5,7 @@ let loadPromise: Promise<void> | null = null;
 
 function loadGoogleMapsScript(): Promise<void> {
   if (loadPromise) return loadPromise;
-  if (window.google?.maps) return Promise.resolve();
+  if ((window as any).google?.maps) return Promise.resolve();
 
   loadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
