@@ -171,8 +171,25 @@ export default function EventLayout() {
         >
           <div
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: 800, height: 600, position: 'relative' }}
-            className={cn('transition-transform', showGrid && 'bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]')}
+            className={cn('transition-transform', showGrid && !venueImage && 'bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]')}
           >
+            {/* Venue background image */}
+            {venueImage && (
+              <img
+                src={venueImage}
+                alt="Venue floor plan"
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+                style={{ opacity: imageOpacity }}
+                draggable={false}
+              />
+            )}
+            {/* Grid overlay on top of image */}
+            {venueImage && showGrid && (
+              <div
+                className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]"
+                style={{ opacity: 0.4 }}
+              />
+            )}
             {objects.filter((o) => o.visible).sort((a, b) => a.zIndex - b.zIndex).map((obj) => {
               const isTable = ['round_table', 'rect_table'].includes(obj.type);
               const tableGuests = isTable ? getTableGuests(obj.id, versionId) : [];
