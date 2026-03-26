@@ -216,7 +216,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           );
           const dataUrl = cvs.toDataURL('image/png');
           const mpp = metersPerPxAtZoom(zoom, centerLatLng.lat());
-          onCapture(dataUrl, mpp);
+          onCapture(dataUrl, mpp, cvs.width, cvs.height);
           setCapturing(false);
           return;
         } catch { /* tainted */ }
