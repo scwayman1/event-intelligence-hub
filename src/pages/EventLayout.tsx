@@ -242,6 +242,30 @@ export default function EventLayout() {
               const tableGuests = isTable ? getTableGuests(obj.id, versionId) : [];
               const isSelected = selectedId === obj.id;
 
+              const formatDim = (px: number) => {
+                if (metersPerPixel) {
+                  const m = px * metersPerPixel;
+                  return m >= 1 ? `${m.toFixed(1)}m` : `${(m * 100).toFixed(0)}cm`;
+                }
+                return `${px}px`;
+              };
+
+              const resizeHandles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+              const handleCursors: Record<string, string> = {
+                n: 'cursor-n-resize', ne: 'cursor-ne-resize', e: 'cursor-e-resize', se: 'cursor-se-resize',
+                s: 'cursor-s-resize', sw: 'cursor-sw-resize', w: 'cursor-w-resize', nw: 'cursor-nw-resize',
+              };
+              const handlePositions: Record<string, string> = {
+                n: 'top-0 left-1/2 -translate-x-1/2 -translate-y-1/2',
+                ne: 'top-0 right-0 translate-x-1/2 -translate-y-1/2',
+                e: 'top-1/2 right-0 translate-x-1/2 -translate-y-1/2',
+                se: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2',
+                s: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2',
+                sw: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2',
+                w: 'top-1/2 left-0 -translate-x-1/2 -translate-y-1/2',
+                nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
+              };
+
               return (
                 <div
                   key={obj.id}
@@ -267,6 +291,42 @@ export default function EventLayout() {
                       {tableGuests.length}/{obj.capacity}
                     </span>
                   )}
+
+                  {/* Dimension labels for selected objects */}
+                  {isSelected && (
+                    <>
+                      {/* Width label - bottom */}
+                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
+                        {formatDim(obj.width)}
+                      </div>
+                      {/* Height label - right */}
+                      <div className="absolute top-1/2 -right-1 translate-x-full -translate-y-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
+                        {formatDim(obj.height)}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Resize handles */}
+                  {isSelected && !obj.locked && resizeHandles.map((handle) => (
+                    <div
+                      key={handle}
+                      className={cn(
+                        'absolute w-2.5 h-2.5 bg-primary border border-primary-foreground rounded-sm z-10',
+                        handlePositions[handle],
+                        handleCursors[handle],
+                      )}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setResizing({
+                          id: obj.id, handle,
+                          startX: e.clientX, startY: e.clientY,
+                          startW: obj.width, startH: obj.height,
+                          startObjX: obj.x, startObjY: obj.y,
+                        });
+                      }}
+                    />
+                  ))}
                 </div>
               );
             })}
