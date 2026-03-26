@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move } from 'lucide-react';
+import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGoogleMaps } from '@/hooks/use-google-maps';
 import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
 
 interface VenueCaptureProps {
-  onCapture: (imageDataUrl: string, metersPerPixel: number | null) => void;
+  onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number) => void;
   onClose: () => void;
 }
 
@@ -197,7 +197,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
       ctx?.drawImage(img, 0, 0);
       const dataUrl = cvs.toDataURL('image/png');
       const mpp = metersPerPxAtZoom(zoom, centerLatLng.lat()) / 2; // scale=2
-      onCapture(dataUrl, mpp);
+      onCapture(dataUrl, mpp, img.naturalWidth, img.naturalHeight);
       setCapturing(false);
     };
     img.onerror = () => {
@@ -216,7 +216,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           );
           const dataUrl = cvs.toDataURL('image/png');
           const mpp = metersPerPxAtZoom(zoom, centerLatLng.lat());
-          onCapture(dataUrl, mpp);
+          onCapture(dataUrl, mpp, cvs.width, cvs.height);
           setCapturing(false);
           return;
         } catch { /* tainted */ }
@@ -288,6 +288,16 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
             <span className="text-foreground truncate max-w-48">{placeName}</span>
           </div>
         )}
+
+        <div className="flex items-center gap-1 mr-2">
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { if (mapInstance.current) { const z = (mapInstance.current.getZoom() || 19) - 1; mapInstance.current.setZoom(Math.max(z, 15)); } }}>
+            <ZoomOut className="w-3.5 h-3.5" />
+          </Button>
+          <span className="text-xs font-mono text-muted-foreground w-8 text-center">{currentZoom}</span>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { if (mapInstance.current) { const z = (mapInstance.current.getZoom() || 19) + 1; mapInstance.current.setZoom(Math.min(z, 22)); } }}>
+            <ZoomIn className="w-3.5 h-3.5" />
+          </Button>
+        </div>
 
         <Button
           size="sm"

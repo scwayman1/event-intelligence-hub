@@ -74,6 +74,7 @@ export default function EventLayout() {
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
   const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -146,10 +147,32 @@ export default function EventLayout() {
 
   const handleAddObject = (type: LayoutObjectType) => {
     const id = `lo-${Date.now()}`;
+    
+    // Real-world sizes in meters for scaled placement
+    const realSizes: Partial<Record<LayoutObjectType, { w: number; h: number }>> = {
+      round_table: { w: 1.52, h: 1.52 },   // 60" round
+      rect_table: { w: 2.44, h: 0.76 },     // 8' x 30" banquet
+      stage: { w: 6, h: 3 },
+      podium: { w: 0.6, h: 0.6 },
+      tent: { w: 12, h: 9 },
+      checkin: { w: 2.44, h: 0.76 },
+      bar: { w: 2.44, h: 0.76 },
+      chair: { w: 0.5, h: 0.5 },
+    };
+
+    let w: number, h: number;
+    if (metersPerPixel && realSizes[type]) {
+      const rs = realSizes[type]!;
+      w = Math.round(rs.w / metersPerPixel);
+      h = Math.round(rs.h / metersPerPixel);
+    } else {
+      w = type === 'tent' ? 200 : type.includes('table') ? 80 : 60;
+      h = type === 'tent' ? 150 : type.includes('table') ? (type === 'rect_table' ? 40 : 80) : 40;
+    }
+
     addLayoutObject({
       id, versionId, type, name: typeLabels[type],
-      x: 200, y: 200, width: type === 'tent' ? 200 : type.includes('table') ? 80 : 60,
-      height: type === 'tent' ? 150 : type.includes('table') ? (type === 'rect_table' ? 40 : 80) : 40,
+      x: 200, y: 200, width: w, height: h,
       rotation: 0, capacity: type.includes('table') ? 8 : 0, notes: '', category: '',
       locked: false, visible: true, zIndex: objects.length,
     });
@@ -217,7 +240,7 @@ export default function EventLayout() {
           onClick={() => setSelectedId(null)}
         >
           <div
-            style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: 800, height: 600, position: 'relative' }}
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: canvasSize.width, height: canvasSize.height, position: 'relative' }}
             className={cn('transition-transform', showGrid && !venueImage && 'bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]')}
           >
             {/* Venue background image */}
@@ -421,9 +444,17 @@ export default function EventLayout() {
       {showSatelliteCapture && (
         <Suspense fallback={null}>
           <VenueCapture
-            onCapture={(imageDataUrl, mpp) => {
+            onCapture={(imageDataUrl, mpp, imgW, imgH) => {
               setVenueImage(imageDataUrl);
               setMetersPerPixel(mpp);
+              // Resize canvas to match captured image aspect ratio
+              if (imgW && imgH) {
+                const maxW = 1200;
+                const scale = Math.min(maxW / imgW, 1);
+                setCanvasSize({ width: Math.round(imgW * scale), height: Math.round(imgH * scale) });
+                // Adjust metersPerPixel for the scaled canvas
+                if (mpp) setMetersPerPixel(mpp / scale);
+              }
               setShowSatelliteCapture(false);
             }}
             onClose={() => setShowSatelliteCapture(false)}
