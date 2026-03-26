@@ -67,7 +67,18 @@ export default function EventLayout() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const [venueImage, setVenueImage] = useState<string | null>(null);
+  const [imageOpacity, setImageOpacity] = useState(0.35);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setVenueImage(url);
+    e.target.value = '';
+  };
 
   const selected = objects.find((o) => o.id === selectedId);
 
