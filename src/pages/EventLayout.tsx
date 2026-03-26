@@ -128,6 +128,29 @@ export default function EventLayout() {
           <div className="w-px h-6 bg-border mx-1" />
           <Button variant={showGrid ? 'secondary' : 'ghost'} size="icon" onClick={() => setShowGrid(!showGrid)}><Grid3X3 className="w-4 h-4" /></Button>
           <div className="w-px h-6 bg-border mx-1" />
+          {/* Venue image upload */}
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+          <Button variant={venueImage ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => fileInputRef.current?.click()}>
+            <ImageIcon className="w-3.5 h-3.5" />{venueImage ? 'Replace Map' : 'Upload Map'}
+          </Button>
+          {venueImage && (
+            <>
+              <div className="flex items-center gap-1.5 ml-1">
+                <span className="text-[10px] text-muted-foreground">Opacity</span>
+                <input
+                  type="range" min="0.05" max="1" step="0.05"
+                  value={imageOpacity}
+                  onChange={(e) => setImageOpacity(Number(e.target.value))}
+                  className="w-16 h-1 accent-primary"
+                />
+                <span className="text-[10px] font-mono text-muted-foreground w-6">{Math.round(imageOpacity * 100)}%</span>
+              </div>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage) URL.revokeObjectURL(venueImage); setVenueImage(null); }}>
+                <X className="w-3 h-3 text-muted-foreground" />
+              </Button>
+            </>
+          )}
+          <div className="w-px h-6 bg-border mx-1" />
           <div className="flex gap-1">
             {objectPalette.map((item) => (
               <Button key={item.type} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(item.type)}>
