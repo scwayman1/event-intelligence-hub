@@ -381,10 +381,10 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
 
               {/* Dimension labels */}
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap">
-                {formatDist(regionWidthM)}
+                {fmtDist(regionWidthM)}
               </div>
               <div className="absolute -right-14 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap">
-                {formatDist(regionHeightM)}
+                {fmtDist(regionHeightM)}
               </div>
 
               {/* Corner handles */}

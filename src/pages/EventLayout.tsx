@@ -272,13 +272,7 @@ export default function EventLayout() {
               const tableGuests = isTable ? getTableGuests(obj.id, versionId) : [];
               const isSelected = selectedId === obj.id;
 
-              const formatDim = (px: number) => {
-                if (metersPerPixel) {
-                  const m = px * metersPerPixel;
-                  return m >= 1 ? `${m.toFixed(1)}m` : `${(m * 100).toFixed(0)}cm`;
-                }
-                return `${px}px`;
-              };
+              const formatDim = (px: number) => formatDimension(px, metersPerPixel, unitSystem);
 
               const resizeHandles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
               const handleCursors: Record<string, string> = {
