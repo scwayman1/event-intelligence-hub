@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
