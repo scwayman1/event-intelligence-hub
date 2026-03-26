@@ -238,6 +238,7 @@ export default function EventLayout() {
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
+                  onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
                 >
                   <span className="text-[10px] font-medium text-foreground leading-tight text-center px-1 truncate max-w-full">
                     {obj.name}
