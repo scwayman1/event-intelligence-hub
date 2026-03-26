@@ -1,14 +1,16 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X
+  Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X, Satellite
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
+
+const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
 
 const objectColors: Record<string, string> = {
   tent: 'border-info/40 bg-info/5',
@@ -69,6 +71,8 @@ export default function EventLayout() {
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [venueImage, setVenueImage] = useState<string | null>(null);
   const [imageOpacity, setImageOpacity] = useState(0.35);
+  const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
+  const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -133,6 +137,9 @@ export default function EventLayout() {
           <Button variant={venueImage ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => fileInputRef.current?.click()}>
             <ImageIcon className="w-3.5 h-3.5" />{venueImage ? 'Replace Map' : 'Upload Map'}
           </Button>
+          <Button variant="ghost" size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowSatelliteCapture(true)}>
+            <Satellite className="w-3.5 h-3.5" />Satellite
+          </Button>
           {venueImage && (
             <>
               <div className="flex items-center gap-1.5 ml-1">
@@ -145,9 +152,12 @@ export default function EventLayout() {
                 />
                 <span className="text-[10px] font-mono text-muted-foreground w-6">{Math.round(imageOpacity * 100)}%</span>
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage) URL.revokeObjectURL(venueImage); setVenueImage(null); }}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage && venueImage.startsWith('blob:')) URL.revokeObjectURL(venueImage); setVenueImage(null); setMetersPerPixel(null); }}>
                 <X className="w-3 h-3 text-muted-foreground" />
               </Button>
+              {metersPerPixel && (
+                <span className="text-[10px] font-mono text-muted-foreground ml-1">{metersPerPixel.toFixed(2)} m/px</span>
+              )}
             </>
           )}
           <div className="w-px h-6 bg-border mx-1" />
@@ -309,6 +319,19 @@ export default function EventLayout() {
           </div>
         )}
       </div>
+      {/* Satellite Capture Modal */}
+      {showSatelliteCapture && (
+        <Suspense fallback={null}>
+          <VenueCapture
+            onCapture={(imageDataUrl, mpp) => {
+              setVenueImage(imageDataUrl);
+              setMetersPerPixel(mpp);
+              setShowSatelliteCapture(false);
+            }}
+            onClose={() => setShowSatelliteCapture(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
