@@ -137,6 +137,8 @@ export default function EventLayout() {
           <Button variant={venueImage ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => fileInputRef.current?.click()}>
             <ImageIcon className="w-3.5 h-3.5" />{venueImage ? 'Replace Map' : 'Upload Map'}
           </Button>
+          <Button variant="ghost" size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowSatelliteCapture(true)}>
+            <Satellite className="w-3.5 h-3.5" />Satellite
           {venueImage && (
             <>
               <div className="flex items-center gap-1.5 ml-1">
