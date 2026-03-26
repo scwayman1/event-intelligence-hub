@@ -197,7 +197,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
       ctx?.drawImage(img, 0, 0);
       const dataUrl = cvs.toDataURL('image/png');
       const mpp = metersPerPxAtZoom(zoom, centerLatLng.lat()) / 2; // scale=2
-      onCapture(dataUrl, mpp);
+      onCapture(dataUrl, mpp, img.naturalWidth, img.naturalHeight);
       setCapturing(false);
     };
     img.onerror = () => {
