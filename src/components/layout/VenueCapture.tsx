@@ -279,9 +279,15 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
         {/* Region dimensions */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground mr-4">
           <Ruler className="w-3.5 h-3.5" />
-          <span className="font-mono">{formatDist(regionWidthM)} × {formatDist(regionHeightM)}</span>
+          <span className="font-mono">{fmtDist(regionWidthM)} × {fmtDist(regionHeightM)}</span>
           <span className="text-border">|</span>
-          <span className="font-mono">{mpp.toFixed(2)} m/px</span>
+          <span className="font-mono">{formatScale(mpp, unitSystem)}</span>
+          <button
+            onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
+            className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
+          >
+            {unitSystem === 'imperial' ? 'ft' : 'm'}
+          </button>
         </div>
 
         {placeName && (
