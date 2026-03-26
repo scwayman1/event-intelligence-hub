@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useState, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
 import { 
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
   Plus, Trash2, RotateCw, Grid3X3, Layers, ImageIcon, X, Satellite
@@ -106,6 +106,24 @@ export default function EventLayout() {
   }, [dragging, zoom, showGrid, updateLayoutObject]);
 
   const handleMouseUp = useCallback(() => setDragging(null), []);
+
+  // Delete/Backspace keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        const obj = layoutObjects.find((o) => o.id === selectedId);
+        if (obj?.locked) return;
+        removeLayoutObject(selectedId);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, layoutObjects, removeLayoutObject]);
 
   const handleAddObject = (type: LayoutObjectType) => {
     const id = `lo-${Date.now()}`;
