@@ -33,6 +33,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
   const [currentZoom, setCurrentZoom] = useState(19);
   const [currentLat, setCurrentLat] = useState(0);
   const [placeName, setPlaceName] = useState('');
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
 
   // Capture region state
   const [region, setRegion] = useState<CaptureRegion>({ x: 100, y: 60, width: 600, height: 400 });
