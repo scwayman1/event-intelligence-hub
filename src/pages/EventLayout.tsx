@@ -69,6 +69,7 @@ export default function EventLayout() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const [resizing, setResizing] = useState<{ id: string; handle: string; startX: number; startY: number; startW: number; startH: number; startObjX: number; startObjY: number } | null>(null);
   const [venueImage, setVenueImage] = useState<string | null>(null);
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
@@ -95,6 +96,24 @@ export default function EventLayout() {
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (resizing && canvasRef.current) {
+      const dx = (e.clientX - resizing.startX) / zoom;
+      const dy = (e.clientY - resizing.startY) / zoom;
+      const handle = resizing.handle;
+      let newW = resizing.startW;
+      let newH = resizing.startH;
+      let newX = resizing.startObjX;
+      let newY = resizing.startObjY;
+
+      if (handle.includes('e')) newW = Math.max(30, resizing.startW + dx);
+      if (handle.includes('w')) { newW = Math.max(30, resizing.startW - dx); newX = resizing.startObjX + (resizing.startW - newW); }
+      if (handle.includes('s')) newH = Math.max(30, resizing.startH + dy);
+      if (handle.includes('n')) { newH = Math.max(30, resizing.startH - dy); newY = resizing.startObjY + (resizing.startH - newH); }
+
+      const snap = (v: number) => showGrid ? Math.round(v / 20) * 20 : Math.round(v);
+      updateLayoutObject(resizing.id, { width: snap(newW), height: snap(newH), x: snap(newX), y: snap(newY) });
+      return;
+    }
     if (!dragging || !canvasRef.current) return;
     const canvasRect = canvasRef.current.getBoundingClientRect();
     const x = (e.clientX - canvasRect.left - dragging.offsetX) / zoom;
@@ -103,9 +122,9 @@ export default function EventLayout() {
       x: showGrid ? Math.round(x / 20) * 20 : Math.round(x),
       y: showGrid ? Math.round(y / 20) * 20 : Math.round(y),
     });
-  }, [dragging, zoom, showGrid, updateLayoutObject]);
+  }, [dragging, resizing, zoom, showGrid, updateLayoutObject]);
 
-  const handleMouseUp = useCallback(() => setDragging(null), []);
+  const handleMouseUp = useCallback(() => { setDragging(null); setResizing(null); }, []);
 
   // Delete/Backspace keyboard shortcut
   useEffect(() => {
@@ -223,6 +242,30 @@ export default function EventLayout() {
               const tableGuests = isTable ? getTableGuests(obj.id, versionId) : [];
               const isSelected = selectedId === obj.id;
 
+              const formatDim = (px: number) => {
+                if (metersPerPixel) {
+                  const m = px * metersPerPixel;
+                  return m >= 1 ? `${m.toFixed(1)}m` : `${(m * 100).toFixed(0)}cm`;
+                }
+                return `${px}px`;
+              };
+
+              const resizeHandles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+              const handleCursors: Record<string, string> = {
+                n: 'cursor-n-resize', ne: 'cursor-ne-resize', e: 'cursor-e-resize', se: 'cursor-se-resize',
+                s: 'cursor-s-resize', sw: 'cursor-sw-resize', w: 'cursor-w-resize', nw: 'cursor-nw-resize',
+              };
+              const handlePositions: Record<string, string> = {
+                n: 'top-0 left-1/2 -translate-x-1/2 -translate-y-1/2',
+                ne: 'top-0 right-0 translate-x-1/2 -translate-y-1/2',
+                e: 'top-1/2 right-0 translate-x-1/2 -translate-y-1/2',
+                se: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2',
+                s: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2',
+                sw: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2',
+                w: 'top-1/2 left-0 -translate-x-1/2 -translate-y-1/2',
+                nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
+              };
+
               return (
                 <div
                   key={obj.id}
@@ -248,6 +291,42 @@ export default function EventLayout() {
                       {tableGuests.length}/{obj.capacity}
                     </span>
                   )}
+
+                  {/* Dimension labels for selected objects */}
+                  {isSelected && (
+                    <>
+                      {/* Width label - bottom */}
+                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
+                        {formatDim(obj.width)}
+                      </div>
+                      {/* Height label - right */}
+                      <div className="absolute top-1/2 -right-1 translate-x-full -translate-y-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
+                        {formatDim(obj.height)}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Resize handles */}
+                  {isSelected && !obj.locked && resizeHandles.map((handle) => (
+                    <div
+                      key={handle}
+                      className={cn(
+                        'absolute w-2.5 h-2.5 bg-primary border border-primary-foreground rounded-sm z-10',
+                        handlePositions[handle],
+                        handleCursors[handle],
+                      )}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setResizing({
+                          id: obj.id, handle,
+                          startX: e.clientX, startY: e.clientY,
+                          startW: obj.width, startH: obj.height,
+                          startObjX: obj.x, startObjY: obj.y,
+                        });
+                      }}
+                    />
+                  ))}
                 </div>
               );
             })}
