@@ -289,6 +289,16 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           </div>
         )}
 
+        <div className="flex items-center gap-1 mr-2">
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { if (mapInstance.current) { const z = (mapInstance.current.getZoom() || 19) - 1; mapInstance.current.setZoom(Math.max(z, 15)); } }}>
+            <ZoomOut className="w-3.5 h-3.5" />
+          </Button>
+          <span className="text-xs font-mono text-muted-foreground w-8 text-center">{currentZoom}</span>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { if (mapInstance.current) { const z = (mapInstance.current.getZoom() || 19) + 1; mapInstance.current.setZoom(Math.min(z, 22)); } }}>
+            <ZoomIn className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+
         <Button
           size="sm"
           onClick={handleCapture}
