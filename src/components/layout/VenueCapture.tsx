@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move } from 'lucide-react';
+import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGoogleMaps } from '@/hooks/use-google-maps';
 import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
