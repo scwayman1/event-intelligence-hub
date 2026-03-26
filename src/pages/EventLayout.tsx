@@ -218,7 +218,7 @@ export default function EventLayout() {
           onClick={() => setSelectedId(null)}
         >
           <div
-            style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: 800, height: 600, position: 'relative' }}
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: canvasSize.width, height: canvasSize.height, position: 'relative' }}
             className={cn('transition-transform', showGrid && !venueImage && 'bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]')}
           >
             {/* Venue background image */}
