@@ -152,9 +152,12 @@ export default function EventLayout() {
                 />
                 <span className="text-[10px] font-mono text-muted-foreground w-6">{Math.round(imageOpacity * 100)}%</span>
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage) URL.revokeObjectURL(venueImage); setVenueImage(null); }}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage && venueImage.startsWith('blob:')) URL.revokeObjectURL(venueImage); setVenueImage(null); setMetersPerPixel(null); }}>
                 <X className="w-3 h-3 text-muted-foreground" />
               </Button>
+              {metersPerPixel && (
+                <span className="text-[10px] font-mono text-muted-foreground ml-1">{metersPerPixel.toFixed(2)} m/px</span>
+              )}
             </>
           )}
           <div className="w-px h-6 bg-border mx-1" />
