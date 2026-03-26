@@ -69,6 +69,7 @@ export default function EventLayout() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const [resizing, setResizing] = useState<{ id: string; handle: string; startX: number; startY: number; startW: number; startH: number; startObjX: number; startObjY: number } | null>(null);
   const [venueImage, setVenueImage] = useState<string | null>(null);
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
