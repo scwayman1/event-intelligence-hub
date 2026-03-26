@@ -8,11 +8,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-<<<<<<< HEAD
 import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
-=======
 import { buildEventAnalytics } from '@/lib/event-analytics';
->>>>>>> a64e347 (feat: upgrade event planning command center and workflows)
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
