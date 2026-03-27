@@ -207,11 +207,16 @@ export default function EventSeating() {
       const guestId = e.dataTransfer.getData('text/plain') || dragGuestId;
       if (guestId) {
         moveGuestToTable(guestId, tableId, versionId);
+        const guest = guests.find((g) => g.id === guestId);
+        const table = tables.find((t) => t.id === tableId);
+        if (guest && table) {
+          toast.success(`${guest.displayName} assigned to ${table.name}`);
+        }
         setDragGuestId(null);
         setDragOverTableId(null);
       }
     },
-    [dragGuestId, moveGuestToTable, versionId],
+    [dragGuestId, moveGuestToTable, versionId, guests, tables],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -227,6 +232,7 @@ export default function EventSeating() {
       );
       if (assignment) {
         useEventStore.getState().removeSeatingAssignment(assignment.id);
+        toast.success('Guest removed from table');
       }
     },
     [seatingAssignments, versionId],
@@ -280,6 +286,8 @@ export default function EventSeating() {
       }
       if (!placed) break;
     }
+
+    toast.success(`Quick-assigned ${unassignedGuests.length} guest${unassignedGuests.length !== 1 ? 's' : ''}`);
   }, [tables, assignments, unassignedGuests, moveGuestToTable, versionId]);
 
   /* ----- auto-seat handler ----- */
@@ -303,6 +311,11 @@ export default function EventSeating() {
         : 'No guests could be seated (tables may be full)',
     );
     setShowAutoSeatDialog(false);
+    if (results.length > 0) {
+      toast.success(`Auto-seated ${results.length} guest${results.length !== 1 ? 's' : ''}`);
+    } else {
+      toast.info('No guests could be seated — tables may be full');
+    }
   }, [analytics, unassignedGuests, seatingAssignments, versionId, moveGuestToTable]);
 
   /* ----- clear all assignments handler ----- */
@@ -313,6 +326,7 @@ export default function EventSeating() {
     }
     setShowClearDialog(false);
     setAutoSeatResult(`Cleared ${versionAssignments.length} seating assignment${versionAssignments.length !== 1 ? 's' : ''}`);
+    toast.success('All assignments cleared');
   }, [seatingAssignments, versionId]);
 
   /* ----- helpers ----- */
@@ -352,6 +366,7 @@ export default function EventSeating() {
               <h1 className="text-2xl font-bold text-foreground">Seating Plan</h1>
             </div>
             <div className="flex items-center gap-3">
+              {analytics && <PrintSeatingChart analytics={analytics} />}
               <Button
                 variant="outline"
                 size="sm"

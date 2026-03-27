@@ -148,13 +148,13 @@ export default function EventGuests() {
 
   if (allEventGuests.length === 0) {
     return (
-      <div className="p-8 max-w-7xl space-y-6">
+      <div className="p-4 md:p-6 lg:p-8 max-w-7xl space-y-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-primary/80 mb-2">
               <Sparkles className="w-3.5 h-3.5" /> guest intelligence
             </div>
-            <h1 className="text-3xl font-bold text-foreground">Guests</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Guests</h1>
           </div>
         </div>
         <EmptyState
@@ -175,13 +175,13 @@ export default function EventGuests() {
   }
 
   return (
-    <div className="p-8 max-w-7xl space-y-6 animate-fade-in">
+    <div className="p-4 md:p-6 lg:p-8 max-w-7xl space-y-6 animate-fade-in">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-primary/80 mb-2">
             <Sparkles className="w-3.5 h-3.5" /> guest intelligence
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Guests</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Guests</h1>
           <p className="text-sm text-muted-foreground mt-1">
             See who is confirmed, who is still in motion, and where high-touch placement work remains.
           </p>
@@ -202,7 +202,7 @@ export default function EventGuests() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
         <div className="metric-card">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Total</div>
           <p className="text-2xl font-bold font-mono text-foreground">{stats.total}</p>
@@ -230,7 +230,7 @@ export default function EventGuests() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className="grid gap-4 grid-cols-1 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="glass-panel p-4">
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
             <div className="relative flex-1 max-w-sm">
@@ -262,16 +262,66 @@ export default function EventGuests() {
             ))}
           </div>
 
-          <div className="overflow-hidden rounded-lg border border-border/60">
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3">
+            {eventGuests.map((guest) => {
+              const seatedTable = tableMap.get(guest.id);
+              return (
+                <div key={guest.id} className="rounded-lg border border-border/60 bg-card/50 p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{guest.displayName}</p>
+                      {guest.organization && <p className="text-xs text-muted-foreground mt-0.5">{guest.organization}</p>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditModal(guest)}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      {deletingGuestId === guest.id ? (
+                        <div className="flex items-center gap-1">
+                          <Button variant="destructive" size="sm" className="h-7 text-xs px-2" onClick={() => confirmDelete(guest.id)}>
+                            Yes
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setDeletingGuestId(null)}>
+                            No
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingGuestId(guest.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className={`text-xs ${categoryColors[guest.category]}`}>
+                      {categoryLabels[guest.category]}
+                    </Badge>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${rsvpColors[guest.rsvpStatus]}`}>
+                      <span className="status-dot" style={{ width: 6, height: 6 }} />
+                      {guest.rsvpStatus.replace('_', ' ')}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{seatedTable || 'Unassigned'}</span>
+                  </div>
+                </div>
+              );
+            })}
+            {eventGuests.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground text-sm">No guests match the current filters</div>
+            )}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="overflow-hidden rounded-lg border border-border/60 hidden md:block">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/20">
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Guest</th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Category</th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">RSVP</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Organization</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Seat / Table</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Signals</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 hidden lg:table-cell">Organization</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 hidden lg:table-cell">Seat / Table</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 hidden xl:table-cell">Signals</th>
                   <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Actions</th>
                 </tr>
               </thead>
@@ -302,12 +352,12 @@ export default function EventGuests() {
                           {guest.rsvpStatus.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{guest.organization || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                      <td className="px-4 py-3 text-sm text-muted-foreground hidden lg:table-cell">{guest.organization || '\u2014'}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground hidden lg:table-cell">
                         <div>{seatedTable || 'Unassigned'}</div>
                         <div className="text-xs font-mono text-muted-foreground/80">Party {guest.partySize}</div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 hidden xl:table-cell">
                         <div className="space-y-1 max-w-[260px]">
                           {guest.accessibilityNeeds && (
                             <p className="text-xs text-info">Accessibility: {guest.accessibilityNeeds}</p>

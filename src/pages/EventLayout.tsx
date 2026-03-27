@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useEventStore } from '@/data/store';
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
@@ -173,7 +174,10 @@ export default function EventLayout() {
   // Handle undo/redo by restoring layout state
   const handleUndo = useCallback(() => {
     const restored = undo();
-    if (restored) setLayoutObjects(restored);
+    if (restored) {
+      setLayoutObjects(restored);
+      toast('Layout changes undone', { duration: 2000 });
+    }
   }, [undo, setLayoutObjects]);
 
   const handleRedo = useCallback(() => {
@@ -264,8 +268,10 @@ export default function EventLayout() {
         const obj = layoutObjects.find((o) => o.id === selectedId);
         if (obj?.locked) return;
         pushState(objects.map((o) => ({ ...o })));
+        const deletedName = obj?.name ?? 'Object';
         removeLayoutObject(selectedId);
         setSelectedId(null);
+        toast.success(`${deletedName} deleted`);
         return;
       }
 
@@ -347,16 +353,19 @@ export default function EventLayout() {
       visible: true,
       zIndex: objects.length,
     });
+    toast(`${preset?.label ?? typeLabels[type] ?? 'Object'} added`, { duration: 2000 });
   };
+
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   if (!event) return <EventNotFound />;
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Canvas */}
-      <div className="flex-1 flex flex-col">
-        {/* Toolbar */}
-        <div className="h-12 border-b border-border flex items-center gap-2 px-4 bg-card/50">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Toolbar - horizontally scrollable on small screens */}
+        <div className="h-12 border-b border-border flex items-center gap-2 px-3 md:px-4 bg-card/50 overflow-x-auto flex-shrink-0">
           <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(z + 0.1, 3))}><ZoomIn className="w-4 h-4" /></Button>
           <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(z - 0.1, 0.3))}><ZoomOut className="w-4 h-4" /></Button>
           <span className="text-xs font-mono text-muted-foreground px-2">{Math.round(zoom * 100)}%</span>
@@ -452,6 +461,9 @@ export default function EventLayout() {
               )}
             </div>
             <SaveIndicator />
+            <Button variant="ghost" size="icon" className="h-7 w-7 lg:hidden" onClick={() => setInspectorOpen(!inspectorOpen)} title="Toggle inspector">
+              <Layers className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
@@ -691,7 +703,7 @@ export default function EventLayout() {
               <Button variant="ghost" size="sm" onClick={() => updateLayoutObject(selected.id, { visible: !selected.visible })}>
                 {selected.visible ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
               </Button>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => { removeLayoutObject(selected.id); setSelectedId(null); }}>
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => { const name = selected.name; removeLayoutObject(selected.id); setSelectedId(null); toast.success(`${name} deleted`); }}>
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,6 +103,7 @@ export default function GuestFormModal({ open, onOpenChange, eventId, guest }: G
 
     if (isEditing && guest) {
       updateGuest(guest.id, { ...form, displayName });
+      toast.success('Guest updated');
     } else {
       const newGuest: Guest = {
         id: `g-${crypto.randomUUID()}`,
@@ -113,6 +115,7 @@ export default function GuestFormModal({ open, onOpenChange, eventId, guest }: G
         seatingPreference: '',
       };
       addGuest(newGuest);
+      toast.success('Guest added successfully');
     }
     onOpenChange(false);
   };

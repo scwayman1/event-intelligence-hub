@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { Input } from '@/components/ui/input';
@@ -44,6 +45,7 @@ export default function EventSettings() {
       ...form,
       updatedAt: new Date().toISOString(),
     });
+    toast.success('Settings saved');
   };
 
   const createdDate = new Date(event.createdAt).toLocaleDateString('en-US', {

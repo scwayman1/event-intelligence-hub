@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +62,7 @@ export default function EventVersions() {
         versionId: newId,
       });
     });
+    toast.success('Version created');
   }, [event, eventVersions.length, getVersionObjects, addVersion, addLayoutObject]);
 
   const handleDuplicate = useCallback((sourceVersionId: string, sourceName: string) => {
@@ -87,6 +89,7 @@ export default function EventVersions() {
         versionId: newId,
       });
     });
+    toast.success('Version duplicated');
   }, [event, getVersionObjects, addVersion, addLayoutObject]);
 
   const handleSetActive = useCallback((versionId: string) => {
@@ -99,6 +102,8 @@ export default function EventVersions() {
     // Set new active
     updateVersion(versionId, { status: 'active', updatedAt: new Date().toISOString() });
     updateEvent(event.id, { activeVersionId: versionId, updatedAt: new Date().toISOString() });
+    const activatedVersion = versions.find((v) => v.id === versionId);
+    toast.success(`Active version changed to ${activatedVersion?.name ?? 'selected version'}`);
   }, [event, versions, updateVersion, updateEvent]);
 
   const handleStartEdit = (id: string, currentName: string) => {
