@@ -9,10 +9,10 @@ export interface ObjectPreset {
 }
 
 export const tablePresets: ObjectPreset[] = [
-  { label: '60" Round (8)', type: 'round_table', capacity: 8, widthMeters: 1.52, heightMeters: 1.52 },
-  { label: '72" Round (10)', type: 'round_table', capacity: 10, widthMeters: 1.83, heightMeters: 1.83 },
-  { label: '6ft Banquet (6)', type: 'rect_table', capacity: 6, widthMeters: 1.83, heightMeters: 0.76 },
-  { label: '8ft Banquet (8)', type: 'rect_table', capacity: 8, widthMeters: 2.44, heightMeters: 0.76 },
+  { label: '60" Round · 8 seats', type: 'round_table', capacity: 8, widthMeters: 1.52, heightMeters: 1.52 },
+  { label: '72" Round · 10 seats', type: 'round_table', capacity: 10, widthMeters: 1.83, heightMeters: 1.83 },
+  { label: '6ft Banquet · 6 seats', type: 'rect_table', capacity: 6, widthMeters: 1.83, heightMeters: 0.76 },
+  { label: '8ft Banquet · 8 seats', type: 'rect_table', capacity: 8, widthMeters: 2.44, heightMeters: 0.76 },
 ];
 
 export const supportPresets: ObjectPreset[] = [

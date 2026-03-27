@@ -266,9 +266,9 @@ export default function EventLayout() {
           )}
           <div className="w-px h-6 bg-border mx-1" />
           <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
-            <Ruler className="w-3.5 h-3.5" />{snapMode === 'grid' ? 'Grid Snap' : 'Measured Snap'}
+            <Ruler className="w-3.5 h-3.5" />{snapMode === 'grid' ? 'Grid snap' : 'Measured snap'}
           </Button>
-          <div className="text-[10px] text-muted-foreground font-mono">{metersPerPixel ? `snap ${formatDimension(snapIncrement, metersPerPixel, unitSystem)}` : 'set map scale for precise snap'}</div>
+          <div className="text-[10px] text-muted-foreground font-mono">{metersPerPixel ? `increment ${formatDimension(snapIncrement, metersPerPixel, unitSystem)}` : 'set map scale to unlock precise snapping'}</div>
           <div className="w-px h-6 bg-border mx-1" />
           <div className="flex gap-1">
             {tablePresets.map((preset) => (
@@ -318,7 +318,7 @@ export default function EventLayout() {
         )}
 
         <div className="border-b border-border bg-card/20 px-4 py-2 flex items-center justify-between gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2"><WandSparkles className="w-3.5 h-3.5" /> New objects now drop into organized rows using standard preset sizes instead of piling up at one point.</div>
+          <div className="flex items-center gap-2"><WandSparkles className="w-3.5 h-3.5" /> Standard presets now drop into organized rows, so every new layout starts cleaner.</div>
           <div className="font-mono">{selected && nearestNeighborDistance && metersPerPixel ? `nearest object ${formatDimension(nearestNeighborDistance, metersPerPixel, unitSystem)}` : 'select an object to inspect spacing'}</div>
         </div>
 
@@ -516,7 +516,7 @@ export default function EventLayout() {
                 <div className="rounded-md border border-border/70 bg-background/40 px-2 py-2 text-xs text-muted-foreground">
                   {metersPerPixel && nearestNeighborDistance
                     ? `Nearest object spacing: ${formatDimension(nearestNeighborDistance, metersPerPixel, unitSystem)}`
-                    : 'Set map scale to understand spacing between tables and structures precisely.'}
+                    : 'Set map scale first so spacing and snapping reflect the real venue footprint.'}
                 </div>
               </div>
             ) : null}
