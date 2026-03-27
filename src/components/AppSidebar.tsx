@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   CalendarDays,
   MapPin,
+  Search,
 } from 'lucide-react';
 import { useEventStore } from '@/data/store';
 import { cn } from '@/lib/utils';
@@ -218,6 +219,27 @@ export function AppSidebar() {
             Back to all events
           </NavLink>
         )}
+        <button
+          onClick={() => {
+            const event = new KeyboardEvent('keydown', {
+              key: 'k',
+              metaKey: true,
+              bubbles: true,
+            });
+            document.dispatchEvent(event);
+          }}
+          className={cn(
+            'flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-[12px] font-medium',
+            'text-sidebar-foreground/50 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/40',
+            'transition-all duration-200 ease-out'
+          )}
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span>Search & Commands</span>
+          <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border border-sidebar-border bg-sidebar-accent/60 px-1.5 font-mono text-[10px] font-medium text-sidebar-foreground/50">
+            <span className="text-xs">{'\u2318'}K</span>
+          </kbd>
+        </button>
         <div className="flex items-center justify-between px-3 pt-1">
           <p className="text-[10px] text-sidebar-foreground/30 font-mono tracking-wide">
             v0.1.0

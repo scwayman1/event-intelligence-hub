@@ -14,6 +14,7 @@ import EventIntegrations from "@/pages/EventIntegrations";
 import EventSettings from "@/pages/EventSettings";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CommandPalette } from "@/components/CommandPalette";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <CommandPalette />
           <Routes>
             <Route element={<AppLayout />}>
               <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
