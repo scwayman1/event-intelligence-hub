@@ -16,6 +16,8 @@ import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from 
 import { calculateTableFit, edgeDistances, nearestEdgeDistances, type RoomBounds } from '@/lib/space-calculator';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { TableDetailPopover } from '@/components/layout/TableDetailPopover';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
 
@@ -74,7 +76,8 @@ export default function EventLayout() {
   const [venueImage, setVenueImage] = useState<string | null>(null);
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
-  const [metersPerPixel, setMetersPerPixel] = useState<number | null>(null);
+  // Default: 1px ≈ 0.03m (~0.1ft), so 800px canvas ≈ 80ft wide
+  const [metersPerPixel, setMetersPerPixel] = useState<number | null>(0.03048);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [snapMode, setSnapMode] = useState<'grid' | 'measured'>('grid');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
@@ -88,6 +91,7 @@ export default function EventLayout() {
   const [calcSpacing, setCalcSpacing] = useState('4');
   const [calcMargin, setCalcMargin] = useState('3');
   const [showMeasureGuides, setShowMeasureGuides] = useState(true);
+  const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -296,20 +300,20 @@ export default function EventLayout() {
                 />
                 <span className="text-[10px] font-mono text-muted-foreground w-6">{Math.round(imageOpacity * 100)}%</span>
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage && venueImage.startsWith('blob:')) URL.revokeObjectURL(venueImage); setVenueImage(null); setMetersPerPixel(null); }}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage && venueImage.startsWith('blob:')) URL.revokeObjectURL(venueImage); setVenueImage(null); }}>
                 <X className="w-3 h-3 text-muted-foreground" />
               </Button>
-              {metersPerPixel && (
-                <span className="text-[10px] font-mono text-muted-foreground ml-1">{formatScale(metersPerPixel, unitSystem)}</span>
-              )}
-              <button
-                onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
-                className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
-              >
-                {unitSystem === 'imperial' ? 'ft' : 'm'}
-              </button>
             </>
           )}
+          {metersPerPixel && (
+            <span className="text-[10px] font-mono text-muted-foreground ml-1">{formatScale(metersPerPixel, unitSystem)}</span>
+          )}
+          <button
+            onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
+            className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
+          >
+            {unitSystem === 'imperial' ? 'ft' : 'm'}
+          </button>
           <div className="w-px h-6 bg-border mx-1" />
           <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
             <Ruler className="w-3.5 h-3.5" />{snapMode === 'grid' ? 'Grid Snap' : 'Measured Snap'}
@@ -674,7 +678,7 @@ export default function EventLayout() {
                 nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
               };
 
-              return (
+              const objectEl = (
                 <div
                   key={obj.id}
                   className={cn(
@@ -692,6 +696,12 @@ export default function EventLayout() {
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
                   onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
+                  onDoubleClick={(e) => {
+                    if (isTable) {
+                      e.stopPropagation();
+                      setTablePopoverId(tablePopoverId === obj.id ? null : obj.id);
+                    }
+                  }}
                 >
                   <LayoutObjectRenderer
                     obj={obj}
@@ -737,6 +747,32 @@ export default function EventLayout() {
                   ))}
                 </div>
               );
+
+              // Wrap tables with a popover for guest details on double-click
+              if (isTable) {
+                return (
+                  <Popover key={obj.id} open={tablePopoverId === obj.id} onOpenChange={(open) => setTablePopoverId(open ? obj.id : null)}>
+                    <PopoverTrigger asChild>
+                      {objectEl}
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-80 p-3 z-[100]"
+                      side="right"
+                      align="start"
+                      sideOffset={12}
+                      onPointerDownOutside={() => setTablePopoverId(null)}
+                    >
+                      <TableDetailPopover
+                        table={obj}
+                        guests={tableGuests}
+                        capacity={obj.capacity}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                );
+              }
+
+              return objectEl;
             })}
           </div>
         </div>
