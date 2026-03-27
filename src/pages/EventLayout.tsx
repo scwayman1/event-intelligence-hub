@@ -17,7 +17,7 @@ import { SaveIndicator } from '@/components/SaveIndicator';
 import { cn } from '@/lib/utils';
 import { type UnitSystem, formatScale, formatDimension, userInputToMeters, metersToUserUnit, formatWithUnit, formatDistance } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
-import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from '@/lib/layout-presets';
+import { metersToPixels, supportPresets, tablePresets, drawableTypes, type ObjectPreset } from '@/lib/layout-presets';
 import { calculateTableFit, edgeDistances, nearestEdgeDistances, type RoomBounds } from '@/lib/space-calculator';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
@@ -54,8 +54,6 @@ const typeLabels: Record<string, string> = {
 };
 
 const objectPalette: { type: LayoutObjectType; label: string }[] = [
-  { type: 'stage', label: 'Stage' },
-  { type: 'vip_area', label: 'VIP Area' },
   { type: 'catering', label: 'Catering' },
   { type: 'signage', label: 'Signage' },
 ];
@@ -79,6 +77,9 @@ export default function EventLayout() {
   const [showGrid, setShowGrid] = useState(true);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; handle: string; startX: number; startY: number; startW: number; startH: number; startObjX: number; startObjY: number } | null>(null);
+  // Draw-to-place tool: click and drag on canvas to create an object at custom size
+  const [drawingTool, setDrawingTool] = useState<LayoutObjectType | null>(null);
+  const [drawing, setDrawing] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
   const [venueImage, setVenueImage] = useState<string | null>(null);
   const [imageOpacity, setImageOpacity] = useState(0.35);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
@@ -215,11 +216,81 @@ export default function EventLayout() {
     });
   }, [dragging, resizing, zoom, snapValue, updateLayoutObject]);
 
-  const handleMouseUp = useCallback(() => { setDragging(null); setResizing(null); }, []);
+  const handleMouseUp = useCallback(() => {
+    setDragging(null);
+    setResizing(null);
+    // Finish drawing: create the object
+    if (drawing && drawingTool && canvasRef.current) {
+      const x = Math.min(drawing.startX, drawing.currentX);
+      const y = Math.min(drawing.startY, drawing.currentY);
+      const w = Math.abs(drawing.currentX - drawing.startX);
+      const h = Math.abs(drawing.currentY - drawing.startY);
+      if (w > 5 && h > 5) {
+        const id = `lo-${crypto.randomUUID()}`;
+        addLayoutObject({
+          id,
+          versionId,
+          type: drawingTool,
+          name: typeLabels[drawingTool] ?? drawingTool,
+          x: snapValue(x),
+          y: snapValue(y),
+          width: snapValue(w),
+          height: snapValue(h),
+          rotation: 0,
+          capacity: 0,
+          notes: '',
+          category: 'layout',
+          locked: false,
+          visible: true,
+          zIndex: objects.length,
+        });
+        setSelectedId(id);
+      }
+      setDrawing(null);
+      setDrawingTool(null);
+    }
+  }, [drawing, drawingTool, versionId, objects.length, addLayoutObject, snapValue]);
 
-  // Delete/Backspace keyboard shortcut
+  // Canvas mousedown for drawing mode
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    if (drawingTool && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / zoom;
+      const y = (e.clientY - rect.top) / zoom;
+      setDrawing({ startX: x, startY: y, currentX: x, currentY: y });
+      setSelectedId(null);
+      e.preventDefault();
+      return;
+    }
+    setSelectedId(null);
+  }, [drawingTool, zoom]);
+
+  // Canvas mousemove for drawing mode
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
+    if (drawing && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / zoom;
+      const y = (e.clientY - rect.top) / zoom;
+      setDrawing((prev) => prev ? { ...prev, currentX: x, currentY: y } : null);
+      return;
+    }
+    handleMouseMove(e);
+  }, [drawing, zoom, handleMouseMove]);
+
+  // Keyboard shortcuts: Delete/Backspace to remove, Escape to cancel drawing tool
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (drawingTool) {
+          setDrawingTool(null);
+          setDrawing(null);
+          return;
+        }
+        if (selectedId) {
+          setSelectedId(null);
+          return;
+        }
+      }
       if (!selectedId) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const tag = (e.target as HTMLElement).tagName;
@@ -233,7 +304,7 @@ export default function EventLayout() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, layoutObjects, removeLayoutObject]);
+  }, [selectedId, layoutObjects, removeLayoutObject, drawingTool]);
 
   const handleAddObject = (type: LayoutObjectType, preset?: ObjectPreset) => {
     const id = `lo-${crypto.randomUUID()}`;
@@ -347,6 +418,22 @@ export default function EventLayout() {
                 <Plus className="w-3 h-3 mr-0.5" />{preset.label}
               </Button>
             ))}
+            <div className="w-px h-4 bg-border mx-1" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Draw to size</span>
+            {drawableTypes.map((item) => (
+              <Button
+                key={item.type}
+                variant={drawingTool === item.type ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn('text-[11px] h-6 px-1.5', drawingTool === item.type && 'ring-1 ring-primary')}
+                onClick={() => setDrawingTool(drawingTool === item.type ? null : item.type)}
+              >
+                {item.label}
+              </Button>
+            ))}
+            {drawingTool && (
+              <span className="text-[10px] text-primary animate-pulse ml-1">Click & drag on canvas to draw</span>
+            )}
             <div className="w-px h-4 bg-border mx-1" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Fixtures</span>
             {supportPresets.map((preset) => (
@@ -516,11 +603,11 @@ export default function EventLayout() {
         {/* Canvas area */}
         <div
           ref={canvasRef}
-          className="flex-1 overflow-auto relative bg-background"
-          onMouseMove={handleMouseMove}
+          className={cn('flex-1 overflow-auto relative bg-background', drawingTool && 'cursor-crosshair')}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseDown={handleCanvasMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          onClick={() => setSelectedId(null)}
         >
           <div
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: canvasSize.width, height: canvasSize.height, position: 'relative' }}
@@ -781,6 +868,39 @@ export default function EventLayout() {
 
               return objectEl;
             })}
+
+            {/* Drawing preview rectangle */}
+            {drawing && drawingTool && (() => {
+              const x = Math.min(drawing.startX, drawing.currentX);
+              const y = Math.min(drawing.startY, drawing.currentY);
+              const w = Math.abs(drawing.currentX - drawing.startX);
+              const h = Math.abs(drawing.currentY - drawing.startY);
+              return (
+                <div
+                  className="absolute border-2 border-dashed border-primary bg-primary/10 pointer-events-none z-[60] flex items-center justify-center"
+                  style={{ left: x, top: y, width: w, height: h }}
+                >
+                  <div className="text-xs font-mono text-primary bg-card/90 px-2 py-0.5 rounded whitespace-nowrap">
+                    {metersPerPixel
+                      ? `${formatDimension(w, metersPerPixel, unitSystem)} × ${formatDimension(h, metersPerPixel, unitSystem)}`
+                      : `${Math.round(w)} × ${Math.round(h)}px`
+                    }
+                  </div>
+                  {/* Width label on top edge */}
+                  {w > 40 && metersPerPixel && (
+                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-mono text-primary bg-card/90 px-1.5 py-0.5 rounded border border-primary/30 whitespace-nowrap">
+                      {formatDimension(w, metersPerPixel, unitSystem)}
+                    </div>
+                  )}
+                  {/* Height label on right edge */}
+                  {h > 40 && metersPerPixel && (
+                    <div className="absolute -right-16 top-1/2 -translate-y-1/2 text-[10px] font-mono text-primary bg-card/90 px-1.5 py-0.5 rounded border border-primary/30 whitespace-nowrap">
+                      {formatDimension(h, metersPerPixel, unitSystem)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
