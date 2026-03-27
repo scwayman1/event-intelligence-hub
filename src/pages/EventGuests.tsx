@@ -1,12 +1,16 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Mail, Phone, Search, Sparkles, Upload } from 'lucide-react';
+import { AlertTriangle, Mail, Pencil, Phone, Plus, Search, Sparkles, Trash2, Upload, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { buildEventAnalytics } from '@/lib/event-analytics';
-import type { GuestCategory, RSVPStatus } from '@/types/events';
+import GuestFormModal from '@/components/GuestFormModal';
+import { EmptyState } from '@/components/EmptyState';
+import { EventNotFound } from '@/components/EventNotFound';
+import type { Guest, GuestCategory, RSVPStatus } from '@/types/events';
 
 const categoryLabels: Record<GuestCategory, string> = {
   donor: 'Donor', scholarship_recipient: 'Scholar', family: 'Family',
@@ -48,9 +52,29 @@ export default function EventGuests() {
     ? buildEventAnalytics({ event, guests, versions, layoutObjects, seatingAssignments, seatingRules })
     : null;
 
+  const removeGuest = useEventStore((s) => s.removeGuest);
+
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<GuestCategory | 'all'>('all');
   const [rsvpFilter, setRsvpFilter] = useState<RSVPStatus | 'all'>('all');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
+  const [deletingGuestId, setDeletingGuestId] = useState<string | null>(null);
+
+  const openAddModal = () => {
+    setEditingGuest(null);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (guest: Guest) => {
+    setEditingGuest(guest);
+    setModalOpen(true);
+  };
+
+  const confirmDelete = (guestId: string) => {
+    removeGuest(guestId);
+    setDeletingGuestId(null);
+  };
 
   const eventGuests = useMemo(() => {
     return guests
@@ -85,10 +109,38 @@ export default function EventGuests() {
   const categories: (GuestCategory | 'all')[] = ['all', 'donor', 'scholarship_recipient', 'board_member', 'vip', 'staff', 'family', 'sponsor', 'volunteer', 'other'];
   const rsvpStatuses: (RSVPStatus | 'all')[] = ['all', 'invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
 
-  if (!event || !analytics) return <div className="p-8 text-muted-foreground">Event not found</div>;
+  if (!event || !analytics) return <EventNotFound />;
+
+  if (allEventGuests.length === 0) {
+    return (
+      <div className="p-8 max-w-7xl space-y-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-primary/80 mb-2">
+              <Sparkles className="w-3.5 h-3.5" /> guest intelligence
+            </div>
+            <h1 className="text-3xl font-bold text-foreground">Guests</h1>
+          </div>
+        </div>
+        <EmptyState
+          icon={Users}
+          title="No guests yet"
+          description="Start building your guest list. Add guests individually or import them from a spreadsheet to get started."
+          actionLabel="Add your first guest"
+          onAction={openAddModal}
+        />
+        <GuestFormModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          eventId={eventId!}
+          guest={editingGuest}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8 max-w-7xl space-y-6">
+    <div className="p-8 max-w-7xl space-y-6 animate-fade-in">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-primary/80 mb-2">
@@ -100,8 +152,21 @@ export default function EventGuests() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2"><Upload className="w-3.5 h-3.5" />Import CSV</Button>
-          <Button size="sm">Add Guest</Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0}>
+                  <Button variant="outline" size="sm" className="gap-2" disabled>
+                    <Upload className="w-3.5 h-3.5" />Import CSV
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Coming soon</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Button size="sm" className="gap-2" onClick={openAddModal}>
+            <Plus className="w-3.5 h-3.5" />Add Guest
+          </Button>
         </div>
       </div>
 
@@ -175,6 +240,7 @@ export default function EventGuests() {
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Organization</th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Seat / Table</th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Signals</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,6 +290,27 @@ export default function EventGuests() {
                             <p className="text-xs text-muted-foreground">Seat pref: {guest.seatingPreference}</p>
                           )}
                           {!hasSignals && <p className="text-xs text-muted-foreground">No special signals recorded</p>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditModal(guest)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          {deletingGuestId === guest.id ? (
+                            <div className="flex items-center gap-1">
+                              <Button variant="destructive" size="sm" className="h-7 text-xs px-2" onClick={() => confirmDelete(guest.id)}>
+                                Confirm
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setDeletingGuestId(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingGuestId(guest.id)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -296,6 +383,13 @@ export default function EventGuests() {
           </div>
         </div>
       </div>
+
+      <GuestFormModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        eventId={eventId!}
+        guest={editingGuest}
+      />
     </div>
   );
 }

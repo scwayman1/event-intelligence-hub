@@ -24,6 +24,7 @@ interface EventStore {
   addLayoutObject: (obj: LayoutObject) => void;
   updateLayoutObject: (id: string, updates: Partial<LayoutObject>) => void;
   removeLayoutObject: (id: string) => void;
+  setLayoutObjects: (objects: LayoutObject[]) => void;
 
   // Version actions
   addVersion: (version: EventVersion) => void;
@@ -66,6 +67,7 @@ export const useEventStore = create<EventStore>()(
   addLayoutObject: (obj) => set((s) => ({ layoutObjects: [...s.layoutObjects, obj] })),
   updateLayoutObject: (id, updates) => set((s) => ({ layoutObjects: s.layoutObjects.map((o) => o.id === id ? { ...o, ...updates } : o) })),
   removeLayoutObject: (id) => set((s) => ({ layoutObjects: s.layoutObjects.filter((o) => o.id !== id) })),
+  setLayoutObjects: (objects) => set({ layoutObjects: objects }),
 
   addVersion: (version) => set((s) => ({ versions: [...s.versions, version] })),
   updateVersion: (id, updates) => set((s) => ({ versions: s.versions.map((v) => v.id === id ? { ...v, ...updates } : v) })),

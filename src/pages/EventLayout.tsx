@@ -1,16 +1,19 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
-import { 
-  ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles
+import {
+  ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff,
+  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles,
+  Undo2, Redo2, HelpCircle, Copy,
 } from 'lucide-react';
+import { useUndo } from '@/hooks/use-undo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SaveIndicator } from '@/components/SaveIndicator';
 import { cn } from '@/lib/utils';
 import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import { EventNotFound } from '@/components/EventNotFound';
 import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from '@/lib/layout-presets';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
@@ -58,6 +61,7 @@ export default function EventLayout() {
   const updateLayoutObject = useEventStore((s) => s.updateLayoutObject);
   const addLayoutObject = useEventStore((s) => s.addLayoutObject);
   const removeLayoutObject = useEventStore((s) => s.removeLayoutObject);
+  const setLayoutObjects = useEventStore((s) => s.setLayoutObjects);
   const getTableGuests = useEventStore((s) => s.getTableGuests);
 
   const event = events.find((e) => e.id === eventId);
@@ -76,8 +80,12 @@ export default function EventLayout() {
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [snapMode, setSnapMode] = useState<'grid' | 'measured'>('grid');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { undo, redo, canUndo, canRedo, pushState } = useUndo(objects);
+  const preDragSnapshotRef = useRef<typeof objects | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -120,9 +128,10 @@ export default function EventLayout() {
     if (obj.locked) return;
     e.stopPropagation();
     setSelectedId(obj.id);
+    preDragSnapshotRef.current = objects.map((o) => ({ ...o }));
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     setDragging({ id: obj.id, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top });
-  }, []);
+  }, [objects]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (resizing && canvasRef.current) {
@@ -152,27 +161,149 @@ export default function EventLayout() {
     });
   }, [dragging, resizing, zoom, snapValue, updateLayoutObject]);
 
-  const handleMouseUp = useCallback(() => { setDragging(null); setResizing(null); }, []);
+  const handleMouseUp = useCallback(() => {
+    if ((dragging || resizing) && preDragSnapshotRef.current) {
+      pushState(preDragSnapshotRef.current);
+      preDragSnapshotRef.current = null;
+    }
+    setDragging(null);
+    setResizing(null);
+  }, [dragging, resizing, pushState]);
 
-  // Delete/Backspace keyboard shortcut
+  // Handle undo/redo by restoring layout state
+  const handleUndo = useCallback(() => {
+    const restored = undo();
+    if (restored) setLayoutObjects(restored);
+  }, [undo, setLayoutObjects]);
+
+  const handleRedo = useCallback(() => {
+    const restored = redo();
+    if (restored) setLayoutObjects(restored);
+  }, [redo, setLayoutObjects]);
+
+  // Duplicate selected object with +20px offset
+  const handleDuplicate = useCallback(() => {
+    if (!selectedId) return;
+    const obj = objects.find((o) => o.id === selectedId);
+    if (!obj) return;
+    pushState(objects.map((o) => ({ ...o })));
+    const newId = `lo-${crypto.randomUUID()}`;
+    const duplicate: LayoutObject = {
+      ...obj,
+      id: newId,
+      name: `${obj.name} copy`,
+      x: obj.x + 20,
+      y: obj.y + 20,
+      locked: false,
+      zIndex: objects.length,
+    };
+    addLayoutObject(duplicate);
+    setSelectedId(newId);
+  }, [selectedId, objects, addLayoutObject, pushState]);
+
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedId) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      // Ctrl+Z — Undo
+      if (ctrl && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Ctrl+Shift+Z or Ctrl+Y — Redo
+      if ((ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) || (ctrl && e.key === 'y')) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Ctrl+D — Duplicate selected
+      if (ctrl && e.key === 'd') {
+        e.preventDefault();
+        handleDuplicate();
+        return;
+      }
+
+      // Ctrl+A — Select all objects (selects first object if none selected)
+      if (ctrl && e.key === 'a') {
+        e.preventDefault();
+        if (objects.length > 0 && !selectedId) {
+          setSelectedId(objects[0].id);
+        }
+        return;
+      }
+
+      // Ctrl+L — Toggle lock on selected object
+      if (ctrl && e.key === 'l') {
+        e.preventDefault();
+        if (selectedId) {
+          const obj = layoutObjects.find((o) => o.id === selectedId);
+          if (obj) updateLayoutObject(selectedId, { locked: !obj.locked });
+        }
+        return;
+      }
+
+      // Escape — Deselect
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedId(null);
+        setShowShortcuts(false);
+        return;
+      }
+
+      // Delete/Backspace — Remove selected
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (!selectedId) return;
         e.preventDefault();
         const obj = layoutObjects.find((o) => o.id === selectedId);
         if (obj?.locked) return;
+        pushState(objects.map((o) => ({ ...o })));
         removeLayoutObject(selectedId);
         setSelectedId(null);
+        return;
+      }
+
+      // Arrow keys — Nudge selected object by snap increment
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (!selectedId) return;
+        const obj = layoutObjects.find((o) => o.id === selectedId);
+        if (!obj || obj.locked) return;
+        e.preventDefault();
+        pushState(objects.map((o) => ({ ...o })));
+        const delta = snapIncrement;
+        switch (e.key) {
+          case 'ArrowUp': updateLayoutObject(selectedId, { y: obj.y - delta }); break;
+          case 'ArrowDown': updateLayoutObject(selectedId, { y: obj.y + delta }); break;
+          case 'ArrowLeft': updateLayoutObject(selectedId, { x: obj.x - delta }); break;
+          case 'ArrowRight': updateLayoutObject(selectedId, { x: obj.x + delta }); break;
+        }
+        return;
+      }
+
+      // [ and ] — Rotate selected object by 15 degrees
+      if (e.key === '[' || e.key === ']') {
+        if (!selectedId) return;
+        const obj = layoutObjects.find((o) => o.id === selectedId);
+        if (!obj || obj.locked) return;
+        e.preventDefault();
+        pushState(objects.map((o) => ({ ...o })));
+        const delta = e.key === '[' ? -15 : 15;
+        updateLayoutObject(selectedId, { rotation: (obj.rotation + delta) % 360 });
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, layoutObjects, removeLayoutObject]);
+  }, [selectedId, layoutObjects, objects, removeLayoutObject, updateLayoutObject, handleUndo, handleRedo, handleDuplicate, pushState, snapIncrement]);
 
   const handleAddObject = (type: LayoutObjectType, preset?: ObjectPreset) => {
+    pushState(objects.map((o) => ({ ...o })));
     const id = `lo-${crypto.randomUUID()}`;
 
     const fallbackSizes: Partial<Record<LayoutObjectType, { w: number; h: number }>> = {
@@ -218,7 +349,7 @@ export default function EventLayout() {
     });
   };
 
-  if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
+  if (!event) return <EventNotFound />;
 
   return (
     <div className="flex h-screen">
@@ -229,6 +360,12 @@ export default function EventLayout() {
           <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(z + 0.1, 3))}><ZoomIn className="w-4 h-4" /></Button>
           <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(z - 0.1, 0.3))}><ZoomOut className="w-4 h-4" /></Button>
           <span className="text-xs font-mono text-muted-foreground px-2">{Math.round(zoom * 100)}%</span>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="icon" disabled={!canUndo} onClick={handleUndo} title="Undo (Ctrl+Z)"><Undo2 className="w-4 h-4" /></Button>
+          <Button variant="ghost" size="icon" disabled={!canRedo} onClick={handleRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 className="w-4 h-4" /></Button>
+          {selectedId && (
+            <Button variant="ghost" size="icon" onClick={handleDuplicate} title="Duplicate (Ctrl+D)"><Copy className="w-4 h-4" /></Button>
+          )}
           <div className="w-px h-6 bg-border mx-1" />
           <Button variant={showGrid ? 'secondary' : 'ghost'} size="icon" onClick={() => setShowGrid(!showGrid)}><Grid3X3 className="w-4 h-4" /></Button>
           <div className="w-px h-6 bg-border mx-1" />
@@ -292,7 +429,28 @@ export default function EventLayout() {
               </Button>
             ))}
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowShortcuts(!showShortcuts)} title="Keyboard shortcuts">
+                <HelpCircle className="w-4 h-4" />
+              </Button>
+              {showShortcuts && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-border bg-card shadow-lg p-3 text-xs">
+                  <div className="font-semibold text-foreground mb-2">Keyboard Shortcuts</div>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div className="flex justify-between"><span>Undo</span><kbd className="font-mono bg-muted px-1 rounded">Ctrl+Z</kbd></div>
+                    <div className="flex justify-between"><span>Redo</span><kbd className="font-mono bg-muted px-1 rounded">Ctrl+Shift+Z</kbd></div>
+                    <div className="flex justify-between"><span>Duplicate</span><kbd className="font-mono bg-muted px-1 rounded">Ctrl+D</kbd></div>
+                    <div className="flex justify-between"><span>Select all</span><kbd className="font-mono bg-muted px-1 rounded">Ctrl+A</kbd></div>
+                    <div className="flex justify-between"><span>Deselect</span><kbd className="font-mono bg-muted px-1 rounded">Esc</kbd></div>
+                    <div className="flex justify-between"><span>Delete</span><kbd className="font-mono bg-muted px-1 rounded">Del / Backspace</kbd></div>
+                    <div className="flex justify-between"><span>Nudge</span><kbd className="font-mono bg-muted px-1 rounded">Arrow keys</kbd></div>
+                    <div className="flex justify-between"><span>Rotate -15 / +15</span><kbd className="font-mono bg-muted px-1 rounded">[ / ]</kbd></div>
+                    <div className="flex justify-between"><span>Toggle lock</span><kbd className="font-mono bg-muted px-1 rounded">Ctrl+L</kbd></div>
+                  </div>
+                </div>
+              )}
+            </div>
             <SaveIndicator />
           </div>
         </div>
