@@ -56,6 +56,11 @@ interface EventStore {
   getEventRules: (eventId: string) => SeatingRule[];
   getTableGuests: (tableId: string, versionId: string) => Guest[];
 
+  // Onboarding
+  hasCompletedOnboarding: boolean;
+  setOnboardingComplete: () => void;
+  loadSampleData: () => void;
+
   // Reset
   resetStore: () => void;
 }
@@ -63,19 +68,21 @@ interface EventStore {
 export const useEventStore = create<EventStore>()(
   persist(
     (set, get) => ({
-  organizations: mockOrganizations,
-  activeOrgId: mockOrganizations[0]?.id ?? null,
+  organizations: [],
+  activeOrgId: null,
 
-  events: mockEvents,
-  guests: mockGuests,
-  versions: mockVersions,
-  layoutObjects: mockLayoutObjects,
-  seatingAssignments: mockSeatingAssignments,
-  seatingRules: mockSeatingRules,
+  events: [],
+  guests: [],
+  versions: [],
+  layoutObjects: [],
+  seatingAssignments: [],
+  seatingRules: [],
+
+  hasCompletedOnboarding: false,
 
   // Organization actions
   setActiveOrg: (orgId) => set({ activeOrgId: orgId }),
-  addOrganization: (org) => set((s) => ({ organizations: [...s.organizations, org] })),
+  addOrganization: (org) => set((s) => ({ organizations: [...s.organizations, org], hasCompletedOnboarding: true })),
   updateOrganization: (id, updates) => set((s) => ({
     organizations: s.organizations.map((o) => o.id === id ? { ...o, ...updates } : o),
   })),
@@ -124,23 +131,39 @@ export const useEventStore = create<EventStore>()(
     return get().guests.filter((g) => guestIds.includes(g.id));
   },
 
+  setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
+
+  loadSampleData: () => set((s) => ({
+    hasCompletedOnboarding: true,
+    organizations: [...s.organizations, ...mockOrganizations],
+    activeOrgId: mockOrganizations[0]?.id ?? s.activeOrgId,
+    events: [...s.events, ...mockEvents],
+    guests: [...s.guests, ...mockGuests],
+    versions: [...s.versions, ...mockVersions],
+    layoutObjects: [...s.layoutObjects, ...mockLayoutObjects],
+    seatingAssignments: [...s.seatingAssignments, ...mockSeatingAssignments],
+    seatingRules: [...s.seatingRules, ...mockSeatingRules],
+  })),
+
   resetStore: () => {
     localStorage.removeItem('event-intelligence-hub-store');
     set({
-      organizations: mockOrganizations,
-      activeOrgId: mockOrganizations[0]?.id ?? null,
-      events: mockEvents,
-      guests: mockGuests,
-      versions: mockVersions,
-      layoutObjects: mockLayoutObjects,
-      seatingAssignments: mockSeatingAssignments,
-      seatingRules: mockSeatingRules,
+      organizations: [],
+      activeOrgId: null,
+      events: [],
+      guests: [],
+      versions: [],
+      layoutObjects: [],
+      seatingAssignments: [],
+      seatingRules: [],
+      hasCompletedOnboarding: false,
     });
   },
 }),
     {
       name: 'event-intelligence-hub-store',
       partialize: (state) => ({
+        hasCompletedOnboarding: state.hasCompletedOnboarding,
         organizations: state.organizations,
         activeOrgId: state.activeOrgId,
         events: state.events,

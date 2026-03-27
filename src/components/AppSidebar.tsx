@@ -1,12 +1,13 @@
 import { NavLink, useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
-  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect } from 'react';
+import { CreateOrgDialog } from './CreateOrgDialog';
 
 const globalNav = [
   { label: 'Events', icon: Calendar, path: '/' },
@@ -40,6 +41,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
   const currentEvent = events.find((e) => e.id === eventId);
   const isLayoutPage = location.pathname.endsWith('/layout');
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -119,6 +121,18 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
                 {org.id === activeOrgId && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
               </button>
             ))}
+            <div className="border-t border-sidebar-border mt-1 pt-1">
+              <button
+                onClick={() => {
+                  setOrgDropdownOpen(false);
+                  setShowCreateOrg(true);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/50 text-muted-foreground"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add organization</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -214,6 +228,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
           </button>
         </div>
       </div>
+      <CreateOrgDialog open={showCreateOrg} onOpenChange={setShowCreateOrg} />
     </aside>
   );
 }
