@@ -11,54 +11,60 @@
 
 @layer base {
   :root {
-    --background: 222 25% 6%;
-    --foreground: 210 20% 90%;
+    /* Grad Roots palette — deep forest greens & brand alchemy */
+    --background: 155 25% 5%;
+    --foreground: 140 15% 90%;
 
-    --card: 220 22% 9%;
-    --card-foreground: 210 20% 90%;
+    --card: 155 22% 8%;
+    --card-foreground: 140 15% 90%;
 
-    --popover: 220 22% 9%;
-    --popover-foreground: 210 20% 90%;
+    --popover: 155 22% 8%;
+    --popover-foreground: 140 15% 90%;
 
-    --primary: 185 72% 48%;
-    --primary-foreground: 220 25% 6%;
+    --primary: 152 68% 42%;
+    --primary-foreground: 155 30% 4%;
 
-    --secondary: 220 18% 14%;
-    --secondary-foreground: 210 15% 75%;
+    --secondary: 155 18% 13%;
+    --secondary-foreground: 140 15% 75%;
 
-    --muted: 220 16% 12%;
-    --muted-foreground: 215 12% 50%;
+    --muted: 155 14% 11%;
+    --muted-foreground: 150 10% 48%;
 
-    --accent: 38 92% 55%;
-    --accent-foreground: 220 25% 6%;
+    --accent: 84 60% 48%;
+    --accent-foreground: 155 30% 4%;
 
     --destructive: 0 72% 55%;
-    --destructive-foreground: 210 20% 95%;
+    --destructive-foreground: 140 15% 95%;
 
-    --border: 220 16% 16%;
-    --input: 220 16% 16%;
-    --ring: 185 72% 48%;
+    --border: 155 14% 15%;
+    --input: 155 14% 15%;
+    --ring: 152 68% 42%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 222 25% 7%;
-    --sidebar-foreground: 210 15% 65%;
-    --sidebar-primary: 185 72% 48%;
-    --sidebar-primary-foreground: 220 25% 6%;
-    --sidebar-accent: 220 18% 12%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 220 16% 14%;
-    --sidebar-ring: 185 72% 48%;
+    --sidebar-background: 155 28% 6%;
+    --sidebar-foreground: 140 12% 62%;
+    --sidebar-primary: 152 68% 42%;
+    --sidebar-primary-foreground: 155 30% 4%;
+    --sidebar-accent: 155 18% 12%;
+    --sidebar-accent-foreground: 140 15% 90%;
+    --sidebar-border: 155 14% 13%;
+    --sidebar-ring: 152 68% 42%;
 
     --success: 152 60% 45%;
-    --success-foreground: 220 25% 6%;
-    --warning: 38 92% 55%;
-    --warning-foreground: 220 25% 6%;
-    --info: 210 80% 55%;
-    --info-foreground: 220 25% 6%;
+    --success-foreground: 155 30% 4%;
+    --warning: 45 90% 52%;
+    --warning-foreground: 155 30% 4%;
+    --info: 190 70% 50%;
+    --info-foreground: 155 30% 4%;
 
-    --glass: 220 22% 9% / 0.7;
-    --glass-border: 220 16% 20%;
+    --glass: 155 22% 8% / 0.7;
+    --glass-border: 155 14% 18%;
+
+    /* Grad Roots gradient tokens */
+    --gr-gradient-start: 152 68% 42%;
+    --gr-gradient-mid: 130 55% 35%;
+    --gr-gradient-end: 84 60% 48%;
   }
 }
 
