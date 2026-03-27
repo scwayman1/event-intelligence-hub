@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import {
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock,
   Clock3,
+  Copy,
   Crown,
   Grid3X3,
   Layers,
@@ -23,8 +24,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import EventCreateModal from '@/components/EventCreateModal';
+import type { AppEvent, EventVersion } from '@/types/events';
 
 const typeLabels: Record<string, string> = {
   ceremony: 'Ceremony', dinner: 'Dinner', gala: 'Gala', reception: 'Reception',
@@ -161,7 +164,45 @@ export default function EventsHome() {
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
+  const addEvent = useEventStore((s) => s.addEvent);
+  const addVersion = useEventStore((s) => s.addVersion);
   const [search, setSearch] = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleDuplicateEvent = useCallback((event: AppEvent, e: React.MouseEvent) => {
+    e.preventDefault(); // prevent Link navigation
+    e.stopPropagation();
+
+    const now = new Date().toISOString();
+    const newEventId = crypto.randomUUID();
+    const newVersionId = crypto.randomUUID();
+
+    const duplicated: AppEvent = {
+      ...event,
+      id: newEventId,
+      name: `${event.name} (Copy)`,
+      status: 'planning',
+      activeVersionId: newVersionId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const defaultVersion: EventVersion = {
+      id: newVersionId,
+      eventId: newEventId,
+      name: 'Version 1',
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'user',
+      notes: `Duplicated from "${event.name}"`,
+    };
+
+    addEvent(duplicated);
+    addVersion(defaultVersion);
+    navigate(`/events/${newEventId}`);
+  }, [addEvent, addVersion, navigate]);
 
   const eventCards = useMemo(() => {
     return events.map((event) => ({
@@ -225,11 +266,14 @@ export default function EventsHome() {
 
           <Button
             size="lg"
+            onClick={() => setCreateModalOpen(true)}
             className="gap-2.5 h-12 px-8 text-base bg-gradient-to-r from-primary via-primary to-purple-600 shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.03] transition-all duration-300"
           >
             <Plus className="w-5 h-5" />
             Create your first event
           </Button>
+
+          <EventCreateModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
 
           {/* Subtle feature hints */}
           <div className="flex items-center gap-8 mt-14 text-xs text-muted-foreground/60">
@@ -298,6 +342,7 @@ export default function EventsHome() {
             <div className="flex items-center gap-3">
               <Button
                 size="lg"
+                onClick={() => setCreateModalOpen(true)}
                 className="gap-2.5 h-12 px-7 bg-gradient-to-r from-primary via-primary to-purple-600 shadow-xl shadow-primary/20 hover:shadow-primary/35 hover:scale-[1.03] active:scale-[0.98] transition-all duration-300 ring-1 ring-white/10"
               >
                 <Plus className="w-4 h-4" />
@@ -512,9 +557,20 @@ export default function EventsHome() {
                         <span>Open event dashboard</span>
                         <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                       </div>
-                      {isUpcoming && days !== null && days > 14 && (
-                        <span className="text-[10px] text-muted-foreground/50 font-medium">{days} days away</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => handleDuplicateEvent(event, e)}
+                          className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-primary font-medium opacity-0 group-hover:opacity-100 transition-all duration-200 rounded px-1.5 py-0.5 hover:bg-primary/10"
+                          title="Duplicate event"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Duplicate</span>
+                        </button>
+                        {isUpcoming && days !== null && days > 14 && (
+                          <span className="text-[10px] text-muted-foreground/50 font-medium">{days} days away</span>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -523,6 +579,8 @@ export default function EventsHome() {
           })}
         </div>
       </div>
+
+      <EventCreateModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
     </div>
   );
 }
