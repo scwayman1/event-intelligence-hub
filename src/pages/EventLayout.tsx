@@ -892,15 +892,30 @@ export default function EventLayout() {
             <p className="text-sm text-muted-foreground">Select an object to inspect its properties</p>
             <div className="mt-4 space-y-2">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Objects ({objects.length})</h4>
+              {objects.length === 0 && (
+                <p className="text-xs text-muted-foreground/60 py-4 text-center">No objects yet. Use the toolbar to add tables, stages, and more.</p>
+              )}
               {objects.map((obj) => (
-                <button
+                <div
                   key={obj.id}
-                  onClick={() => setSelectedId(obj.id)}
-                  className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors flex items-center justify-between"
+                  className="flex items-center gap-1 rounded-md hover:bg-muted/50 transition-colors"
                 >
-                  <span className="text-foreground truncate">{obj.name}</span>
-                  <Badge variant="outline" className="text-[10px] border-border text-muted-foreground ml-2">{typeLabels[obj.type]}</Badge>
-                </button>
+                  <button
+                    onClick={() => setSelectedId(obj.id)}
+                    className="flex-1 text-left px-3 py-2 text-sm flex items-center justify-between min-w-0"
+                  >
+                    <span className="text-foreground truncate">{obj.name}</span>
+                    <Badge variant="outline" className="text-[10px] border-border text-muted-foreground ml-2 flex-shrink-0">{typeLabels[obj.type]}</Badge>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => { e.stopPropagation(); removeLayoutObject(obj.id); if (selectedId === obj.id) setSelectedId(null); }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
               ))}
             </div>
           </div>
