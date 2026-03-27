@@ -91,6 +91,7 @@ export default function EventLayout() {
   const [calcSpacing, setCalcSpacing] = useState('4');
   const [calcMargin, setCalcMargin] = useState('3');
   const [showMeasureGuides, setShowMeasureGuides] = useState(true);
+  const [showInspector, setShowInspector] = useState(true);
   const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -273,7 +274,7 @@ export default function EventLayout() {
       {/* Canvas */}
       <div className="flex-1 flex flex-col">
         {/* Toolbar */}
-        <div className="h-12 border-b border-border flex items-center gap-2 px-4 bg-card/50">
+        <div className="h-12 border-b border-border flex items-center gap-2 px-4 bg-card/50 overflow-x-auto flex-nowrap">
           <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(z + 0.1, 3))}><ZoomIn className="w-4 h-4" /></Button>
           <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(z - 0.1, 0.3))}><ZoomOut className="w-4 h-4" /></Button>
           <span className="text-xs font-mono text-muted-foreground px-2">{Math.round(zoom * 100)}%</span>
@@ -350,7 +351,15 @@ export default function EventLayout() {
               </Button>
             ))}
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant={showInspector ? 'secondary' : 'ghost'}
+              size="sm"
+              className="text-xs h-7 px-2 gap-1"
+              onClick={() => setShowInspector(!showInspector)}
+            >
+              <Layers className="w-3.5 h-3.5" />Inspector
+            </Button>
             <SaveIndicator />
           </div>
         </div>
@@ -779,7 +788,7 @@ export default function EventLayout() {
       </div>
 
       {/* Inspector */}
-      <div className="w-72 border-l border-border bg-card/50 overflow-y-auto">
+      {showInspector && <div className="w-72 flex-shrink-0 border-l border-border bg-card/50 overflow-y-auto">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-muted-foreground" />
@@ -920,7 +929,7 @@ export default function EventLayout() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
       {/* Satellite Capture Modal */}
       {showSatelliteCapture && (
         <Suspense fallback={null}>
