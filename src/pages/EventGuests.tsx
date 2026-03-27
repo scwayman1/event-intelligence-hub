@@ -1,15 +1,18 @@
 import { useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useEventStore } from '@/data/store';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Mail, Pencil, Phone, Plus, Search, Sparkles, Trash2, Upload, Users } from 'lucide-react';
+import { AlertTriangle, Download, Mail, Pencil, Phone, Plus, Search, Sparkles, Trash2, Upload, Users, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 import { buildEventAnalytics } from '@/lib/event-analytics';
 import GuestFormModal from '@/components/GuestFormModal';
+import CSVImportModal from '@/components/CSVImportModal';
 import { EmptyState } from '@/components/EmptyState';
 import { EventNotFound } from '@/components/EventNotFound';
+import CheckInView from '@/components/CheckInView';
 import type { Guest, GuestCategory, RSVPStatus } from '@/types/events';
 
 const categoryLabels: Record<GuestCategory, string> = {
@@ -58,8 +61,10 @@ export default function EventGuests() {
   const [categoryFilter, setCategoryFilter] = useState<GuestCategory | 'all'>('all');
   const [rsvpFilter, setRsvpFilter] = useState<RSVPStatus | 'all'>('all');
   const [modalOpen, setModalOpen] = useState(false);
+  const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
   const [deletingGuestId, setDeletingGuestId] = useState<string | null>(null);
+  const [checkInOpen, setCheckInOpen] = useState(false);
 
   const openAddModal = () => {
     setEditingGuest(null);
@@ -74,6 +79,36 @@ export default function EventGuests() {
   const confirmDelete = (guestId: string) => {
     removeGuest(guestId);
     setDeletingGuestId(null);
+    toast.success('Guest removed');
+  };
+
+  const exportCSV = () => {
+    const allGuests = guests.filter((g) => g.eventId === eventId);
+    const csvHeaders = [
+      'firstName', 'lastName', 'email', 'phone', 'organization',
+      'category', 'rsvpStatus', 'partySize', 'dietaryRestrictions',
+      'accessibilityNeeds', 'notes',
+    ];
+    const escapeField = (value: string | number) => {
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    const lines = [
+      csvHeaders.join(','),
+      ...allGuests.map((g) =>
+        csvHeaders.map((h) => escapeField(String(g[h as keyof Guest] ?? ''))).join(',')
+      ),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `guests-${eventId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const eventGuests = useMemo(() => {
@@ -152,18 +187,15 @@ export default function EventGuests() {
           </p>
         </div>
         <div className="flex gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0}>
-                  <Button variant="outline" size="sm" className="gap-2" disabled>
-                    <Upload className="w-3.5 h-3.5" />Import CSV
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Coming soon</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Button variant="outline" size="sm" className="gap-2" onClick={exportCSV}>
+            <Download className="w-3.5 h-3.5" />Export CSV
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setCsvModalOpen(true)}>
+            <Upload className="w-3.5 h-3.5" />Import CSV
+          </Button>
+          <Button size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white" onClick={() => setCheckInOpen(true)}>
+            <Zap className="w-3.5 h-3.5" />Event Day Check-In
+          </Button>
           <Button size="sm" className="gap-2" onClick={openAddModal}>
             <Plus className="w-3.5 h-3.5" />Add Guest
           </Button>
@@ -390,6 +422,14 @@ export default function EventGuests() {
         eventId={eventId!}
         guest={editingGuest}
       />
+      <CSVImportModal
+        open={csvModalOpen}
+        onOpenChange={setCsvModalOpen}
+        eventId={eventId!}
+      />
+      {checkInOpen && (
+        <CheckInView eventId={eventId!} onClose={() => setCheckInOpen(false)} />
+      )}
     </div>
   );
 }
