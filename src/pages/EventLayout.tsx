@@ -85,7 +85,7 @@ export default function EventLayout() {
   // Default: 1px ≈ 0.03m (~0.1ft), so 800px canvas ≈ 80ft wide
   const [metersPerPixel, setMetersPerPixel] = useState<number | null>(0.03048);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
-  const [snapMode, setSnapMode] = useState<'grid' | 'measured'>('grid');
+  const [snapMode, setSnapMode] = useState<'grid' | 'measured' | 'free'>('measured');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
   // Room bounds: the real-world dimensions of the physical space
   const [roomBounds, setRoomBounds] = useState<RoomBounds | null>(null);
@@ -121,11 +121,20 @@ export default function EventLayout() {
   const selected = objects.find((o) => o.id === selectedId);
   const selectedAssignments = selected ? useEventStore.getState().seatingAssignments.filter((a) => a.tableId === selected.id && a.versionId === versionId) : [];
 
+  // Snap modes:
+  // - 'grid': coarse grid snap (1ft increments for layout alignment)
+  // - 'measured': fine snap (0.1ft / ~1.2in for precision sizing)
+  // - 'free': no snapping at all — pixel-perfect placement
   const snapIncrement = metersPerPixel && snapMode === 'measured'
-    ? Math.max(4, Math.round(0.5 / metersPerPixel))
-    : 20;
+    ? Math.max(1, Math.round(0.03048 / metersPerPixel)) // 0.1ft per step
+    : snapMode === 'grid'
+      ? (metersPerPixel ? Math.max(2, Math.round(0.3048 / metersPerPixel)) : 10) // 1ft per step
+      : 1; // free mode
 
-  const snapValue = (v: number) => showGrid ? Math.round(v / snapIncrement) * snapIncrement : Math.round(v);
+  const snapValue = (v: number) => {
+    if (snapMode === 'free') return v; // no rounding at all
+    return Math.round(v / snapIncrement) * snapIncrement;
+  };
 
   // Compute room bounds in pixels for boundary drawing
   const roomBoundsPx = useMemo(() => {
@@ -188,10 +197,10 @@ export default function EventLayout() {
       let newX = resizing.startObjX;
       let newY = resizing.startObjY;
 
-      if (handle.includes('e')) newW = Math.max(30, resizing.startW + dx);
-      if (handle.includes('w')) { newW = Math.max(30, resizing.startW - dx); newX = resizing.startObjX + (resizing.startW - newW); }
-      if (handle.includes('s')) newH = Math.max(30, resizing.startH + dy);
-      if (handle.includes('n')) { newH = Math.max(30, resizing.startH - dy); newY = resizing.startObjY + (resizing.startH - newH); }
+      if (handle.includes('e')) newW = Math.max(10, resizing.startW + dx);
+      if (handle.includes('w')) { newW = Math.max(10, resizing.startW - dx); newX = resizing.startObjX + (resizing.startW - newW); }
+      if (handle.includes('s')) newH = Math.max(10, resizing.startH + dy);
+      if (handle.includes('n')) { newH = Math.max(10, resizing.startH - dy); newY = resizing.startObjY + (resizing.startH - newH); }
 
       updateLayoutObject(resizing.id, { width: snapValue(newW), height: snapValue(newH), x: snapValue(newX), y: snapValue(newY) });
       return;
@@ -312,8 +321,8 @@ export default function EventLayout() {
             </button>
             {metersPerPixel && <span className="text-[10px] font-mono text-muted-foreground">{formatScale(metersPerPixel, unitSystem)}</span>}
             <div className="w-px h-5 bg-border mx-0.5" />
-            <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
-              <Ruler className="w-3 h-3" />{snapMode === 'grid' ? 'Grid' : 'Measured'}
+            <Button variant={snapMode !== 'grid' ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : mode === 'measured' ? 'free' : 'grid')}>
+              <Ruler className="w-3 h-3" />{snapMode === 'grid' ? 'Snap 1ft' : snapMode === 'measured' ? 'Snap 0.1ft' : 'Free'}
             </Button>
             <Button variant={showMeasureGuides ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowMeasureGuides(!showMeasureGuides)}>
               <Move className="w-3 h-3" />Guides
@@ -923,16 +932,20 @@ export default function EventLayout() {
       {showSatelliteCapture && (
         <Suspense fallback={null}>
           <VenueCapture
-            onCapture={(imageDataUrl, mpp, imgW, imgH) => {
+            onCapture={(imageDataUrl, mppCss, imgW, imgH, cssRegionWidth) => {
               setVenueImage(imageDataUrl);
-              setMetersPerPixel(mpp);
-              // Resize canvas to match captured image aspect ratio
-              if (imgW && imgH) {
-                const maxW = 1200;
-                const scale = Math.min(maxW / imgW, 1);
-                setCanvasSize({ width: Math.round(imgW * scale), height: Math.round(imgH * scale) });
-                // Adjust metersPerPixel for the scaled canvas
-                if (mpp) setMetersPerPixel(mpp / scale);
+              if (imgW && imgH && mppCss && cssRegionWidth) {
+                // Real-world width = CSS region width × meters-per-CSS-pixel
+                const realWidthMeters = cssRegionWidth * mppCss;
+                // Canvas displays the captured image; use up to 1600px wide
+                const maxCanvasW = 1600;
+                const canvasW = Math.min(imgW, maxCanvasW);
+                const canvasH = Math.round(imgH * (canvasW / imgW));
+                setCanvasSize({ width: canvasW, height: canvasH });
+                // Each canvas pixel represents this many real-world meters
+                setMetersPerPixel(realWidthMeters / canvasW);
+              } else {
+                setMetersPerPixel(mppCss);
               }
               setShowSatelliteCapture(false);
             }}
