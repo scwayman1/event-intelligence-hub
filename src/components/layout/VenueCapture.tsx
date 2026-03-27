@@ -161,7 +161,6 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     if (!zoom) { setCapturing(false); return; }
 
     // Convert region pixel bounds to lat/lng using the map projection
-    const mapRect = mapDiv.getBoundingClientRect();
     const projection = map.getProjection();
     const bounds = map.getBounds();
 

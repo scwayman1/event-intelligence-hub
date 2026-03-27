@@ -1,11 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
+
+declare global {
+  interface Window {
+    google?: {
+      maps?: typeof google.maps;
+    };
+  }
+}
 
 let loadPromise: Promise<void> | null = null;
 
 function loadGoogleMapsScript(): Promise<void> {
   if (loadPromise) return loadPromise;
-  if ((window as any).google?.maps) return Promise.resolve();
+  if (window.google?.maps) return Promise.resolve();
 
   loadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
@@ -24,7 +32,7 @@ function loadGoogleMapsScript(): Promise<void> {
 }
 
 export function useGoogleMaps() {
-  const [loaded, setLoaded] = useState(!!(window as any).google?.maps);
+  const [loaded, setLoaded] = useState(!!window.google?.maps);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

@@ -68,7 +68,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
   removeSeatingAssignment: (id) => set((s) => ({ seatingAssignments: s.seatingAssignments.filter((a) => a.id !== id) })),
   moveGuestToTable: (guestId, tableId, versionId) => set((s) => {
     const filtered = s.seatingAssignments.filter((a) => !(a.guestId === guestId && a.versionId === versionId));
-    const newAssignment: SeatingAssignment = { id: `sa-${Date.now()}`, versionId, guestId, tableId };
+    const newAssignment: SeatingAssignment = { id: `sa-${crypto.randomUUID()}`, versionId, guestId, tableId };
     return { seatingAssignments: [...filtered, newAssignment] };
   }),
 

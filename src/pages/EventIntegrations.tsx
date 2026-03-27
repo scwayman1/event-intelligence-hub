@@ -21,7 +21,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 };
 
 export default function EventIntegrations() {
-  const { eventId } = useParams();
+  useParams();
 
   return (
     <div className="p-8 max-w-5xl">
