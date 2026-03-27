@@ -1,7 +1,7 @@
-import { NavLink, useParams } from 'react-router-dom';
-import { 
-  Calendar, LayoutGrid, Users, Grid3X3, GitBranch, 
-  Plug, Settings, BarChart3, ChevronLeft, MapPin 
+import { NavLink, useParams, useLocation } from 'react-router-dom';
+import {
+  Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers
 } from 'lucide-react';
 import { useEventStore } from '@/data/store';
 import { cn } from '@/lib/utils';
@@ -20,20 +20,48 @@ const eventNav = [
   { label: 'Settings', icon: Settings, path: '/settings' },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  showInspector?: boolean;
+  onToggleInspector?: () => void;
+}
+
+export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps) {
   const { eventId } = useParams();
+  const location = useLocation();
   const events = useEventStore((s) => s.events);
   const currentEvent = events.find((e) => e.id === eventId);
+  const isLayoutPage = location.pathname.endsWith('/layout');
 
   return (
-    <aside className="w-60 min-h-screen border-r border-border bg-sidebar flex flex-col">
+    <aside className="w-60 min-h-screen border-r border-sidebar-border flex flex-col relative overflow-hidden">
+      {/* Gradient background */}
+      <div className="absolute inset-0 bg-sidebar" />
+      <div
+        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        style={{
+          background: 'linear-gradient(180deg, hsl(152 68% 42%) 0%, hsl(130 55% 35%) 40%, hsl(155 28% 6%) 100%)',
+        }}
+      />
+
       {/* Brand */}
-      <div className="h-14 flex items-center px-5 border-b border-border">
-        <MapPin className="w-5 h-5 text-primary mr-2" />
-        <span className="font-semibold text-foreground tracking-tight text-sm">EventMap HQ</span>
+      <div className="relative h-14 flex items-center px-5 border-b border-sidebar-border">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{
+              background: 'linear-gradient(135deg, hsl(152 68% 42%), hsl(84 60% 48%))',
+            }}
+          >
+            <Sprout className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <span className="font-bold text-foreground tracking-tight text-sm">Grad Roots</span>
+            <span className="text-[10px] text-muted-foreground ml-1.5 font-medium">EventMap</span>
+          </div>
+        </div>
       </div>
 
-      <nav className="flex-1 py-3 px-3 space-y-1 overflow-y-auto">
+      <nav className="relative flex-1 py-3 px-3 space-y-1 overflow-y-auto">
         {/* Global nav */}
         {globalNav.map((item) => (
           <NavLink
@@ -86,13 +114,34 @@ export function AppSidebar() {
                 </NavLink>
               ))}
             </div>
+
+            {/* Layout tools section — only on layout page */}
+            {isLayoutPage && onToggleInspector && (
+              <div className="mt-4 pt-4 border-t border-sidebar-border space-y-0.5">
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Layout Tools</p>
+                <button
+                  onClick={onToggleInspector}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors w-full',
+                    showInspector
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                  )}
+                >
+                  <Layers className="w-4 h-4" />
+                  Inspector Panel
+                </button>
+              </div>
+            )}
           </>
         )}
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-border">
-        <p className="text-xs text-muted-foreground">EventMap HQ v0.1</p>
+      <div className="relative p-4 border-t border-sidebar-border">
+        <p className="text-[10px] text-muted-foreground">
+          <span className="font-semibold">Grad Roots</span> EventMap v0.1
+        </p>
       </div>
     </aside>
   );

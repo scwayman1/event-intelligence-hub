@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useOutletContext } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import {
@@ -6,6 +6,11 @@ import {
   Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles,
   Box, Calculator, Move, ArrowLeftRight, ArrowUpDown
 } from 'lucide-react';
+
+interface LayoutOutletContext {
+  showInspector: boolean;
+  setShowInspector: (v: boolean) => void;
+}
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SaveIndicator } from '@/components/SaveIndicator';
@@ -57,6 +62,7 @@ const objectPalette: { type: LayoutObjectType; label: string }[] = [
 
 export default function EventLayout() {
   const { eventId } = useParams();
+  const { showInspector } = useOutletContext<LayoutOutletContext>();
   const events = useEventStore((s) => s.events);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const updateLayoutObject = useEventStore((s) => s.updateLayoutObject);
@@ -272,86 +278,78 @@ export default function EventLayout() {
     <div className="flex h-screen">
       {/* Canvas */}
       <div className="flex-1 flex flex-col">
-        {/* Toolbar */}
-        <div className="h-12 border-b border-border flex items-center gap-2 px-4 bg-card/50">
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(z + 0.1, 3))}><ZoomIn className="w-4 h-4" /></Button>
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(z - 0.1, 0.3))}><ZoomOut className="w-4 h-4" /></Button>
-          <span className="text-xs font-mono text-muted-foreground px-2">{Math.round(zoom * 100)}%</span>
-          <div className="w-px h-6 bg-border mx-1" />
-          <Button variant={showGrid ? 'secondary' : 'ghost'} size="icon" onClick={() => setShowGrid(!showGrid)}><Grid3X3 className="w-4 h-4" /></Button>
-          <div className="w-px h-6 bg-border mx-1" />
-          {/* Venue image upload */}
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-          <Button variant={venueImage ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => fileInputRef.current?.click()}>
-            <ImageIcon className="w-3.5 h-3.5" />{venueImage ? 'Replace Map' : 'Upload Map'}
-          </Button>
-          <Button variant="ghost" size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowSatelliteCapture(true)}>
-            <Satellite className="w-3.5 h-3.5" />Satellite
-          </Button>
-          {venueImage && (
-            <>
-              <div className="flex items-center gap-1.5 ml-1">
-                <span className="text-[10px] text-muted-foreground">Opacity</span>
-                <input
-                  type="range" min="0.05" max="1" step="0.05"
-                  value={imageOpacity}
-                  onChange={(e) => setImageOpacity(Number(e.target.value))}
-                  className="w-16 h-1 accent-primary"
-                />
-                <span className="text-[10px] font-mono text-muted-foreground w-6">{Math.round(imageOpacity * 100)}%</span>
-              </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (venueImage && venueImage.startsWith('blob:')) URL.revokeObjectURL(venueImage); setVenueImage(null); }}>
-                <X className="w-3 h-3 text-muted-foreground" />
-              </Button>
-            </>
-          )}
-          {metersPerPixel && (
-            <span className="text-[10px] font-mono text-muted-foreground ml-1">{formatScale(metersPerPixel, unitSystem)}</span>
-          )}
-          <button
-            onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
-            className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
+        {/* Toolbar — Row 1: View & map controls */}
+        <div className="border-b border-border bg-card/50">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom((z) => Math.min(z + 0.1, 3))}><ZoomIn className="w-3.5 h-3.5" /></Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom((z) => Math.max(z - 0.1, 0.3))}><ZoomOut className="w-3.5 h-3.5" /></Button>
+            <span className="text-[10px] font-mono text-muted-foreground px-1">{Math.round(zoom * 100)}%</span>
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <Button variant={showGrid ? 'secondary' : 'ghost'} size="icon" className="h-7 w-7" onClick={() => setShowGrid(!showGrid)}><Grid3X3 className="w-3.5 h-3.5" /></Button>
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            <Button variant={venueImage ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => fileInputRef.current?.click()}>
+              <ImageIcon className="w-3 h-3" />{venueImage ? 'Replace' : 'Upload Map'}
+            </Button>
+            <Button variant="ghost" size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowSatelliteCapture(true)}>
+              <Satellite className="w-3 h-3" />Satellite
+            </Button>
+            {venueImage && (
+              <>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground">Opacity</span>
+                  <input type="range" min="0.05" max="1" step="0.05" value={imageOpacity} onChange={(e) => setImageOpacity(Number(e.target.value))} className="w-14 h-1 accent-primary" />
+                  <span className="text-[10px] font-mono text-muted-foreground w-5">{Math.round(imageOpacity * 100)}%</span>
+                </div>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { if (venueImage && venueImage.startsWith('blob:')) URL.revokeObjectURL(venueImage); setVenueImage(null); }}>
+                  <X className="w-3 h-3 text-muted-foreground" />
+                </Button>
+              </>
+            )}
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <button onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')} className="px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide">
+              {unitSystem === 'imperial' ? 'ft' : 'm'}
+            </button>
+            {metersPerPixel && <span className="text-[10px] font-mono text-muted-foreground">{formatScale(metersPerPixel, unitSystem)}</span>}
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
+              <Ruler className="w-3 h-3" />{snapMode === 'grid' ? 'Grid' : 'Measured'}
+            </Button>
+            <Button variant={showMeasureGuides ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowMeasureGuides(!showMeasureGuides)}>
+              <Move className="w-3 h-3" />Guides
+            </Button>
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <Button variant={roomBounds ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowRoomSetup(!showRoomSetup)}>
+              <Box className="w-3 h-3" />{roomBounds ? `${formatWithUnit(metersToUserUnit(roomBounds.widthMeters, unitSystem), unitSystem)} x ${formatWithUnit(metersToUserUnit(roomBounds.heightMeters, unitSystem), unitSystem)}` : 'Room Size'}
+            </Button>
+            <Button variant={showCapCalc ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowCapCalc(!showCapCalc)}>
+              <Calculator className="w-3 h-3" />Fit Calc
+            </Button>
+            <div className="ml-auto"><SaveIndicator /></div>
+          </div>
+
+          {/* Row 2: Add objects */}
+          <div className="flex items-center gap-1 px-3 py-1 border-t border-border/50 flex-wrap"
+            style={{ background: 'linear-gradient(90deg, hsla(152,68%,42%,0.06) 0%, hsla(84,60%,48%,0.04) 100%)' }}
           >
-            {unitSystem === 'imperial' ? 'ft' : 'm'}
-          </button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
-            <Ruler className="w-3.5 h-3.5" />{snapMode === 'grid' ? 'Grid Snap' : 'Measured Snap'}
-          </Button>
-          <Button variant={showMeasureGuides ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowMeasureGuides(!showMeasureGuides)}>
-            <Move className="w-3.5 h-3.5" />Guides
-          </Button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <Button variant={roomBounds ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowRoomSetup(!showRoomSetup)}>
-            <Box className="w-3.5 h-3.5" />{roomBounds ? `${formatWithUnit(metersToUserUnit(roomBounds.widthMeters, unitSystem), unitSystem)} x ${formatWithUnit(metersToUserUnit(roomBounds.heightMeters, unitSystem), unitSystem)}` : 'Set Room Size'}
-          </Button>
-          <Button variant={showCapCalc ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowCapCalc(!showCapCalc)}>
-            <Calculator className="w-3.5 h-3.5" />Fit Calc
-          </Button>
-          <div className="text-[10px] text-muted-foreground font-mono">{metersPerPixel ? `snap ${formatDimension(snapIncrement, metersPerPixel, unitSystem)}` : 'set map scale for precise snap'}</div>
-          <div className="w-px h-6 bg-border mx-1" />
-          <div className="flex gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Tables</span>
             {tablePresets.map((preset) => (
-              <Button key={preset.label} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(preset.type, preset)}>
-                <Plus className="w-3 h-3 mr-1" />{preset.label}
+              <Button key={preset.label} variant="ghost" size="sm" className="text-[11px] h-6 px-1.5" onClick={() => handleAddObject(preset.type, preset)}>
+                <Plus className="w-3 h-3 mr-0.5" />{preset.label}
               </Button>
             ))}
-          </div>
-          <div className="w-px h-6 bg-border mx-1" />
-          <div className="flex gap-1">
+            <div className="w-px h-4 bg-border mx-1" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Fixtures</span>
             {supportPresets.map((preset) => (
-              <Button key={preset.label} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(preset.type, preset)}>
-                <Plus className="w-3 h-3 mr-1" />{preset.label}
+              <Button key={preset.label} variant="ghost" size="sm" className="text-[11px] h-6 px-1.5" onClick={() => handleAddObject(preset.type, preset)}>
+                <Plus className="w-3 h-3 mr-0.5" />{preset.label}
               </Button>
             ))}
             {objectPalette.map((item) => (
-              <Button key={item.type} variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => handleAddObject(item.type)}>
-                <Plus className="w-3 h-3 mr-1" />{item.label}
+              <Button key={item.type} variant="ghost" size="sm" className="text-[11px] h-6 px-1.5" onClick={() => handleAddObject(item.type)}>
+                <Plus className="w-3 h-3 mr-0.5" />{item.label}
               </Button>
             ))}
-          </div>
-          <div className="ml-auto">
-            <SaveIndicator />
           </div>
         </div>
 
@@ -779,7 +777,7 @@ export default function EventLayout() {
       </div>
 
       {/* Inspector */}
-      <div className="w-72 border-l border-border bg-card/50 overflow-y-auto">
+      {showInspector && <div className="w-72 flex-shrink-0 border-l border-border bg-card/50 overflow-y-auto">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-muted-foreground" />
@@ -920,7 +918,7 @@ export default function EventLayout() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
       {/* Satellite Capture Modal */}
       {showSatelliteCapture && (
         <Suspense fallback={null}>
