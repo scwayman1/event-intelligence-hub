@@ -11,60 +11,114 @@
 
 @layer base {
   :root {
-    /* Grad Roots palette — deep forest greens & brand alchemy */
-    --background: 155 25% 5%;
+    /* Grad Roots Light Mode — fresh, airy greens */
+    --background: 140 20% 97%;
+    --foreground: 155 30% 15%;
+
+    --card: 140 18% 99%;
+    --card-foreground: 155 30% 15%;
+
+    --popover: 140 18% 99%;
+    --popover-foreground: 155 30% 15%;
+
+    --primary: 152 55% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 145 18% 92%;
+    --secondary-foreground: 155 25% 30%;
+
+    --muted: 140 14% 93%;
+    --muted-foreground: 150 10% 45%;
+
+    --accent: 84 50% 52%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 145 16% 87%;
+    --input: 145 16% 87%;
+    --ring: 152 55% 48%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 148 22% 95%;
+    --sidebar-foreground: 150 15% 35%;
+    --sidebar-primary: 152 55% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 145 20% 90%;
+    --sidebar-accent-foreground: 155 30% 15%;
+    --sidebar-border: 145 16% 88%;
+    --sidebar-ring: 152 55% 48%;
+
+    --success: 152 55% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 45 90% 52%;
+    --warning-foreground: 155 30% 10%;
+    --info: 190 65% 48%;
+    --info-foreground: 0 0% 100%;
+
+    --glass: 140 18% 99% / 0.8;
+    --glass-border: 145 16% 85%;
+
+    /* Grad Roots gradient tokens */
+    --gr-gradient-start: 152 55% 48%;
+    --gr-gradient-mid: 130 45% 42%;
+    --gr-gradient-end: 84 50% 52%;
+  }
+
+  .dark {
+    /* Grad Roots Dark Mode — rich forest greens */
+    --background: 155 22% 7%;
     --foreground: 140 15% 90%;
 
-    --card: 155 22% 8%;
+    --card: 155 20% 10%;
     --card-foreground: 140 15% 90%;
 
-    --popover: 155 22% 8%;
+    --popover: 155 20% 10%;
     --popover-foreground: 140 15% 90%;
 
-    --primary: 152 68% 42%;
-    --primary-foreground: 155 30% 4%;
+    --primary: 152 58% 52%;
+    --primary-foreground: 155 30% 5%;
 
-    --secondary: 155 18% 13%;
+    --secondary: 155 16% 16%;
     --secondary-foreground: 140 15% 75%;
 
-    --muted: 155 14% 11%;
-    --muted-foreground: 150 10% 48%;
+    --muted: 155 12% 14%;
+    --muted-foreground: 150 10% 52%;
 
-    --accent: 84 60% 48%;
-    --accent-foreground: 155 30% 4%;
+    --accent: 84 55% 52%;
+    --accent-foreground: 155 30% 5%;
 
     --destructive: 0 72% 55%;
     --destructive-foreground: 140 15% 95%;
 
-    --border: 155 14% 15%;
-    --input: 155 14% 15%;
-    --ring: 152 68% 42%;
+    --border: 155 12% 18%;
+    --input: 155 12% 18%;
+    --ring: 152 58% 52%;
 
-    --radius: 0.5rem;
-
-    --sidebar-background: 155 28% 6%;
-    --sidebar-foreground: 140 12% 62%;
-    --sidebar-primary: 152 68% 42%;
-    --sidebar-primary-foreground: 155 30% 4%;
-    --sidebar-accent: 155 18% 12%;
+    --sidebar-background: 155 24% 8%;
+    --sidebar-foreground: 140 12% 65%;
+    --sidebar-primary: 152 58% 52%;
+    --sidebar-primary-foreground: 155 30% 5%;
+    --sidebar-accent: 155 16% 14%;
     --sidebar-accent-foreground: 140 15% 90%;
-    --sidebar-border: 155 14% 13%;
-    --sidebar-ring: 152 68% 42%;
+    --sidebar-border: 155 12% 16%;
+    --sidebar-ring: 152 58% 52%;
 
-    --success: 152 60% 45%;
-    --success-foreground: 155 30% 4%;
+    --success: 152 55% 50%;
+    --success-foreground: 155 30% 5%;
     --warning: 45 90% 52%;
-    --warning-foreground: 155 30% 4%;
-    --info: 190 70% 50%;
-    --info-foreground: 155 30% 4%;
+    --warning-foreground: 155 30% 5%;
+    --info: 190 65% 52%;
+    --info-foreground: 155 30% 5%;
 
-    --glass: 155 22% 8% / 0.7;
-    --glass-border: 155 14% 18%;
+    --glass: 155 20% 10% / 0.7;
+    --glass-border: 155 12% 20%;
 
-    /* Grad Roots gradient tokens */
-    --gr-gradient-start: 152 68% 42%;
-    --gr-gradient-mid: 130 55% 35%;
-    --gr-gradient-end: 84 60% 48%;
+    --gr-gradient-start: 152 58% 52%;
+    --gr-gradient-mid: 130 50% 38%;
+    --gr-gradient-end: 84 55% 52%;
   }
 }
 

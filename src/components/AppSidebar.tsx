@@ -1,8 +1,9 @@
 import { NavLink, useParams, useLocation } from 'react-router-dom';
 import {
   Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
-  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon
 } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ interface AppSidebarProps {
 export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps) {
   const { eventId } = useParams();
   const location = useLocation();
+  const { theme, setTheme } = useTheme();
   const events = useEventStore((s) => s.events);
   const currentEvent = events.find((e) => e.id === eventId);
   const isLayoutPage = location.pathname.endsWith('/layout');
@@ -37,9 +39,9 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
       {/* Gradient background */}
       <div className="absolute inset-0 bg-sidebar" />
       <div
-        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        className="absolute inset-0 opacity-[0.08] dark:opacity-[0.07] pointer-events-none"
         style={{
-          background: 'linear-gradient(180deg, hsl(152 68% 42%) 0%, hsl(130 55% 35%) 40%, hsl(155 28% 6%) 100%)',
+          background: 'linear-gradient(180deg, hsl(152 55% 48%) 0%, hsl(130 45% 42%) 40%, transparent 100%)',
         }}
       />
 
@@ -138,10 +140,19 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
       </nav>
 
       {/* Footer */}
-      <div className="relative p-4 border-t border-sidebar-border">
-        <p className="text-[10px] text-muted-foreground">
-          <span className="font-semibold">Grad Roots</span> EventMap v0.1
-        </p>
+      <div className="relative p-4 border-t border-sidebar-border space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] text-muted-foreground">
+            <span className="font-semibold">Grad Roots</span> EventMap v0.1
+          </p>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
     </aside>
   );
