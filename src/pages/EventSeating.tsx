@@ -112,32 +112,31 @@ export default function EventSeating() {
   const seatingRules = useEventStore((s) => s.seatingRules);
   const moveGuestToTable = useEventStore((s) => s.moveGuestToTable);
 
-  const event = events.find((item) => item.id === eventId);
-  if (!event) return <EventNotFound />;
-
-  const analytics = buildEventAnalytics({
-    event,
-    guests,
-    versions,
-    layoutObjects,
-    seatingAssignments,
-    seatingRules,
-  });
-  const versionId = event.activeVersionId;
-  const tables = analytics.tables;
-  const assignments = analytics.assignments;
-  const rules = analytics.rules;
-
-  const assignedGuestIds = new Set(assignments.map((a) => a.guestId));
-  const unassignedGuests = analytics.confirmedGuests.filter((g) => !assignedGuestIds.has(g.id));
-
-  /* ----- local state ----- */
+  /* ----- local state (must be before any early return) ----- */
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [dragGuestId, setDragGuestId] = useState<string | null>(null);
   const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
   const [collapsedTables, setCollapsedTables] = useState<Set<string>>(new Set());
+
+  const event = events.find((item) => item.id === eventId);
+
+  const analytics = useMemo(
+    () =>
+      event
+        ? buildEventAnalytics({ event, guests, versions, layoutObjects, seatingAssignments, seatingRules })
+        : null,
+    [event, guests, versions, layoutObjects, seatingAssignments, seatingRules],
+  );
+  const versionId = event?.activeVersionId ?? '';
+  const tables = useMemo(() => analytics?.tables ?? [], [analytics]);
+  const assignments = useMemo(() => analytics?.assignments ?? [], [analytics]);
+  const rules = analytics?.rules ?? [];
+  const confirmedGuests = analytics?.confirmedGuests ?? [];
+
+  const assignedGuestIds = new Set(assignments.map((a) => a.guestId));
+  const unassignedGuests = confirmedGuests.filter((g) => !assignedGuestIds.has(g.id));
 
   /* ----- derived ----- */
   const filteredUnassigned = unassignedGuests.filter((g) => {
@@ -162,7 +161,7 @@ export default function EventSeating() {
   const totalCapacity = tables.reduce((sum, t) => sum + t.capacity, 0);
   const assignedCount = assignments.length;
   const unassignedCount = unassignedGuests.length;
-  const totalConfirmed = analytics.confirmedGuests.length;
+  const totalConfirmed = confirmedGuests.length;
   const assignmentPercent = totalConfirmed > 0 ? Math.round((assignedCount / totalConfirmed) * 100) : 0;
 
   /* ----- drag handlers ----- */
@@ -272,7 +271,9 @@ export default function EventSeating() {
     return <RectangleHorizontal className="w-4 h-4 text-primary/70" />;
   };
 
-  /* ----- empty state ----- */
+  /* ----- early returns ----- */
+  if (!event) return <EventNotFound />;
+
   if (tables.length === 0 && assignments.length === 0) {
     return (
       <div className="flex h-screen flex-col items-center justify-center">
@@ -404,7 +405,7 @@ export default function EventSeating() {
                 {tables.map((table) => {
                   const tableGuests = getTableGuests(table.id);
                   const overCapacity = tableGuests.length > table.capacity;
-                  const summary = analytics.tableSummaries.find((item) => item.tableId === table.id);
+                  const summary = analytics?.tableSummaries.find((item) => item.tableId === table.id);
                   const isDragOver = dragOverTableId === table.id;
                   const hasSpace = tableGuests.length < table.capacity;
                   const fillPercent = Math.min((tableGuests.length / table.capacity) * 100, 100);
