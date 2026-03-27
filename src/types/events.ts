@@ -130,7 +130,7 @@ export interface EventVersion {
   notes: string;
 }
 
-export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'custom';
+export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'relationship_group' | 'custom';
 export type SeatingIntent = 'same_table' | 'nearby' | 'separate';
 
 export interface SeatingRule {
@@ -147,6 +147,73 @@ export interface SeatingRule {
   /** For cross_tag: seat guests with tagA near/with guests with tagB */
   tagA?: string;
   tagB?: string;
+  /** For relationship_group: seat members of this group per intent */
+  relationshipGroupId?: string;
   /** What the rule wants: same table, nearby tables, or keep apart */
   intent?: SeatingIntent;
+}
+
+// ──────────────────────────────────────────────
+// Relationship Engine
+// ──────────────────────────────────────────────
+
+/** The kind of connection between guests */
+export type RelationshipType =
+  | 'scholarship'   // donor <-> recipient(s) via a named fund
+  | 'mentorship'    // mentor <-> mentee(s)
+  | 'family'        // family / household members
+  | 'host_guest'    // VIP / board host <-> their invited guests
+  | 'sponsor'       // corporate sponsor <-> designated scholars
+  | 'plus_one'      // guest <-> their plus-one
+  | 'custom';       // user-defined
+
+export const RELATIONSHIP_TYPE_LABELS: Record<RelationshipType, string> = {
+  scholarship: 'Scholarship / Fund',
+  mentorship: 'Mentorship',
+  family: 'Family / Household',
+  host_guest: 'Host & Guests',
+  sponsor: 'Sponsor',
+  plus_one: 'Plus One',
+  custom: 'Custom',
+};
+
+export const RELATIONSHIP_TYPE_COLORS: Record<RelationshipType, string> = {
+  scholarship: 'hsl(152 55% 48%)',
+  mentorship: 'hsl(220 65% 52%)',
+  family: 'hsl(25 85% 55%)',
+  host_guest: 'hsl(280 60% 55%)',
+  sponsor: 'hsl(45 90% 50%)',
+  plus_one: 'hsl(350 65% 52%)',
+  custom: 'hsl(200 15% 55%)',
+};
+
+/** Suggested roles per relationship type */
+export const RELATIONSHIP_ROLE_SUGGESTIONS: Record<RelationshipType, string[]> = {
+  scholarship: ['Donor', 'Recipient'],
+  mentorship: ['Mentor', 'Mentee'],
+  family: ['Member'],
+  host_guest: ['Host', 'Guest'],
+  sponsor: ['Sponsor', 'Scholar'],
+  plus_one: ['Primary', 'Plus One'],
+  custom: ['Member'],
+};
+
+/** A named group that ties guests together */
+export interface RelationshipGroup {
+  id: string;
+  eventId: string;
+  orgId: string;
+  name: string;
+  type: RelationshipType;
+  color?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+/** A membership: a guest belongs to a group with a role */
+export interface RelationshipMembership {
+  id: string;
+  groupId: string;
+  guestId: string;
+  role: string; // freeform but with suggestions per type
 }

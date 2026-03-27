@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator } from '@/types/events';
+import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 
 // Simple hash for demo purposes — NOT cryptographically secure
@@ -78,6 +78,18 @@ interface EventStore {
   updateSeatingRule: (id: string, updates: Partial<SeatingRule>) => void;
   removeSeatingRule: (id: string) => void;
 
+  // Relationship Engine
+  relationshipGroups: RelationshipGroup[];
+  relationshipMemberships: RelationshipMembership[];
+  addRelationshipGroup: (group: RelationshipGroup) => void;
+  updateRelationshipGroup: (id: string, updates: Partial<RelationshipGroup>) => void;
+  removeRelationshipGroup: (id: string) => void;
+  addRelationshipMembership: (membership: RelationshipMembership) => void;
+  removeRelationshipMembership: (id: string) => void;
+  getEventRelationshipGroups: (eventId: string) => RelationshipGroup[];
+  getGroupMembers: (groupId: string) => Array<{ membership: RelationshipMembership; guest: Guest }>;
+  getGuestRelationships: (guestId: string) => Array<{ group: RelationshipGroup; membership: RelationshipMembership }>;
+
   // Selectors
   getEventGuests: (eventId: string) => Guest[];
   getEventVersions: (eventId: string) => EventVersion[];
@@ -152,6 +164,8 @@ export const useEventStore = create<EventStore>()(
   layoutObjects: [],
   seatingAssignments: [],
   seatingRules: [],
+  relationshipGroups: [],
+  relationshipMemberships: [],
 
   hasCompletedOnboarding: false,
 
@@ -199,6 +213,27 @@ export const useEventStore = create<EventStore>()(
   updateSeatingRule: (id, updates) => set((s) => ({ seatingRules: s.seatingRules.map((r) => r.id === id ? { ...r, ...updates } : r) })),
   removeSeatingRule: (id) => set((s) => ({ seatingRules: s.seatingRules.filter((r) => r.id !== id) })),
 
+  // Relationship Engine
+  addRelationshipGroup: (group) => set((s) => ({ relationshipGroups: [...s.relationshipGroups, group] })),
+  updateRelationshipGroup: (id, updates) => set((s) => ({ relationshipGroups: s.relationshipGroups.map((g) => g.id === id ? { ...g, ...updates } : g) })),
+  removeRelationshipGroup: (id) => set((s) => ({
+    relationshipGroups: s.relationshipGroups.filter((g) => g.id !== id),
+    relationshipMemberships: s.relationshipMemberships.filter((m) => m.groupId !== id),
+  })),
+  addRelationshipMembership: (membership) => set((s) => ({ relationshipMemberships: [...s.relationshipMemberships, membership] })),
+  removeRelationshipMembership: (id) => set((s) => ({ relationshipMemberships: s.relationshipMemberships.filter((m) => m.id !== id) })),
+  getEventRelationshipGroups: (eventId) => get().relationshipGroups.filter((g) => g.eventId === eventId),
+  getGroupMembers: (groupId) => {
+    const memberships = get().relationshipMemberships.filter((m) => m.groupId === groupId);
+    const guests = get().guests;
+    return memberships.map((m) => ({ membership: m, guest: guests.find((g) => g.id === m.guestId)! })).filter((m) => m.guest);
+  },
+  getGuestRelationships: (guestId) => {
+    const memberships = get().relationshipMemberships.filter((m) => m.guestId === guestId);
+    const groups = get().relationshipGroups;
+    return memberships.map((m) => ({ group: groups.find((g) => g.id === m.groupId)!, membership: m })).filter((r) => r.group);
+  },
+
   getEventGuests: (eventId) => get().guests.filter((g) => g.eventId === eventId),
   getEventVersions: (eventId) => get().versions.filter((v) => v.eventId === eventId),
   getVersionObjects: (versionId) => get().layoutObjects.filter((o) => o.versionId === versionId),
@@ -232,6 +267,8 @@ export const useEventStore = create<EventStore>()(
       accounts,
       userProfile: null,
       collaborators: [],
+      relationshipGroups: [],
+      relationshipMemberships: [],
       organizations: [],
       activeOrgId: null,
       events: [],
@@ -259,6 +296,8 @@ export const useEventStore = create<EventStore>()(
         layoutObjects: state.layoutObjects,
         seatingAssignments: state.seatingAssignments,
         seatingRules: state.seatingRules,
+        relationshipGroups: state.relationshipGroups,
+        relationshipMemberships: state.relationshipMemberships,
       }),
     }
   )

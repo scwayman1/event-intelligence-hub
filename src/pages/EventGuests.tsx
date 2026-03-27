@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { buildEventAnalytics } from '@/lib/event-analytics';
 import { collectAllTags } from '@/lib/rule-engine';
 import { AddGuestDialog } from '@/components/AddGuestDialog';
+import { RelationshipBadge } from '@/components/RelationshipBadge';
 import type { GuestCategory, RSVPStatus } from '@/types/events';
 
 const categoryLabels: Record<GuestCategory, string> = {
@@ -44,6 +45,7 @@ export default function EventGuests() {
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
+  const getGuestRelationships = useEventStore((s) => s.getGuestRelationships);
 
   const event = events.find((item) => item.id === eventId);
   const analytics = event
@@ -235,6 +237,18 @@ export default function EventGuests() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="space-y-2 max-w-[300px]">
+                          {/* Relationship groups */}
+                          {(() => {
+                            const rels = getGuestRelationships(guest.id);
+                            if (rels.length === 0) return null;
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {rels.map((r) => (
+                                  <RelationshipBadge key={r.membership.id} group={r.group} role={r.membership.role} />
+                                ))}
+                              </div>
+                            );
+                          })()}
                           {/* Tags */}
                           <div className="flex flex-wrap gap-1 items-center">
                             {guest.relationshipTags.map((t) => (
