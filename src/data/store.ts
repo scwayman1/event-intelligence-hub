@@ -48,6 +48,11 @@ interface EventStore {
   removeSeatingAssignment: (id: string) => void;
   moveGuestToTable: (guestId: string, tableId: string, versionId: string) => void;
 
+  // Seating rule actions
+  addSeatingRule: (rule: SeatingRule) => void;
+  updateSeatingRule: (id: string, updates: Partial<SeatingRule>) => void;
+  removeSeatingRule: (id: string) => void;
+
   // Selectors
   getEventGuests: (eventId: string) => Guest[];
   getEventVersions: (eventId: string) => EventVersion[];
@@ -119,6 +124,10 @@ export const useEventStore = create<EventStore>()(
     const newAssignment: SeatingAssignment = { id: `sa-${crypto.randomUUID()}`, versionId, guestId, tableId };
     return { seatingAssignments: [...filtered, newAssignment] };
   }),
+
+  addSeatingRule: (rule) => set((s) => ({ seatingRules: [...s.seatingRules, rule] })),
+  updateSeatingRule: (id, updates) => set((s) => ({ seatingRules: s.seatingRules.map((r) => r.id === id ? { ...r, ...updates } : r) })),
+  removeSeatingRule: (id) => set((s) => ({ seatingRules: s.seatingRules.filter((r) => r.id !== id) })),
 
   getEventGuests: (eventId) => get().guests.filter((g) => g.eventId === eventId),
   getEventVersions: (eventId) => get().versions.filter((v) => v.eventId === eventId),

@@ -1,12 +1,14 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, MoveRight, Search, Settings2, Sparkles, Users } from 'lucide-react';
+import { AlertTriangle, Check, MoveRight, Plus, Search, Settings2, Sparkles, Tag, Trash2, Users, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import { evaluateRules } from '@/lib/rule-engine';
+import { CreateSeatingRuleDialog } from '@/components/CreateSeatingRuleDialog';
 import type { Guest, GuestCategory } from '@/types/events';
 
 const categoryColors: Record<GuestCategory, string> = {
@@ -26,6 +28,8 @@ export default function EventSeating() {
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
   const moveGuestToTable = useEventStore((s) => s.moveGuestToTable);
+  const updateSeatingRule = useEventStore((s) => s.updateSeatingRule);
+  const removeSeatingRule = useEventStore((s) => s.removeSeatingRule);
 
   const event = events.find((item) => item.id === eventId);
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
@@ -41,8 +45,17 @@ export default function EventSeating() {
 
   const [search, setSearch] = useState('');
   const [showRules, setShowRules] = useState(false);
+  const [showCreateRule, setShowCreateRule] = useState(false);
   const [dragGuest, setDragGuest] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(tables[0]?.id ?? null);
+
+  // Evaluate tag-based rules
+  const ruleEvaluations = useMemo(
+    () => evaluateRules(rules, analytics.eventGuests, assignments, tables),
+    [rules, analytics.eventGuests, assignments, tables]
+  );
+  const satisfiedRules = ruleEvaluations.filter((e) => e.status === 'satisfied').length;
+  const violatedRules = ruleEvaluations.filter((e) => e.status === 'violated' || e.status === 'partial').length;
 
   const filteredUnassigned = unassignedGuests.filter((g) =>
     `${g.firstName} ${g.lastName} ${g.organization} ${g.notes}`.toLowerCase().includes(search.toLowerCase())
@@ -91,10 +104,24 @@ export default function EventSeating() {
               {tables.length} tables · {assignments.length} assigned · <span className="text-warning">{unassignedGuests.length} unassigned confirmed</span>
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowRules(!showRules)} className="gap-2">
-            <Settings2 className="w-3.5 h-3.5" />
-            Rules
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowRules(!showRules)} className="gap-2">
+              <Settings2 className="w-3.5 h-3.5" />
+              Rules
+              {ruleEvaluations.length > 0 && (
+                <span className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded-full ml-1',
+                  violatedRules > 0 ? 'bg-destructive/20 text-destructive' : 'bg-success/20 text-success'
+                )}>
+                  {satisfiedRules}/{ruleEvaluations.length}
+                </span>
+              )}
+            </Button>
+            <Button size="sm" onClick={() => setShowCreateRule(true)} className="gap-2">
+              <Plus className="w-3.5 h-3.5" />
+              Add Rule
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-4">
@@ -114,28 +141,131 @@ export default function EventSeating() {
             <p className="text-xs text-muted-foreground">Relationship seating progress.</p>
           </div>
           <div className="metric-card">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Households split</div>
-            <p className="text-2xl font-bold font-mono text-foreground">{analytics.householdsSplitCount}</p>
-            <p className="text-xs text-muted-foreground">Family groups crossing tables.</p>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">Tag rules</div>
+            <p className={cn('text-2xl font-bold font-mono', violatedRules > 0 ? 'text-destructive' : 'text-success')}>
+              {satisfiedRules}/{ruleEvaluations.length}
+            </p>
+            <p className="text-xs text-muted-foreground">{violatedRules > 0 ? `${violatedRules} need attention` : 'All rules satisfied'}</p>
           </div>
         </div>
 
         {showRules && (
-          <div className="glass-panel p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Seating rules</h3>
+          <div className="glass-panel p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Seating rules</h3>
+              <Button variant="ghost" size="sm" onClick={() => setShowCreateRule(true)} className="gap-1.5 h-7 text-xs">
+                <Plus className="w-3 h-3" /> Add rule
+              </Button>
+            </div>
+
+            {rules.length === 0 && (
+              <div className="text-center py-6 space-y-2">
+                <Tag className="w-6 h-6 text-muted-foreground mx-auto" />
+                <p className="text-sm text-muted-foreground">No seating rules yet.</p>
+                <p className="text-xs text-muted-foreground">Create tag-based rules to automate who sits together.</p>
+              </div>
+            )}
+
             <div className="space-y-2">
-              {rules.map((rule) => (
-                <div key={rule.id} className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground w-4">P{rule.priority}</span>
-                    <div>
-                      <p className="text-sm text-foreground">{rule.name}</p>
-                      <p className="text-xs text-muted-foreground">{rule.description}</p>
+              {rules.map((rule) => {
+                const evaluation = ruleEvaluations.find((e) => e.rule.id === rule.id);
+                const statusIcon = evaluation
+                  ? evaluation.status === 'satisfied' ? <Check className="w-3.5 h-3.5 text-success" />
+                    : evaluation.status === 'violated' ? <X className="w-3.5 h-3.5 text-destructive" />
+                    : evaluation.status === 'partial' ? <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                    : null
+                  : null;
+
+                return (
+                  <div key={rule.id} className={cn(
+                    'rounded-lg border p-3 transition-all',
+                    !rule.enabled && 'opacity-50',
+                    evaluation?.status === 'violated' ? 'border-destructive/30 bg-destructive/5' :
+                    evaluation?.status === 'partial' ? 'border-warning/30 bg-warning/5' :
+                    evaluation?.status === 'satisfied' ? 'border-success/30 bg-success/5' :
+                    'border-border bg-muted/20'
+                  )}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5 flex-1">
+                        <span className="text-xs font-mono text-muted-foreground mt-0.5 w-5">P{rule.priority}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-foreground">{rule.name}</p>
+                            {statusIcon}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{rule.description}</p>
+
+                          {/* Show tags */}
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {rule.tag && (
+                              <Badge variant="outline" className="text-[10px] bg-primary/10 border-primary/30 text-primary">
+                                <Tag className="w-2.5 h-2.5 mr-1" />{rule.tag}
+                              </Badge>
+                            )}
+                            {rule.tagA && (
+                              <Badge variant="outline" className="text-[10px] bg-primary/10 border-primary/30 text-primary">
+                                <Tag className="w-2.5 h-2.5 mr-1" />{rule.tagA}
+                              </Badge>
+                            )}
+                            {rule.tagB && (
+                              <Badge variant="outline" className="text-[10px] bg-accent/10 border-accent/30 text-accent">
+                                <Tag className="w-2.5 h-2.5 mr-1" />{rule.tagB}
+                              </Badge>
+                            )}
+                            {rule.intent && (
+                              <Badge variant="outline" className={cn(
+                                'text-[10px]',
+                                rule.intent === 'same_table' ? 'bg-success/10 border-success/30 text-success' :
+                                rule.intent === 'separate' ? 'bg-destructive/10 border-destructive/30 text-destructive' :
+                                'bg-info/10 border-info/30 text-info'
+                              )}>
+                                {rule.intent === 'same_table' ? 'Same table' : rule.intent === 'separate' ? 'Keep apart' : 'Nearby'}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Show violations */}
+                          {evaluation && evaluation.violations.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {evaluation.violations.slice(0, 3).map((v, i) => (
+                                <p key={i} className="text-xs text-destructive">{v.detail}</p>
+                              ))}
+                              {evaluation.violations.length > 3 && (
+                                <p className="text-xs text-muted-foreground">+{evaluation.violations.length - 3} more</p>
+                              )}
+                            </div>
+                          )}
+
+                          {evaluation?.status === 'satisfied' && (
+                            <p className="text-xs text-success mt-1">Rule satisfied</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => updateSeatingRule(rule.id, { enabled: !rule.enabled })}
+                          className={cn(
+                            'w-8 h-5 rounded-full transition-colors relative',
+                            rule.enabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                          )}
+                        >
+                          <div className={cn(
+                            'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform',
+                            rule.enabled ? 'left-3.5' : 'left-0.5'
+                          )} />
+                        </button>
+                        <button
+                          onClick={() => removeSeatingRule(rule.id)}
+                          className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className={cn('w-2 h-2 rounded-full', rule.enabled ? 'bg-success' : 'bg-muted-foreground/30')} />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -194,13 +324,24 @@ export default function EventSeating() {
                       key={guest.id}
                       draggable
                       onDragStart={() => setDragGuest(guest.id)}
-                      className="flex items-center gap-2 py-1.5 px-2 rounded-md bg-muted/30 hover:bg-muted/50 cursor-grab text-sm"
+                      className="py-1.5 px-2 rounded-md bg-muted/30 hover:bg-muted/50 cursor-grab text-sm"
                     >
-                      <MoveRight className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-foreground flex-1 truncate">{guest.displayName}</span>
-                      <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', categoryColors[guest.category])}>
-                        {guest.category.replace('_', ' ')}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <MoveRight className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-foreground flex-1 truncate">{guest.displayName}</span>
+                        <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', categoryColors[guest.category])}>
+                          {guest.category.replace('_', ' ')}
+                        </span>
+                      </div>
+                      {guest.relationshipTags.length > 0 && (
+                        <div className="flex gap-1 mt-1 ml-5 flex-wrap">
+                          {guest.relationshipTags.map((t) => (
+                            <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 border border-primary/20">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {tableGuests.length === 0 && (
@@ -277,6 +418,18 @@ export default function EventSeating() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-foreground truncate">{guest.displayName}</p>
                 <p className="text-xs text-muted-foreground truncate">{guest.organization}</p>
+                {guest.relationshipTags.length > 0 && (
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {guest.relationshipTags.slice(0, 3).map((t) => (
+                      <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 border border-primary/20">
+                        {t}
+                      </span>
+                    ))}
+                    {guest.relationshipTags.length > 3 && (
+                      <span className="text-[9px] text-muted-foreground">+{guest.relationshipTags.length - 3}</span>
+                    )}
+                  </div>
+                )}
                 {guest.accessibilityNeeds && <p className="text-xs text-info truncate">{guest.accessibilityNeeds}</p>}
                 {guest.tablePreference && <p className="text-xs text-muted-foreground truncate">Prefers {guest.tablePreference}</p>}
               </div>
@@ -292,6 +445,8 @@ export default function EventSeating() {
           )}
         </div>
       </div>
+
+      <CreateSeatingRuleDialog open={showCreateRule} onOpenChange={setShowCreateRule} eventId={eventId!} />
     </div>
   );
 }
