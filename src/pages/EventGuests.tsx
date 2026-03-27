@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { buildEventAnalytics } from '@/lib/event-analytics';
 import { collectAllTags } from '@/lib/rule-engine';
+import { AddGuestDialog } from '@/components/AddGuestDialog';
 import type { GuestCategory, RSVPStatus } from '@/types/events';
 
 const categoryLabels: Record<GuestCategory, string> = {
@@ -56,6 +57,7 @@ export default function EventGuests() {
   const [rsvpFilter, setRsvpFilter] = useState<RSVPStatus | 'all'>('all');
   const [editingTagsGuestId, setEditingTagsGuestId] = useState<string | null>(null);
   const [newTag, setNewTag] = useState('');
+  const [showAddGuest, setShowAddGuest] = useState(false);
 
   const eventGuests = useMemo(() => {
     return guests
@@ -123,7 +125,7 @@ export default function EventGuests() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-2"><Upload className="w-3.5 h-3.5" />Import CSV</Button>
-          <Button size="sm">Add Guest</Button>
+          <Button size="sm" onClick={() => setShowAddGuest(true)}>Add Guest</Button>
         </div>
       </div>
 
@@ -382,6 +384,13 @@ export default function EventGuests() {
           </div>
         </div>
       </div>
+
+      <AddGuestDialog
+        open={showAddGuest}
+        onOpenChange={setShowAddGuest}
+        eventId={eventId!}
+        orgId={event.orgId}
+      />
     </div>
   );
 }

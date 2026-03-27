@@ -33,6 +33,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const userProfile = useEventStore((s) => s.userProfile);
   const organizations = useEventStore((s) => s.organizations);
   const activeOrgId = useEventStore((s) => s.activeOrgId);
   const setActiveOrg = useEventStore((s) => s.setActiveOrg);
@@ -213,8 +214,21 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
         )}
       </nav>
 
-      {/* Footer */}
+      {/* Footer with profile */}
       <div className="relative p-4 border-t border-sidebar-border space-y-3">
+        {userProfile && (
+          <div className="flex items-center gap-2.5 px-1 py-1">
+            <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+              <span className="text-xs font-bold text-primary">
+                {userProfile.firstName.charAt(0)}{userProfile.lastName.charAt(0)}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground truncate">{userProfile.firstName} {userProfile.lastName}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{userProfile.role}</p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground">
             <span className="font-semibold">Grad Roots</span> EventMap v0.1

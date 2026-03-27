@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sprout, Building2, ArrowRight, Sparkles, Package } from 'lucide-react';
+import { Sprout, Building2, ArrowRight, Sparkles, Package, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,16 +15,48 @@ const PRESET_COLORS = [
   'hsl(45 90% 50%)',  // gold
 ];
 
+const ROLE_OPTIONS = [
+  'Event Planner',
+  'Development Officer',
+  'Director of Events',
+  'Coordinator',
+  'Administrator',
+  'Volunteer Lead',
+  'Other',
+];
+
 export default function Welcome() {
   const navigate = useNavigate();
   const addOrganization = useEventStore((s) => s.addOrganization);
   const setActiveOrg = useEventStore((s) => s.setActiveOrg);
   const loadSampleData = useEventStore((s) => s.loadSampleData);
+  const setUserProfile = useEventStore((s) => s.setUserProfile);
 
-  const [step, setStep] = useState<'welcome' | 'create'>('welcome');
+  const [step, setStep] = useState<'profile' | 'choose' | 'create-org'>('profile');
+
+  // Profile fields
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('Event Planner');
+
+  // Org fields
   const [orgName, setOrgName] = useState('');
   const [shortName, setShortName] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
+
+  function handleSaveProfile() {
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) return;
+    setUserProfile({
+      id: `user-${crypto.randomUUID().slice(0, 8)}`,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim(),
+      role,
+      createdAt: new Date().toISOString(),
+    });
+    setStep('choose');
+  }
 
   function handleCreateOrg() {
     if (!orgName.trim()) return;
@@ -45,6 +77,8 @@ export default function Welcome() {
     navigate('/');
   }
 
+  const selectClasses = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-lg space-y-8">
@@ -59,10 +93,106 @@ export default function Welcome() {
           </div>
         </div>
 
-        {step === 'welcome' && (
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-2">
+          {['Profile', 'Organization'].map((label, i) => {
+            const stepIndex = step === 'profile' ? 0 : 1;
+            const isActive = i === stepIndex;
+            const isDone = i < stepIndex;
+            return (
+              <div key={label} className="flex items-center gap-2">
+                {i > 0 && <div className={`w-8 h-px ${isDone ? 'bg-primary' : 'bg-border'}`} />}
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                    isActive ? 'bg-primary text-primary-foreground' : isDone ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isDone ? '\u2713' : i + 1}
+                  </div>
+                  <span className={`text-xs font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Step 1: Profile */}
+        {step === 'profile' && (
+          <div className="glass-panel p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <User className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Set up your profile</h2>
+                <p className="text-sm text-muted-foreground">Tell us who you are so your work is saved to your account.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="profile-first">First name</Label>
+                  <Input
+                    id="profile-first"
+                    placeholder="Jane"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="profile-last">Last name</Label>
+                  <Input
+                    id="profile-last"
+                    placeholder="Smith"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-email">Email</Label>
+                <Input
+                  id="profile-email"
+                  type="email"
+                  placeholder="jane@university.edu"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-role">Role</Label>
+                <select
+                  id="profile-role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className={selectClasses}
+                >
+                  {ROLE_OPTIONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleSaveProfile}
+              disabled={!firstName.trim() || !lastName.trim() || !email.trim()}
+              className="w-full gap-2"
+            >
+              Continue
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Step 2: Choose path */}
+        {step === 'choose' && (
           <div className="space-y-4">
             <button
-              onClick={() => setStep('create')}
+              onClick={() => setStep('create-org')}
               className="w-full glass-panel p-5 text-left hover:border-primary/40 transition-all group"
             >
               <div className="flex items-start gap-4">
@@ -95,12 +225,13 @@ export default function Welcome() {
 
             <p className="text-center text-xs text-muted-foreground pt-2">
               <Sparkles className="w-3 h-3 inline mr-1" />
-              All data is stored locally in your browser. Nothing is sent to a server.
+              All data is stored locally in your browser and tied to your profile.
             </p>
           </div>
         )}
 
-        {step === 'create' && (
+        {/* Step 2b: Create org */}
+        {step === 'create-org' && (
           <div className="glass-panel p-6 space-y-5">
             <div>
               <h2 className="text-lg font-semibold text-foreground">Set up your organization</h2>
@@ -155,7 +286,7 @@ export default function Welcome() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button variant="outline" onClick={() => setStep('welcome')} className="flex-1">
+              <Button variant="outline" onClick={() => setStep('choose')} className="flex-1">
                 Back
               </Button>
               <Button onClick={handleCreateOrg} disabled={!orgName.trim()} className="flex-1 gap-2">
