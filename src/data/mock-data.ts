@@ -83,54 +83,9 @@ export const mockVersions: EventVersion[] = [
   { id: 'ver-005', eventId: 'evt-003', name: 'Outdoor Plan', status: 'active', createdAt: '2026-02-20T10:00:00Z', updatedAt: '2026-03-20T10:00:00Z', createdBy: 'Admin', notes: 'Primary outdoor layout.' },
 ];
 
-export const mockLayoutObjects: LayoutObject[] = [
-  // Main tent
-  { id: 'lo-001', versionId: 'ver-001', type: 'tent', name: 'Main Pavilion', x: 100, y: 80, width: 600, height: 400, rotation: 0, capacity: 250, notes: 'Primary event space', category: 'structure', locked: false, visible: true, zIndex: 0 },
-  // Stage
-  { id: 'lo-002', versionId: 'ver-001', type: 'stage', name: 'Main Stage', x: 300, y: 100, width: 200, height: 80, rotation: 0, capacity: 0, notes: 'Speaker stage with podium', category: 'presentation', parentId: 'lo-001', locked: true, visible: true, zIndex: 1 },
-  // Podium
-  { id: 'lo-003', versionId: 'ver-001', type: 'podium', name: 'Podium', x: 380, y: 110, width: 30, height: 30, rotation: 0, capacity: 0, notes: '', category: 'presentation', parentId: 'lo-002', locked: true, visible: true, zIndex: 2 },
-  // Head table
-  { id: 'lo-004', versionId: 'ver-001', type: 'rect_table', name: 'Head Table', x: 280, y: 200, width: 240, height: 40, rotation: 0, capacity: 10, notes: 'Board chair, President, VIPs', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  // Round tables
-  { id: 'lo-005', versionId: 'ver-001', type: 'round_table', name: 'Donor Table A', x: 160, y: 280, width: 80, height: 80, rotation: 0, capacity: 8, notes: 'Thornton family and scholars', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  { id: 'lo-006', versionId: 'ver-001', type: 'round_table', name: 'Donor Table B', x: 300, y: 280, width: 80, height: 80, rotation: 0, capacity: 8, notes: 'Alvarez family and scholars', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  { id: 'lo-007', versionId: 'ver-001', type: 'round_table', name: 'Donor Table C', x: 440, y: 280, width: 80, height: 80, rotation: 0, capacity: 8, notes: 'Wu and corporate donors', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  { id: 'lo-008', versionId: 'ver-001', type: 'round_table', name: 'Table 4', x: 160, y: 380, width: 80, height: 80, rotation: 0, capacity: 8, notes: '', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  { id: 'lo-009', versionId: 'ver-001', type: 'round_table', name: 'Table 5', x: 300, y: 380, width: 80, height: 80, rotation: 0, capacity: 8, notes: '', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  { id: 'lo-010', versionId: 'ver-001', type: 'round_table', name: 'Table 6', x: 440, y: 380, width: 80, height: 80, rotation: 0, capacity: 8, notes: '', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  // Staff table
-  { id: 'lo-011', versionId: 'ver-001', type: 'rect_table', name: 'Staff Table', x: 560, y: 440, width: 100, height: 40, rotation: 0, capacity: 6, notes: 'Event staff', category: 'seating', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  // Check-in
-  { id: 'lo-012', versionId: 'ver-001', type: 'checkin', name: 'Check-In', x: 350, y: 490, width: 100, height: 30, rotation: 0, capacity: 0, notes: 'Main entrance check-in', category: 'operations', locked: false, visible: true, zIndex: 1 },
-  // Bar
-  { id: 'lo-013', versionId: 'ver-001', type: 'bar', name: 'Main Bar', x: 600, y: 280, width: 60, height: 40, rotation: 0, capacity: 0, notes: '', category: 'catering', parentId: 'lo-001', locked: false, visible: true, zIndex: 1 },
-  // VIP area
-  { id: 'lo-014', versionId: 'ver-001', type: 'vip_area', name: 'VIP Lounge', x: 120, y: 100, width: 120, height: 80, rotation: 0, capacity: 15, notes: 'Pre-ceremony reception for VIPs', category: 'zone', locked: false, visible: true, zIndex: 1 },
-];
+export const mockLayoutObjects: LayoutObject[] = [];
 
-export const mockSeatingAssignments: SeatingAssignment[] = [
-  // Head Table
-  { id: 'sa-001', versionId: 'ver-001', guestId: 'g-010', tableId: 'lo-004', seatNumber: 1 },
-  { id: 'sa-002', versionId: 'ver-001', guestId: 'g-013', tableId: 'lo-004', seatNumber: 2 },
-  { id: 'sa-003', versionId: 'ver-001', guestId: 'g-014', tableId: 'lo-004', seatNumber: 3 },
-  // Donor Table A - Thornton family + their scholars
-  { id: 'sa-004', versionId: 'ver-001', guestId: 'g-001', tableId: 'lo-005', seatNumber: 1 },
-  { id: 'sa-005', versionId: 'ver-001', guestId: 'g-002', tableId: 'lo-005', seatNumber: 2 },
-  { id: 'sa-006', versionId: 'ver-001', guestId: 'g-006', tableId: 'lo-005', seatNumber: 3 },
-  { id: 'sa-007', versionId: 'ver-001', guestId: 'g-017', tableId: 'lo-005', seatNumber: 4 },
-  { id: 'sa-008', versionId: 'ver-001', guestId: 'g-018', tableId: 'lo-005', seatNumber: 5 },
-  // Donor Table B - Alvarez + scholars
-  { id: 'sa-009', versionId: 'ver-001', guestId: 'g-004', tableId: 'lo-006', seatNumber: 1 },
-  { id: 'sa-010', versionId: 'ver-001', guestId: 'g-007', tableId: 'lo-006', seatNumber: 2 },
-  // Donor Table C
-  { id: 'sa-011', versionId: 'ver-001', guestId: 'g-003', tableId: 'lo-007', seatNumber: 1 },
-  { id: 'sa-012', versionId: 'ver-001', guestId: 'g-008', tableId: 'lo-007', seatNumber: 2 },
-  { id: 'sa-013', versionId: 'ver-001', guestId: 'g-011', tableId: 'lo-007', seatNumber: 3 },
-  // Staff table
-  { id: 'sa-014', versionId: 'ver-001', guestId: 'g-015', tableId: 'lo-011', seatNumber: 1 },
-  { id: 'sa-015', versionId: 'ver-001', guestId: 'g-016', tableId: 'lo-011', seatNumber: 2 },
-];
+export const mockSeatingAssignments: SeatingAssignment[] = [];
 
 export const mockSeatingRules: SeatingRule[] = [
   { id: 'sr-001', eventId: 'evt-001', name: 'Keep households together', description: 'Guests in the same household should be at the same table', enabled: true, priority: 1 },
