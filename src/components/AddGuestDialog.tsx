@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useEventStore } from '@/data/store';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tag, Plus, X } from 'lucide-react';
+import { collectAllTags } from '@/lib/rule-engine';
 import type { GuestCategory, RSVPStatus } from '@/types/events';
 
 const categoryOptions: { value: GuestCategory; label: string }[] = [
   { value: 'donor', label: 'Donor' },
-  { value: 'scholarship_recipient', label: 'Scholar' },
+  { value: 'scholarship_recipient', label: 'Scholarship Recipient' },
   { value: 'family', label: 'Family' },
   { value: 'board_member', label: 'Board Member' },
   { value: 'vip', label: 'VIP' },
@@ -34,6 +36,7 @@ interface AddGuestDialogProps {
 
 export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestDialogProps) {
   const addGuest = useEventStore((s) => s.addGuest);
+  const guests = useEventStore((s) => s.guests);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -47,6 +50,50 @@ export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestD
   const [accessibilityNeeds, setAccessibilityNeeds] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Scholarship / fund association
+  const [fundInput, setFundInput] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+
+  // Collect existing tags from this event's guests to suggest
+  const eventGuests = useMemo(() => guests.filter((g) => g.eventId === eventId), [guests, eventId]);
+  const allExistingTags = useMemo(() => collectAllTags(eventGuests), [eventGuests]);
+
+  // Separate fund-like tags from other tags for suggestions
+  const fundSuggestions = useMemo(() =>
+    allExistingTags.filter((t) => t.includes('scholarship') || t.includes('fund') || t.includes('award') || t.includes('grant') || t.includes('endowment')),
+    [allExistingTags]
+  );
+  const otherTagSuggestions = useMemo(() =>
+    allExistingTags.filter((t) => !tags.includes(t)),
+    [allExistingTags, tags]
+  );
+
+  function normalizeTag(raw: string): string {
+    return raw.trim().toLowerCase().replace(/\s+/g, '-');
+  }
+
+  function addTag(raw: string) {
+    const tag = normalizeTag(raw);
+    if (tag && !tags.includes(tag)) {
+      setTags([...tags, tag]);
+    }
+  }
+
+  function removeTag(tag: string) {
+    setTags(tags.filter((t) => t !== tag));
+  }
+
+  function addFundAsTag() {
+    if (!fundInput.trim()) return;
+    const fundTag = normalizeTag(fundInput);
+    // Add the fund name as a tag if not already present
+    if (!tags.includes(fundTag)) {
+      setTags([...tags, fundTag]);
+    }
+    setFundInput('');
+  }
+
   function resetForm() {
     setFirstName('');
     setLastName('');
@@ -59,6 +106,9 @@ export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestD
     setDietaryRestrictions('');
     setAccessibilityNeeds('');
     setNotes('');
+    setFundInput('');
+    setTags([]);
+    setTagInput('');
   }
 
   function handleCreate() {
@@ -80,7 +130,7 @@ export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestD
       dietaryRestrictions: dietaryRestrictions.trim(),
       accessibilityNeeds: accessibilityNeeds.trim(),
       notes: notes.trim(),
-      relationshipTags: [],
+      relationshipTags: tags,
       tablePreference: '',
       seatingPreference: '',
     });
@@ -91,15 +141,22 @@ export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestD
 
   const selectClasses = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
+  // Hint text based on category
+  const fundHint = category === 'donor'
+    ? 'e.g. "Scott Wehman Scholarship" — recipients with the same tag will be seated together'
+    : category === 'scholarship_recipient'
+      ? 'e.g. "Scott Wehman Scholarship" — the donor with the same tag will be seated together'
+      : 'e.g. "Scott Wehman Scholarship" — guests with matching tags can be seated together';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add guest</DialogTitle>
-          <DialogDescription>Add a new guest to this event. You can edit details and assign tags later.</DialogDescription>
+          <DialogDescription>Add a new guest to this event. Tags link donors and recipients for seating rules.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
+        <div className="space-y-4 py-2 max-h-[65vh] overflow-y-auto pr-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="guest-first">First name</Label>
@@ -193,6 +250,86 @@ export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestD
               />
             </div>
           </div>
+
+          {/* Scholarship / Fund Association */}
+          <div className="space-y-2 border border-primary/20 rounded-lg p-3 bg-primary/5">
+            <div className="flex items-center gap-2 mb-1">
+              <Tag className="w-3.5 h-3.5 text-primary" />
+              <Label className="text-sm font-semibold text-primary">Scholarship / Fund Association</Label>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">{fundHint}</p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Type a scholarship or fund name..."
+                value={fundInput}
+                onChange={(e) => setFundInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addFundAsTag(); } }}
+                className="h-8 text-sm"
+              />
+              <Button variant="outline" size="sm" className="h-8 px-3 shrink-0" onClick={addFundAsTag} disabled={!fundInput.trim()}>
+                <Plus className="w-3 h-3 mr-1" /> Add
+              </Button>
+            </div>
+            {fundSuggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                <span className="text-[10px] text-muted-foreground mr-1">Existing:</span>
+                {fundSuggestions.filter((t) => !tags.includes(t)).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => addTag(t)}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    + {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Additional Tags */}
+          <div className="space-y-2">
+            <Label>Additional Tags</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g. table-host, keynote-speaker"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(tagInput); setTagInput(''); } }}
+                className="h-8 text-sm"
+              />
+              <Button variant="outline" size="sm" className="h-8 px-3 shrink-0" onClick={() => { addTag(tagInput); setTagInput(''); }} disabled={!tagInput.trim()}>
+                <Plus className="w-3 h-3 mr-1" /> Add
+              </Button>
+            </div>
+            {otherTagSuggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {otherTagSuggestions.filter((t) => !fundSuggestions.includes(t)).slice(0, 10).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => addTag(t)}
+                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted/50 border border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
+                  >
+                    + {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Applied tags display */}
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => (
+                <span key={t} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  <Tag className="w-3 h-3" />
+                  {t}
+                  <button onClick={() => removeTag(t)} className="hover:text-destructive ml-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="guest-dietary">Dietary restrictions</Label>
