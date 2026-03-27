@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useEventStore } from '@/data/store';
 import { cn } from '@/lib/utils';
+import { TeamAvatarStack } from '@/components/Avatar';
 
 const globalNav = [
   { label: 'Events', icon: Calendar, path: '/' },
@@ -206,6 +207,13 @@ export function AppSidebar() {
 
       {/* Bottom section */}
       <div className="px-3 pb-3 pt-2 border-t border-sidebar-border/60 space-y-1.5">
+        {/* Team indicator */}
+        <div className="flex items-center justify-between px-3 py-2">
+          <TeamAvatarStack />
+          <span className="text-[10px] text-sidebar-foreground/50 font-medium">
+            3 online
+          </span>
+        </div>
         {currentEvent && (
           <NavLink
             to="/"

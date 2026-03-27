@@ -20,6 +20,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EventNotFound } from '@/components/EventNotFound';
+import { ActivityFeed } from '@/components/ActivityFeed';
+import { DonutChart } from '@/components/charts/DonutChart';
+import { BarChart } from '@/components/charts/BarChart';
+import { CategoryPieChart } from '@/components/charts/CategoryPieChart';
+import { Clock } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
 /*  Readiness Ring                                                     */
@@ -354,6 +359,10 @@ export default function EventDashboard() {
               {event.venue}
             </span>
           </div>
+          <p className="text-xs text-muted-foreground/70 flex items-center gap-1.5 mt-1">
+            <Clock className="w-3 h-3" />
+            Last edited by Event Manager &middot; 2 hours ago
+          </p>
         </div>
       </div>
 
@@ -516,6 +525,81 @@ export default function EventDashboard() {
         </div>
       </div>
 
+      {/* ---- Analytics Charts ---- */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Sparkles className="w-4 h-4" />
+          Analytics
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* RSVP Donut Chart */}
+          <Card className="overflow-hidden hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <p className="text-sm font-semibold text-foreground mb-4">RSVP Status Breakdown</p>
+              <DonutChart
+                segments={[
+                  { label: 'Confirmed', value: analytics.confirmedGuests.length, color: '#10b981' },
+                  { label: 'Invited', value: analytics.invitedGuests.length, color: '#f59e0b' },
+                  { label: 'Declined', value: analytics.declinedGuests.length, color: '#ef4444' },
+                  { label: 'Waitlist', value: analytics.waitlistGuests.length, color: '#a855f7' },
+                  { label: 'Checked In', value: analytics.checkedInGuests.length, color: '#3b82f6' },
+                ]}
+                centerLabel="Guests"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Guest Category Pie Chart */}
+          <Card className="overflow-hidden hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <p className="text-sm font-semibold text-foreground mb-4">Guest Categories</p>
+              <CategoryPieChart
+                slices={(() => {
+                  const colorMap: Record<string, string> = {
+                    donor: '#3b82f6',
+                    scholarship_recipient: '#10b981',
+                    family: '#f59e0b',
+                    board_member: '#8b5cf6',
+                    vip: '#ec4899',
+                    staff: '#6b7280',
+                    sponsor: '#14b8a6',
+                    volunteer: '#f97316',
+                    other: '#94a3b8',
+                  };
+                  const counts: Record<string, number> = {};
+                  analytics.eventGuests.forEach((g) => {
+                    counts[g.category] = (counts[g.category] ?? 0) + 1;
+                  });
+                  return Object.entries(counts)
+                    .filter(([, v]) => v > 0)
+                    .map(([cat, v]) => ({
+                      label: cat.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+                      value: v,
+                      color: colorMap[cat] ?? '#94a3b8',
+                    }));
+                })()}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Table Occupancy Bar Chart (full width) */}
+        {analytics.tableSummaries.length > 0 && (
+          <Card className="mt-4 overflow-hidden hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <p className="text-sm font-semibold text-foreground mb-4">Table Occupancy</p>
+              <BarChart
+                items={analytics.tableSummaries.map((t) => ({
+                  label: t.name,
+                  value: t.assigned,
+                  maxValue: t.capacity,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
       {/* ---- Quick Actions ---- */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -584,6 +668,19 @@ export default function EventDashboard() {
               <InsightCard key={insight.id} insight={insight} />
             ))}
         </div>
+      </div>
+
+      {/* ---- Recent Activity ---- */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Clock className="w-4 h-4" />
+          Recent Activity
+        </h2>
+        <Card>
+          <CardContent className="p-5">
+            <ActivityFeed eventId={eventId!} />
+          </CardContent>
+        </Card>
       </div>
 
       {/* ---- Table Occupancy ---- */}
