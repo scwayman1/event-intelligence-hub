@@ -279,7 +279,8 @@ export default function EventCreateModal({ open, onOpenChange }: EventCreateModa
             </Button>
             <Button
               type="submit"
-              className="gap-2 px-8 bg-gradient-to-r from-primary via-primary to-purple-600 shadow-lg shadow-primary/20 hover:shadow-primary/35 transition-all duration-300"
+              disabled={!form.name.trim() || !form.type || !form.date || !form.venue.trim()}
+              className="gap-2 px-8 bg-gradient-to-r from-primary via-primary to-purple-600 shadow-lg shadow-primary/20 hover:shadow-primary/35 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Sparkles className="w-4 h-4" />
               Create Event

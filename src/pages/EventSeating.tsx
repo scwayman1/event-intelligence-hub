@@ -206,9 +206,16 @@ export default function EventSeating() {
       e.preventDefault();
       const guestId = e.dataTransfer.getData('text/plain') || dragGuestId;
       if (guestId) {
+        const table = tables.find((t) => t.id === tableId);
+        const currentTableGuests = getTableGuests(tableId);
+        if (table && currentTableGuests.length >= table.capacity) {
+          toast.error('Table is full');
+          setDragGuestId(null);
+          setDragOverTableId(null);
+          return;
+        }
         moveGuestToTable(guestId, tableId, versionId);
         const guest = guests.find((g) => g.id === guestId);
-        const table = tables.find((t) => t.id === tableId);
         if (guest && table) {
           toast.success(`${guest.displayName} assigned to ${table.name}`);
         }
@@ -216,7 +223,7 @@ export default function EventSeating() {
         setDragOverTableId(null);
       }
     },
-    [dragGuestId, moveGuestToTable, versionId, guests, tables],
+    [dragGuestId, moveGuestToTable, versionId, guests, tables, getTableGuests],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -293,6 +300,11 @@ export default function EventSeating() {
   /* ----- auto-seat handler ----- */
   const handleAutoSeat = useCallback(() => {
     if (!analytics) return;
+    if (tables.length === 0) {
+      toast.error('Add tables to your layout first');
+      setShowAutoSeatDialog(false);
+      return;
+    }
     const results = autoSeatGuests({
       unassignedGuests,
       tables: analytics.tableSummaries,
@@ -316,7 +328,7 @@ export default function EventSeating() {
     } else {
       toast.info('No guests could be seated — tables may be full');
     }
-  }, [analytics, unassignedGuests, seatingAssignments, versionId, moveGuestToTable]);
+  }, [analytics, unassignedGuests, seatingAssignments, versionId, moveGuestToTable, tables]);
 
   /* ----- clear all assignments handler ----- */
   const handleClearAll = useCallback(() => {

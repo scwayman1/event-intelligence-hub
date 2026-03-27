@@ -98,8 +98,8 @@ export default function GuestFormModal({ open, onOpenChange, eventId, guest }: G
   };
 
   const handleSave = () => {
+    if (!form.firstName.trim()) return;
     const displayName = `${form.firstName} ${form.lastName}`.trim();
-    if (!displayName) return;
 
     if (isEditing && guest) {
       updateGuest(guest.id, { ...form, displayName });
@@ -262,7 +262,7 @@ export default function GuestFormModal({ open, onOpenChange, eventId, guest }: G
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!form.firstName.trim() && !form.lastName.trim()}>
+          <Button onClick={handleSave} disabled={!form.firstName.trim()}>
             {isEditing ? 'Save Changes' : 'Add Guest'}
           </Button>
         </div>

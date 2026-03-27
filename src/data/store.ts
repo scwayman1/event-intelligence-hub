@@ -105,6 +105,7 @@ export const useEventStore = create<EventStore>()(
 }),
     {
       name: 'event-intelligence-hub-store',
+      version: 2, // bumped to clear old pre-populated layout objects
       partialize: (state) => ({
         events: state.events,
         guests: state.guests,

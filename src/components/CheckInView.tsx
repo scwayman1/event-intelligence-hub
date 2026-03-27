@@ -226,6 +226,13 @@ export default function CheckInView({ eventId, onClose }: CheckInViewProps) {
               <div className="flex flex-col items-center justify-center py-20 text-slate-500">
                 <Users className="w-12 h-12 mb-4 opacity-40" />
                 <p className="text-lg">No guests found for "{search}"</p>
+                <Button
+                  variant="outline"
+                  className="mt-4 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+                  onClick={() => setSearch('')}
+                >
+                  Clear search
+                </Button>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">

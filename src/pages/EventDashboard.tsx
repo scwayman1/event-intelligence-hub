@@ -380,7 +380,15 @@ export default function EventDashboard() {
           </div>
           <p className="text-xs text-muted-foreground/70 flex items-center gap-1.5 mt-1">
             <Clock className="w-3 h-3" />
-            Last edited by Event Manager &middot; 2 hours ago
+            Last edited by Event Manager &middot; {(() => {
+              const updated = new Date(event.updatedAt);
+              const now = new Date();
+              const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+              if (updated >= todayStart) return 'Today';
+              if (updated >= yesterdayStart) return 'Yesterday';
+              return updated.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            })()}
           </p>
         </div>
       </div>

@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useMemo, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { buildEventAnalytics } from '@/lib/event-analytics';
 import EventCreateModal from '@/components/EventCreateModal';
 import type { AppEvent, EventVersion } from '@/types/events';
@@ -201,6 +202,7 @@ export default function EventsHome() {
 
     addEvent(duplicated);
     addVersion(defaultVersion);
+    toast.success('Event duplicated');
     navigate(`/events/${newEventId}`);
   }, [addEvent, addVersion, navigate]);
 

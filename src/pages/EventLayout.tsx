@@ -308,6 +308,13 @@ export default function EventLayout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedId, layoutObjects, objects, removeLayoutObject, updateLayoutObject, handleUndo, handleRedo, handleDuplicate, pushState, snapIncrement]);
 
+  // Auto-clear selectedId when the selected object no longer exists
+  useEffect(() => {
+    if (selectedId && !objects.find((o) => o.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, objects]);
+
   const handleAddObject = (type: LayoutObjectType, preset?: ObjectPreset) => {
     pushState(objects.map((o) => ({ ...o })));
     const id = `lo-${crypto.randomUUID()}`;
@@ -526,6 +533,15 @@ export default function EventLayout() {
                 className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]"
                 style={{ opacity: 0.4 }}
               />
+            )}
+            {/* Empty canvas prompt */}
+            {objects.length === 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                <Layers className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground/60 text-center max-w-xs leading-relaxed">
+                  Add tables and objects from the toolbar above to start building your layout
+                </p>
+              </div>
             )}
             {objects.filter((o) => o.visible).sort((a, b) => a.zIndex - b.zIndex).map((obj) => {
               const isTable = ['round_table', 'rect_table'].includes(obj.type);

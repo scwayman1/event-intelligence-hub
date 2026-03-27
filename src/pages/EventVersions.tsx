@@ -62,7 +62,11 @@ export default function EventVersions() {
         versionId: newId,
       });
     });
-    toast.success('Version created');
+    if (activeObjects.length === 0) {
+      toast.success('New version created (empty layout)');
+    } else {
+      toast.success('Version created');
+    }
   }, [event, eventVersions.length, getVersionObjects, addVersion, addLayoutObject]);
 
   const handleDuplicate = useCallback((sourceVersionId: string, sourceName: string) => {
@@ -89,7 +93,11 @@ export default function EventVersions() {
         versionId: newId,
       });
     });
-    toast.success('Version duplicated');
+    if (sourceObjects.length === 0) {
+      toast.info('Version duplicated (empty layout)');
+    } else {
+      toast.success('Version duplicated');
+    }
   }, [event, getVersionObjects, addVersion, addLayoutObject]);
 
   const handleSetActive = useCallback((versionId: string) => {
