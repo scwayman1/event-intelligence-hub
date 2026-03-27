@@ -203,13 +203,10 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     setCapturing(true);
 
     const map = mapInstance.current;
-    const zoom = map.getZoom();
-    const center = map.getCenter();
 
     try {
       const canvas = map.getCanvas();
       // The Mapbox canvas renders at its own pixel ratio (set via pixelRatio option)
-      // We need to figure out the ratio between CSS pixels and actual canvas pixels
       const canvasPixelRatio = canvas.width / canvas.clientWidth;
 
       const cvs = document.createElement('canvas');
@@ -229,12 +226,27 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           cvs.height,
         );
 
-        // Use high-quality JPEG for smaller size at same visual quality
         const dataUrl = cvs.toDataURL('image/jpeg', 0.95);
-        // metersPerPixel at the CSS level — one CSS pixel on the map equals this many meters
-        const mppCss = metersPerPxAtZoom(zoom, center.lat);
-        // Report the CSS-level mpp and the full captured pixel dimensions.
-        // The layout editor will use these to compute the correct scale.
+
+        // Use map.unproject() to compute exact ground distance from Mapbox's projection.
+        // This is more reliable than the zoom-based formula which assumes 256px tiles.
+        const topLeft = map.unproject([region.x, region.y]);
+        const topRight = map.unproject([region.x + region.width, region.y]);
+
+        // Haversine distance between the two corners
+        const R = 6371000; // Earth radius in meters
+        const dLon = ((topRight.lng - topLeft.lng) * Math.PI) / 180;
+        const lat1 = (topLeft.lat * Math.PI) / 180;
+        const lat2 = (topRight.lat * Math.PI) / 180;
+        const a =
+          Math.sin(0) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const realWidthMeters = R * c;
+
+        // Meters per CSS pixel for the captured region
+        const mppCss = realWidthMeters / region.width;
+
         onCapture(dataUrl, mppCss, cvs.width, cvs.height, region.width);
       }
     } catch (err) {
@@ -252,9 +264,30 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     }
   }, []);
 
-  const mpp = metersPerPxAtZoom(currentZoom, currentLat);
-  const regionWidthM = mpp * region.width;
-  const regionHeightM = mpp * region.height;
+  // Compute live region dimensions using map.unproject for accuracy
+  const regionDims = (() => {
+    const map = mapInstance.current;
+    if (!map) {
+      // Fallback before map loads
+      const mpp = metersPerPxAtZoom(currentZoom, currentLat);
+      return { widthM: mpp * region.width, heightM: mpp * region.height };
+    }
+    const tl = map.unproject([region.x, region.y]);
+    const tr = map.unproject([region.x + region.width, region.y]);
+    const bl = map.unproject([region.x, region.y + region.height]);
+    const R = 6371000;
+    const dLonW = ((tr.lng - tl.lng) * Math.PI) / 180;
+    const lat1 = (tl.lat * Math.PI) / 180;
+    const lat2 = (tr.lat * Math.PI) / 180;
+    const aW = Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLonW / 2) ** 2;
+    const widthM = R * 2 * Math.atan2(Math.sqrt(aW), Math.sqrt(1 - aW));
+    const dLatH = ((bl.lat - tl.lat) * Math.PI) / 180;
+    const aH = Math.sin(dLatH / 2) ** 2;
+    const heightM = R * 2 * Math.atan2(Math.sqrt(aH), Math.sqrt(1 - aH));
+    return { widthM, heightM };
+  })();
+  const regionWidthM = regionDims.widthM;
+  const regionHeightM = regionDims.heightM;
 
   const fmtDist = (m: number) => formatDistance(m, unitSystem);
 
