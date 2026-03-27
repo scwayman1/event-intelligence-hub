@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Satellite, MapPin, Download, X, Loader2, Ruler, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useGoogleMaps } from '@/hooks/use-google-maps';
-import { GOOGLE_MAPS_API_KEY } from '@/config/google-maps';
+import { MAPBOX_ACCESS_TOKEN } from '@/config/mapbox';
 import { type UnitSystem, formatDistance, formatScale } from '@/lib/units';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface VenueCaptureProps {
   onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number) => void;
@@ -22,13 +23,14 @@ interface CaptureRegion {
 }
 
 export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) {
-  const { loaded, error } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<google.maps.Map | null>(null);
+  const mapInstance = useRef<mapboxgl.Map | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Array<{ place_name: string; center: [number, number] }>>([]);
   const [capturing, setCapturing] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(19);
   const [currentLat, setCurrentLat] = useState(0);
@@ -41,37 +43,63 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
 
   // Initialize map
   useEffect(() => {
-    if (!loaded || !mapRef.current || mapInstance.current) return;
+    if (!mapRef.current || mapInstance.current) return;
 
-    const map = new google.maps.Map(mapRef.current, {
-      center: { lat: 38.8977, lng: -77.0365 },
-      zoom: 19,
-      mapTypeId: 'satellite',
-      tilt: 0,
-      disableDefaultUI: true,
-      zoomControl: true,
-      fullscreenControl: false,
-      mapTypeControl: false,
-      streetViewControl: false,
-      gestureHandling: 'greedy',
-    });
+    if (!MAPBOX_ACCESS_TOKEN) {
+      setError('Mapbox access token is missing. Set VITE_MAPBOX_ACCESS_TOKEN in your .env file.');
+      return;
+    }
 
-    mapInstance.current = map;
-    setCurrentLat(38.8977);
+    mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
-    map.addListener('zoom_changed', () => {
-      setCurrentZoom(map.getZoom() || 19);
-    });
+    try {
+      const map = new mapboxgl.Map({
+        container: mapRef.current,
+        style: 'mapbox://styles/mapbox/satellite-v9',
+        center: [-77.0365, 38.8977],
+        zoom: 19,
+        maxZoom: 22,
+        minZoom: 14,
+        attributionControl: false,
+        preserveDrawingBuffer: true, // needed for canvas capture
+      });
 
-    map.addListener('center_changed', () => {
-      const center = map.getCenter();
-      if (center) setCurrentLat(center.lat());
-    });
-  }, [loaded]);
+      map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
+
+      map.on('load', () => {
+        setLoaded(true);
+        setCurrentLat(38.8977);
+      });
+
+      map.on('zoom', () => {
+        setCurrentZoom(Math.round(map.getZoom()));
+      });
+
+      map.on('move', () => {
+        const center = map.getCenter();
+        setCurrentLat(center.lat);
+      });
+
+      map.on('error', (e) => {
+        console.error('Mapbox error:', e.error);
+      });
+
+      mapInstance.current = map;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initialize Mapbox');
+    }
+
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+    };
+  }, []);
 
   // Center the region when map container is available
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !loaded) return;
     const rect = mapRef.current.getBoundingClientRect();
     const w = Math.min(600, rect.width - 80);
     const h = Math.min(400, rect.height - 40);
@@ -83,26 +111,43 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     });
   }, [loaded]);
 
-  // Initialize Places Autocomplete
-  useEffect(() => {
-    if (!loaded || !searchInputRef.current || autocompleteRef.current) return;
+  // Geocoding search via Mapbox
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-    const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {
-      types: ['establishment', 'geocode'],
-    });
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (query.length < 3) {
+      setSearchResults([]);
+      return;
+    }
 
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (place.geometry?.location && mapInstance.current) {
-        mapInstance.current.setCenter(place.geometry.location);
-        mapInstance.current.setZoom(19);
-        setPlaceName(place.name || place.formatted_address || '');
-        setCurrentLat(place.geometry.location.lat());
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_ACCESS_TOKEN}&limit=5&types=poi,address,place`
+        );
+        const data = await res.json();
+        setSearchResults(data.features || []);
+      } catch {
+        setSearchResults([]);
       }
-    });
+    }, 300);
+  }, []);
 
-    autocompleteRef.current = autocomplete;
-  }, [loaded]);
+  const handleSelectPlace = useCallback((result: { place_name: string; center: [number, number] }) => {
+    if (mapInstance.current) {
+      mapInstance.current.flyTo({
+        center: result.center,
+        zoom: 19,
+        duration: 1500,
+      });
+      setPlaceName(result.place_name.split(',')[0]);
+      setCurrentLat(result.center[1]);
+    }
+    setSearchQuery(result.place_name);
+    setSearchResults([]);
+  }, []);
 
   // Region drag/resize handlers
   const handleRegionMouseDown = useCallback((e: React.MouseEvent, type: string) => {
@@ -156,77 +201,49 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     setCapturing(true);
 
     const map = mapInstance.current;
-    const mapDiv = mapRef.current;
     const zoom = map.getZoom();
-    if (!zoom) { setCapturing(false); return; }
+    const center = map.getCenter();
 
-    // Convert region pixel bounds to lat/lng using the map projection
-    const projection = map.getProjection();
-    const bounds = map.getBounds();
+    try {
+      // Use preserveDrawingBuffer canvas capture
+      const canvas = map.getCanvas();
+      const dpr = window.devicePixelRatio || 1;
 
-    if (!projection || !bounds) {
-      setCapturing(false);
-      alert('Map not ready. Please wait and try again.');
-      return;
+      const cvs = document.createElement('canvas');
+      cvs.width = Math.round(region.width * dpr);
+      cvs.height = Math.round(region.height * dpr);
+      const ctx = cvs.getContext('2d');
+
+      if (ctx) {
+        ctx.drawImage(
+          canvas,
+          Math.round(region.x * dpr),
+          Math.round(region.y * dpr),
+          Math.round(region.width * dpr),
+          Math.round(region.height * dpr),
+          0, 0,
+          cvs.width,
+          cvs.height,
+        );
+
+        const dataUrl = cvs.toDataURL('image/png');
+        const mpp = metersPerPxAtZoom(zoom, center.lat);
+        onCapture(dataUrl, mpp, cvs.width, cvs.height);
+      }
+    } catch (err) {
+      console.error('Capture failed:', err);
+      alert('Could not capture the map. Try using the "Upload Map" option instead.');
     }
 
-    // Get the region center in pixel coordinates relative to the map div
-    const regionCenterXPx = region.x + region.width / 2;
-    const regionCenterYPx = region.y + region.height / 2;
-
-    // Convert map div pixel to world coordinates
-    const scale = Math.pow(2, zoom);
-    const nw = projection.fromLatLngToPoint(new google.maps.LatLng(bounds.getNorthEast().lat(), bounds.getSouthWest().lng()));
-    if (!nw) { setCapturing(false); return; }
-
-    const worldX = nw.x + regionCenterXPx / scale;
-    const worldY = nw.y + regionCenterYPx / scale;
-    const centerLatLng = projection.fromPointToLatLng(new google.maps.Point(worldX, worldY));
-    if (!centerLatLng) { setCapturing(false); return; }
-
-    // Static Maps: max 640x640 at scale=2 gives 1280x1280 actual pixels
-    const captureW = Math.min(640, Math.round(region.width));
-    const captureH = Math.min(640, Math.round(region.height));
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const cvs = document.createElement('canvas');
-      cvs.width = img.naturalWidth;
-      cvs.height = img.naturalHeight;
-      const ctx = cvs.getContext('2d');
-      ctx?.drawImage(img, 0, 0);
-      const dataUrl = cvs.toDataURL('image/png');
-      const mpp = metersPerPxAtZoom(zoom, centerLatLng.lat()) / 2; // scale=2
-      onCapture(dataUrl, mpp, img.naturalWidth, img.naturalHeight);
-      setCapturing(false);
-    };
-    img.onerror = () => {
-      // Fallback: try canvas capture of the visible region
-      const canvas = mapDiv.querySelector('canvas');
-      if (canvas) {
-        try {
-          const cvs = document.createElement('canvas');
-          const dpr = window.devicePixelRatio || 1;
-          cvs.width = region.width * dpr;
-          cvs.height = region.height * dpr;
-          const ctx = cvs.getContext('2d');
-          ctx?.drawImage(canvas,
-            region.x * dpr, region.y * dpr, region.width * dpr, region.height * dpr,
-            0, 0, cvs.width, cvs.height
-          );
-          const dataUrl = cvs.toDataURL('image/png');
-          const mpp = metersPerPxAtZoom(zoom, centerLatLng.lat());
-          onCapture(dataUrl, mpp, cvs.width, cvs.height);
-          setCapturing(false);
-          return;
-        } catch { /* tainted */ }
-      }
-      setCapturing(false);
-      alert('Could not capture the map. Try using the "Upload Map" option instead.');
-    };
-    img.src = `https://maps.googleapis.com/maps/api/staticmap?center=${centerLatLng.lat()},${centerLatLng.lng()}&zoom=${zoom}&size=${captureW}x${captureH}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+    setCapturing(false);
   }, [onCapture, region]);
+
+  const handleZoom = useCallback((delta: number) => {
+    if (mapInstance.current) {
+      const current = mapInstance.current.getZoom();
+      mapInstance.current.zoomTo(Math.max(14, Math.min(22, current + delta)), { duration: 300 });
+    }
+  }, []);
 
   const mpp = metersPerPxAtZoom(currentZoom, currentLat);
   const regionWidthM = mpp * region.width;
@@ -238,7 +255,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     return (
       <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
         <div className="bg-card border border-border rounded-lg p-6 max-w-md text-center space-y-3">
-          <p className="text-destructive font-medium">Failed to load Google Maps</p>
+          <p className="text-destructive font-medium">Failed to load map</p>
           <p className="text-sm text-muted-foreground">{error}</p>
           <Button variant="outline" onClick={onClose}>Close</Button>
         </div>
@@ -297,11 +314,11 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
         )}
 
         <div className="flex items-center gap-1 mr-2">
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { if (mapInstance.current) { const z = (mapInstance.current.getZoom() || 19) - 1; mapInstance.current.setZoom(Math.max(z, 15)); } }}>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleZoom(-1)}>
             <ZoomOut className="w-3.5 h-3.5" />
           </Button>
           <span className="text-xs font-mono text-muted-foreground w-8 text-center">{currentZoom}</span>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { if (mapInstance.current) { const z = (mapInstance.current.getZoom() || 19) + 1; mapInstance.current.setZoom(Math.min(z, 22)); } }}>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleZoom(1)}>
             <ZoomIn className="w-3.5 h-3.5" />
           </Button>
         </div>
@@ -331,8 +348,23 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
             placeholder="Search venue address..."
             className="w-full pl-10 pr-4 py-2 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
           />
+          {/* Search results dropdown */}
+          {searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg z-20 overflow-hidden">
+              {searchResults.map((result, i) => (
+                <button
+                  key={i}
+                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/50 last:border-0 flex items-start gap-2"
+                  onClick={() => handleSelectPlace(result)}
+                >
+                  <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                  <span className="text-foreground">{result.place_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -342,7 +374,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">Loading Google Maps...</span>
+              <span className="text-sm">Loading satellite imagery...</span>
             </div>
           </div>
         )}
