@@ -2,12 +2,35 @@ import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Save } from 'lucide-react';
+import { Save, UserPlus, Users, Shield, Eye, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { InviteCollaboratorDialog } from '@/components/InviteCollaboratorDialog';
+import type { CollaboratorRole } from '@/types/events';
+
+const roleBadgeColors: Record<CollaboratorRole, string> = {
+  owner: 'bg-primary/15 text-primary border-primary/30',
+  coordinator: 'bg-accent/15 text-accent border-accent/30',
+  'co-host': 'bg-info/15 text-info border-info/30',
+  viewer: 'bg-muted text-muted-foreground border-border',
+};
+
+const roleLabels: Record<CollaboratorRole, string> = {
+  owner: 'Owner',
+  coordinator: 'Coordinator',
+  'co-host': 'Co-host',
+  viewer: 'Viewer',
+};
 
 export default function EventSettings() {
   const { eventId } = useParams();
   const events = useEventStore((s) => s.events);
+  const userProfile = useEventStore((s) => s.userProfile);
+  const getEventCollaborators = useEventStore((s) => s.getEventCollaborators);
+  const removeCollaborator = useEventStore((s) => s.removeCollaborator);
   const event = events.find((e) => e.id === eventId);
+  const collaborators = eventId ? getEventCollaborators(eventId) : [];
+
+  const [showInvite, setShowInvite] = useState(false);
 
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
@@ -51,10 +74,68 @@ export default function EventSettings() {
           </div>
         </section>
 
-        {/* Permissions placeholder */}
+        {/* Team & Collaborators */}
         <section className="glass-panel p-6">
-          <h3 className="text-sm font-semibold text-foreground mb-2">Permissions</h3>
-          <p className="text-sm text-muted-foreground">Team permissions and role management will be available with backend integration.</p>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-foreground">Team & Collaborators</h3>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowInvite(true)}>
+              <UserPlus className="w-3.5 h-3.5" />
+              Invite
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {/* Owner */}
+            {userProfile && (
+              <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-primary">
+                    {userProfile.firstName.charAt(0)}{userProfile.lastName.charAt(0)}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{userProfile.firstName} {userProfile.lastName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{userProfile.email}</p>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${roleBadgeColors.owner}`}>
+                  Owner
+                </span>
+              </div>
+            )}
+
+            {/* Collaborators */}
+            {collaborators.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-muted-foreground">
+                    {c.name.split(' ').map((n) => n.charAt(0)).join('').slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{c.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{c.email}</p>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${roleBadgeColors[c.role]}`}>
+                  {roleLabels[c.role]}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.status === 'pending' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}`}>
+                  {c.status}
+                </span>
+                <button
+                  onClick={() => removeCollaborator(c.id)}
+                  className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+
+            {collaborators.length === 0 && (
+              <p className="text-sm text-muted-foreground py-2">
+                No collaborators yet. Invite coordinators, co-hosts, or viewers to help plan this event.
+              </p>
+            )}
+          </div>
         </section>
 
         {/* Export */}
@@ -79,6 +160,12 @@ export default function EventSettings() {
           <p className="text-sm text-muted-foreground">Custom logos, colors, and branding for printed materials and exports will be available soon.</p>
         </section>
       </div>
+
+      <InviteCollaboratorDialog
+        open={showInvite}
+        onOpenChange={setShowInvite}
+        eventId={eventId!}
+      />
     </div>
   );
 }

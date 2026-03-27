@@ -5,7 +5,19 @@ export type GuestCategory = 'donor' | 'scholarship_recipient' | 'family' | 'boar
 export type LayoutObjectType = 'tent' | 'round_table' | 'rect_table' | 'chair' | 'stage' | 'podium' | 'checkin' | 'photo_area' | 'registration' | 'vip_area' | 'aisle' | 'dance_floor' | 'catering' | 'bar' | 'signage' | 'custom_zone';
 export type VersionStatus = 'draft' | 'active' | 'archived' | 'approved';
 
-/** The logged-in user's profile — required before they can use the app */
+/** A stored user account */
+export interface UserAccount {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  passwordHash: string; // simple hash for demo — not production-grade
+  role: string;
+  avatarUrl?: string;
+  createdAt: string;
+}
+
+/** The logged-in user's profile (no password) */
 export interface UserProfile {
   id: string;
   firstName: string;
@@ -14,6 +26,20 @@ export interface UserProfile {
   role: string;
   avatarUrl?: string;
   createdAt: string;
+}
+
+export type CollaboratorRole = 'owner' | 'coordinator' | 'co-host' | 'viewer';
+
+/** A collaborator invited to an event */
+export interface EventCollaborator {
+  id: string;
+  eventId: string;
+  email: string;
+  name: string;
+  role: CollaboratorRole;
+  invitedBy: string; // userId
+  invitedAt: string;
+  status: 'pending' | 'accepted';
 }
 
 /** An organization / school instance — all data is scoped to one */

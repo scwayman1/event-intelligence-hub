@@ -1,12 +1,33 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile } from '@/types/events';
+import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 
+// Simple hash for demo purposes — NOT cryptographically secure
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
 interface EventStore {
-  // User profile
+  // Auth
+  accounts: UserAccount[];
   userProfile: UserProfile | null;
   setUserProfile: (profile: UserProfile) => void;
+  signUp: (firstName: string, lastName: string, email: string, password: string, role: string) => { success: boolean; error?: string };
+  signIn: (email: string, password: string) => { success: boolean; error?: string };
+  signOut: () => void;
+
+  // Collaborators
+  collaborators: EventCollaborator[];
+  addCollaborator: (collab: EventCollaborator) => void;
+  removeCollaborator: (id: string) => void;
+  getEventCollaborators: (eventId: string) => EventCollaborator[];
 
   // Organization state
   organizations: Organization[];
@@ -77,8 +98,50 @@ interface EventStore {
 export const useEventStore = create<EventStore>()(
   persist(
     (set, get) => ({
+  accounts: [],
   userProfile: null,
   setUserProfile: (profile) => set({ userProfile: profile }),
+
+  signUp: (firstName, lastName, email, password, role) => {
+    const state = get();
+    if (state.accounts.some((a) => a.email.toLowerCase() === email.toLowerCase())) {
+      return { success: false, error: 'An account with this email already exists. Please sign in.' };
+    }
+    const id = `user-${crypto.randomUUID().slice(0, 8)}`;
+    const account: UserAccount = {
+      id,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim().toLowerCase(),
+      passwordHash: simpleHash(password),
+      role,
+      createdAt: new Date().toISOString(),
+    };
+    const profile: UserProfile = { id, firstName: account.firstName, lastName: account.lastName, email: account.email, role, createdAt: account.createdAt };
+    set({ accounts: [...state.accounts, account], userProfile: profile });
+    return { success: true };
+  },
+
+  signIn: (email, password) => {
+    const state = get();
+    const account = state.accounts.find((a) => a.email === email.trim().toLowerCase());
+    if (!account) {
+      return { success: false, error: 'No account found with this email.' };
+    }
+    if (account.passwordHash !== simpleHash(password)) {
+      return { success: false, error: 'Incorrect password.' };
+    }
+    const profile: UserProfile = { id: account.id, firstName: account.firstName, lastName: account.lastName, email: account.email, role: account.role, createdAt: account.createdAt };
+    set({ userProfile: profile });
+    return { success: true };
+  },
+
+  signOut: () => set({ userProfile: null }),
+
+  collaborators: [],
+  addCollaborator: (collab) => set((s) => ({ collaborators: [...s.collaborators, collab] })),
+  removeCollaborator: (id) => set((s) => ({ collaborators: s.collaborators.filter((c) => c.id !== id) })),
+  getEventCollaborators: (eventId) => get().collaborators.filter((c) => c.eventId === eventId),
 
   organizations: [],
   activeOrgId: null,
@@ -162,9 +225,13 @@ export const useEventStore = create<EventStore>()(
   })),
 
   resetStore: () => {
+    // Keep accounts so users can re-sign-in, but clear session and data
+    const accounts = get().accounts;
     localStorage.removeItem('event-intelligence-hub-store');
     set({
+      accounts,
       userProfile: null,
+      collaborators: [],
       organizations: [],
       activeOrgId: null,
       events: [],
@@ -180,7 +247,9 @@ export const useEventStore = create<EventStore>()(
     {
       name: 'event-intelligence-hub-store',
       partialize: (state) => ({
+        accounts: state.accounts,
         userProfile: state.userProfile,
+        collaborators: state.collaborators,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         organizations: state.organizations,
         activeOrgId: state.activeOrgId,
