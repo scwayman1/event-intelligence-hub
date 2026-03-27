@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useEventStore } from '@/data/store';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -15,6 +16,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Trash2,
   Users,
   Utensils,
   Wand2,
@@ -30,10 +32,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import { autoSeatGuests } from '@/lib/auto-seat';
 import { EmptyState } from '@/components/EmptyState';
 import { EventNotFound } from '@/components/EventNotFound';
+import { PrintSeatingChart } from '@/components/PrintSeatingChart';
 import type { Guest, GuestCategory } from '@/types/events';
 
 const categoryColors: Record<GuestCategory, string> = {
@@ -119,6 +133,9 @@ export default function EventSeating() {
   const [dragGuestId, setDragGuestId] = useState<string | null>(null);
   const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
   const [collapsedTables, setCollapsedTables] = useState<Set<string>>(new Set());
+  const [showAutoSeatDialog, setShowAutoSeatDialog] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [autoSeatResult, setAutoSeatResult] = useState<string | null>(null);
 
   const event = events.find((item) => item.id === eventId);
 
@@ -265,6 +282,39 @@ export default function EventSeating() {
     }
   }, [tables, assignments, unassignedGuests, moveGuestToTable, versionId]);
 
+  /* ----- auto-seat handler ----- */
+  const handleAutoSeat = useCallback(() => {
+    if (!analytics) return;
+    const results = autoSeatGuests({
+      unassignedGuests,
+      tables: analytics.tableSummaries,
+      existingAssignments: seatingAssignments,
+      versionId,
+    });
+
+    for (const { guestId, tableId } of results) {
+      moveGuestToTable(guestId, tableId, versionId);
+    }
+
+    const tableCount = new Set(results.map((r) => r.tableId)).size;
+    setAutoSeatResult(
+      results.length > 0
+        ? `Seated ${results.length} guest${results.length !== 1 ? 's' : ''} across ${tableCount} table${tableCount !== 1 ? 's' : ''}`
+        : 'No guests could be seated (tables may be full)',
+    );
+    setShowAutoSeatDialog(false);
+  }, [analytics, unassignedGuests, seatingAssignments, versionId, moveGuestToTable]);
+
+  /* ----- clear all assignments handler ----- */
+  const handleClearAll = useCallback(() => {
+    const versionAssignments = seatingAssignments.filter((a) => a.versionId === versionId);
+    for (const assignment of versionAssignments) {
+      useEventStore.getState().removeSeatingAssignment(assignment.id);
+    }
+    setShowClearDialog(false);
+    setAutoSeatResult(`Cleared ${versionAssignments.length} seating assignment${versionAssignments.length !== 1 ? 's' : ''}`);
+  }, [seatingAssignments, versionId]);
+
   /* ----- helpers ----- */
   const tableTypeIcon = (type: string) => {
     if (type === 'round_table') return <Circle className="w-4 h-4 text-primary/70" />;
@@ -312,6 +362,28 @@ export default function EventSeating() {
                 Rules
                 {showRules ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </Button>
+              {assignedCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowClearDialog(true)}
+                  className="gap-2 text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear All
+                </Button>
+              )}
+              {unassignedCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAutoSeatDialog(true)}
+                  className="gap-2"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  Auto-Seat ({unassignedCount})
+                </Button>
+              )}
               {unassignedCount > 0 && (
                 <Button size="sm" onClick={handleQuickAssign} className="gap-2">
                   <Wand2 className="w-3.5 h-3.5" />
@@ -822,7 +894,88 @@ export default function EventSeating() {
             </ScrollArea>
           </div>
         </div>
+
+        {/* Result toast/banner */}
+        {autoSeatResult && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-300">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-3 shadow-lg">
+              <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
+                <Check className="w-4 h-4 text-success" />
+              </div>
+              <p className="text-sm font-medium text-foreground">{autoSeatResult}</p>
+              <button
+                onClick={() => setAutoSeatResult(null)}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Auto-Seat confirmation dialog */}
+      <AlertDialog open={showAutoSeatDialog} onOpenChange={setShowAutoSeatDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-primary" />
+              Auto-Seat Guests
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This will intelligently assign <strong className="text-foreground">{unassignedCount} unassigned guest{unassignedCount !== 1 ? 's' : ''}</strong> to
+                  available tables using the following priorities:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-xs">
+                  <li>Keep households together at the same table</li>
+                  <li>Seat VIP and board members at front-zone tables</li>
+                  <li>Seat guests with accessibility needs at front tables</li>
+                  <li>Mix guest categories for table diversity</li>
+                  <li>Fill tables evenly across the venue</li>
+                </ul>
+                <p className="text-xs">
+                  Existing assignments will not be changed. You can undo individual assignments afterwards.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAutoSeat} className="gap-2">
+              <Sparkles className="w-3.5 h-3.5" />
+              Auto-Seat {unassignedCount} Guest{unassignedCount !== 1 ? 's' : ''}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear All confirmation dialog */}
+      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-destructive" />
+              Clear All Assignments
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all <strong className="text-foreground">{assignedCount} seating assignment{assignedCount !== 1 ? 's' : ''}</strong> from
+              the current version. All guests will become unassigned. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   );
 }
