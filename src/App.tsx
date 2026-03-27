@@ -13,31 +13,34 @@ import EventVersions from "@/pages/EventVersions";
 import EventIntegrations from "@/pages/EventIntegrations";
 import EventSettings from "@/pages/EventSettings";
 import NotFound from "./pages/NotFound";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<EventsHome />} />
-            <Route path="/events/:eventId" element={<EventDashboard />} />
-            <Route path="/events/:eventId/layout" element={<EventLayout />} />
-            <Route path="/events/:eventId/guests" element={<EventGuests />} />
-            <Route path="/events/:eventId/seating" element={<EventSeating />} />
-            <Route path="/events/:eventId/versions" element={<EventVersions />} />
-            <Route path="/events/:eventId/integrations" element={<EventIntegrations />} />
-            <Route path="/events/:eventId/settings" element={<EventSettings />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
+              <Route path="/events/:eventId" element={<ErrorBoundary><EventDashboard /></ErrorBoundary>} />
+              <Route path="/events/:eventId/layout" element={<ErrorBoundary><EventLayout /></ErrorBoundary>} />
+              <Route path="/events/:eventId/guests" element={<ErrorBoundary><EventGuests /></ErrorBoundary>} />
+              <Route path="/events/:eventId/seating" element={<ErrorBoundary><EventSeating /></ErrorBoundary>} />
+              <Route path="/events/:eventId/versions" element={<ErrorBoundary><EventVersions /></ErrorBoundary>} />
+              <Route path="/events/:eventId/integrations" element={<ErrorBoundary><EventIntegrations /></ErrorBoundary>} />
+              <Route path="/events/:eventId/settings" element={<ErrorBoundary><EventSettings /></ErrorBoundary>} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

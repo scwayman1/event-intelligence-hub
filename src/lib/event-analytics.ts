@@ -84,7 +84,6 @@ export function buildEventAnalytics(params: {
   const rules = seatingRules.filter((rule) => rule.eventId === event.id);
 
   const tables = versionObjects.filter((object) => TABLE_TYPES.has(object.type));
-  const tableMap = new Map(tables.map((table) => [table.id, table]));
   const guestMap = new Map(eventGuests.map((guest) => [guest.id, guest]));
   const guestsByTable = new Map<string, Guest[]>();
 
@@ -96,9 +95,7 @@ export function buildEventAnalytics(params: {
     guestsByTable.set(assignment.tableId, current);
   });
 
-  const xValues = tables.map((table) => table.x);
   const yValues = tables.map((table) => table.y);
-  const avgY = average(yValues);
   const minY = Math.min(...yValues, 0);
   const maxY = Math.max(...yValues, 0);
   const verticalSpan = Math.max(maxY - minY, 1);

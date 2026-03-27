@@ -171,7 +171,7 @@ export default function EventLayout() {
   }, [selectedId, layoutObjects, removeLayoutObject]);
 
   const handleAddObject = (type: LayoutObjectType, preset?: ObjectPreset) => {
-    const id = `lo-${Date.now()}`;
+    const id = `lo-${crypto.randomUUID()}`;
 
     const fallbackSizes: Partial<Record<LayoutObjectType, { w: number; h: number }>> = {
       round_table: { w: 80, h: 80 },
