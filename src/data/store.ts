@@ -6,7 +6,7 @@ import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAss
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
 // ──────────────────────────────────────────────
-const STORE_VERSION = 4;
+const STORE_VERSION = 5;
 
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
@@ -84,6 +84,10 @@ interface EventStore extends PersistedState {
   addSeatingAssignment: (assignment: SeatingAssignment) => void;
   removeSeatingAssignment: (id: string) => void;
   moveGuestToTable: (guestId: string, tableId: string, versionId: string) => void;
+  assignGuestToSeat: (guestId: string, tableId: string, seatNumber: number, versionId: string) => void;
+  unassignGuestFromSeat: (guestId: string, versionId: string) => void;
+  autoAssignByRelationshipGroup: (anchorGuestId: string, tableId: string, versionId: string) => string[];
+  getTableSeatAssignments: (tableId: string, versionId: string) => SeatingAssignment[];
 
   // Seating rule actions
   addSeatingRule: (rule: SeatingRule) => void;
@@ -210,6 +214,81 @@ export const useEventStore = create<EventStore>()(
     const newAssignment: SeatingAssignment = { id: `sa-${crypto.randomUUID()}`, versionId, guestId, tableId };
     return { seatingAssignments: [...filtered, newAssignment] };
   }),
+
+  assignGuestToSeat: (guestId, tableId, seatNumber, versionId) => set((s) => {
+    // Remove any existing assignment for this guest in this version
+    // and remove any existing assignment for the target seat
+    const filtered = s.seatingAssignments.filter((a) =>
+      !(a.guestId === guestId && a.versionId === versionId) &&
+      !(a.tableId === tableId && a.seatNumber === seatNumber && a.versionId === versionId)
+    );
+    const newAssignment: SeatingAssignment = { id: `sa-${crypto.randomUUID()}`, versionId, guestId, tableId, seatNumber };
+    return { seatingAssignments: [...filtered, newAssignment] };
+  }),
+
+  unassignGuestFromSeat: (guestId, versionId) => set((s) => ({
+    seatingAssignments: s.seatingAssignments.filter((a) => !(a.guestId === guestId && a.versionId === versionId)),
+  })),
+
+  autoAssignByRelationshipGroup: (anchorGuestId, tableId, versionId) => {
+    const state = get();
+
+    // Find all relationship groups the anchor guest belongs to
+    const anchorMemberships = state.relationshipMemberships.filter((m) => m.guestId === anchorGuestId);
+    const anchorGroupIds = new Set(anchorMemberships.map((m) => m.groupId));
+
+    // Collect all guest IDs across those groups
+    const groupMemberIds = new Set<string>();
+    state.relationshipMemberships
+      .filter((m) => anchorGroupIds.has(m.groupId))
+      .forEach((m) => groupMemberIds.add(m.guestId));
+
+    // Find unassigned members (no assignment in this version)
+    const assignedGuestIds = new Set(
+      state.seatingAssignments
+        .filter((a) => a.versionId === versionId)
+        .map((a) => a.guestId)
+    );
+    const unassignedMemberIds = [...groupMemberIds].filter((id) => !assignedGuestIds.has(id));
+
+    if (unassignedMemberIds.length === 0) return [];
+
+    // Get the table's capacity and currently occupied seat numbers at this table in this version
+    const tableObj = state.layoutObjects.find((o) => o.id === tableId && o.versionId === versionId);
+    const capacity = tableObj?.capacity ?? 0;
+
+    const occupiedSeats = new Set(
+      state.seatingAssignments
+        .filter((a) => a.tableId === tableId && a.versionId === versionId && a.seatNumber !== undefined)
+        .map((a) => a.seatNumber as number)
+    );
+
+    // Build list of open seat numbers (1-based up to capacity)
+    const openSeats: number[] = [];
+    for (let seat = 1; seat <= capacity; seat++) {
+      if (!occupiedSeats.has(seat)) openSeats.push(seat);
+    }
+
+    // Pair unassigned members with open seats
+    const toAssign = unassignedMemberIds.slice(0, openSeats.length);
+    const newAssignments: SeatingAssignment[] = toAssign.map((guestId, idx) => ({
+      id: `sa-${crypto.randomUUID()}`,
+      versionId,
+      guestId,
+      tableId,
+      seatNumber: openSeats[idx],
+    }));
+
+    set((s) => ({ seatingAssignments: [...s.seatingAssignments, ...newAssignments] }));
+
+    return toAssign;
+  },
+
+  getTableSeatAssignments: (tableId, versionId) =>
+    get()
+      .seatingAssignments
+      .filter((a) => a.tableId === tableId && a.versionId === versionId)
+      .sort((a, b) => (a.seatNumber ?? 0) - (b.seatNumber ?? 0)),
 
   addSeatingRule: (rule) => set((s) => ({ seatingRules: [...s.seatingRules, rule] })),
   updateSeatingRule: (id, updates) => set((s) => ({ seatingRules: s.seatingRules.map((r) => r.id === id ? { ...r, ...updates } : r) })),
