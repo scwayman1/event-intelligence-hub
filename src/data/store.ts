@@ -3,42 +3,54 @@ import { persist } from 'zustand/middleware';
 import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 
+// ──────────────────────────────────────────────
+// Store version — bump this when adding persisted fields
+// ──────────────────────────────────────────────
+const STORE_VERSION = 4;
+
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
+    hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
 }
 
-interface EventStore {
-  // Auth
-  accounts: UserAccount[];
-  userProfile: UserProfile | null;
+// Default values for every persisted field — used for initial state
+// AND as fallback defaults during migration so new fields never go missing
+const PERSISTED_DEFAULTS = {
+  accounts: [] as UserAccount[],
+  userProfile: null as UserProfile | null,
+  collaborators: [] as EventCollaborator[],
+  hasCompletedOnboarding: false,
+  organizations: [] as Organization[],
+  activeOrgId: null as string | null,
+  events: [] as AppEvent[],
+  guests: [] as Guest[],
+  versions: [] as EventVersion[],
+  layoutObjects: [] as LayoutObject[],
+  seatingAssignments: [] as SeatingAssignment[],
+  seatingRules: [] as SeatingRule[],
+  relationshipGroups: [] as RelationshipGroup[],
+  relationshipMemberships: [] as RelationshipMembership[],
+};
+
+type PersistedState = typeof PERSISTED_DEFAULTS;
+
+interface EventStore extends PersistedState {
+  // Auth actions
   setUserProfile: (profile: UserProfile) => void;
   signUp: (firstName: string, lastName: string, email: string, password: string, role: string) => { success: boolean; error?: string };
   signIn: (email: string, password: string) => { success: boolean; error?: string };
   signOut: () => void;
 
   // Collaborators
-  collaborators: EventCollaborator[];
   addCollaborator: (collab: EventCollaborator) => void;
   removeCollaborator: (id: string) => void;
   getEventCollaborators: (eventId: string) => EventCollaborator[];
-
-  // Organization state
-  organizations: Organization[];
-  activeOrgId: string | null;
-
-  events: AppEvent[];
-  guests: Guest[];
-  versions: EventVersion[];
-  layoutObjects: LayoutObject[];
-  seatingAssignments: SeatingAssignment[];
-  seatingRules: SeatingRule[];
 
   // Organization actions
   setActiveOrg: (orgId: string) => void;
@@ -79,8 +91,6 @@ interface EventStore {
   removeSeatingRule: (id: string) => void;
 
   // Relationship Engine
-  relationshipGroups: RelationshipGroup[];
-  relationshipMemberships: RelationshipMembership[];
   addRelationshipGroup: (group: RelationshipGroup) => void;
   updateRelationshipGroup: (id: string, updates: Partial<RelationshipGroup>) => void;
   removeRelationshipGroup: (id: string) => void;
@@ -99,7 +109,6 @@ interface EventStore {
   getTableGuests: (tableId: string, versionId: string) => Guest[];
 
   // Onboarding
-  hasCompletedOnboarding: boolean;
   setOnboardingComplete: () => void;
   loadSampleData: () => void;
 
@@ -110,8 +119,10 @@ interface EventStore {
 export const useEventStore = create<EventStore>()(
   persist(
     (set, get) => ({
-  accounts: [],
-  userProfile: null,
+  // ── Initial state (spread from defaults) ──
+  ...PERSISTED_DEFAULTS,
+
+  // ── Auth ──
   setUserProfile: (profile) => set({ userProfile: profile }),
 
   signUp: (firstName, lastName, email, password, role) => {
@@ -150,33 +161,19 @@ export const useEventStore = create<EventStore>()(
 
   signOut: () => set({ userProfile: null }),
 
-  collaborators: [],
+  // ── Collaborators ──
   addCollaborator: (collab) => set((s) => ({ collaborators: [...s.collaborators, collab] })),
   removeCollaborator: (id) => set((s) => ({ collaborators: s.collaborators.filter((c) => c.id !== id) })),
   getEventCollaborators: (eventId) => get().collaborators.filter((c) => c.eventId === eventId),
 
-  organizations: [],
-  activeOrgId: null,
-
-  events: [],
-  guests: [],
-  versions: [],
-  layoutObjects: [],
-  seatingAssignments: [],
-  seatingRules: [],
-  relationshipGroups: [],
-  relationshipMemberships: [],
-
-  hasCompletedOnboarding: false,
-
-  // Organization actions
+  // ── Organization actions ──
   setActiveOrg: (orgId) => set({ activeOrgId: orgId }),
   addOrganization: (org) => set((s) => ({ organizations: [...s.organizations, org], hasCompletedOnboarding: true })),
   updateOrganization: (id, updates) => set((s) => ({
     organizations: s.organizations.map((o) => o.id === id ? { ...o, ...updates } : o),
   })),
 
-  // Org-scoped selectors
+  // ── Org-scoped selectors ──
   getActiveOrg: () => get().organizations.find((o) => o.id === get().activeOrgId),
   getOrgEvents: () => {
     const orgId = get().activeOrgId;
@@ -187,12 +184,17 @@ export const useEventStore = create<EventStore>()(
     return orgId ? get().guests.filter((g) => g.orgId === orgId) : get().guests;
   },
 
+  // ── CRUD ──
   addEvent: (event) => set((s) => ({ events: [...s.events, event] })),
   updateEvent: (id, updates) => set((s) => ({ events: s.events.map((e) => e.id === id ? { ...e, ...updates } : e) })),
 
   addGuest: (guest) => set((s) => ({ guests: [...s.guests, guest] })),
   updateGuest: (id, updates) => set((s) => ({ guests: s.guests.map((g) => g.id === id ? { ...g, ...updates } : g) })),
-  removeGuest: (id) => set((s) => ({ guests: s.guests.filter((g) => g.id !== id) })),
+  removeGuest: (id) => set((s) => ({
+    guests: s.guests.filter((g) => g.id !== id),
+    // Also clean up relationship memberships for this guest
+    relationshipMemberships: s.relationshipMemberships.filter((m) => m.guestId !== id),
+  })),
 
   addLayoutObject: (obj) => set((s) => ({ layoutObjects: [...s.layoutObjects, obj] })),
   updateLayoutObject: (id, updates) => set((s) => ({ layoutObjects: s.layoutObjects.map((o) => o.id === id ? { ...o, ...updates } : o) })),
@@ -213,7 +215,7 @@ export const useEventStore = create<EventStore>()(
   updateSeatingRule: (id, updates) => set((s) => ({ seatingRules: s.seatingRules.map((r) => r.id === id ? { ...r, ...updates } : r) })),
   removeSeatingRule: (id) => set((s) => ({ seatingRules: s.seatingRules.filter((r) => r.id !== id) })),
 
-  // Relationship Engine
+  // ── Relationship Engine ──
   addRelationshipGroup: (group) => set((s) => ({ relationshipGroups: [...s.relationshipGroups, group] })),
   updateRelationshipGroup: (id, updates) => set((s) => ({ relationshipGroups: s.relationshipGroups.map((g) => g.id === id ? { ...g, ...updates } : g) })),
   removeRelationshipGroup: (id) => set((s) => ({
@@ -226,14 +228,15 @@ export const useEventStore = create<EventStore>()(
   getGroupMembers: (groupId) => {
     const memberships = get().relationshipMemberships.filter((m) => m.groupId === groupId);
     const guests = get().guests;
-    return memberships.map((m) => ({ membership: m, guest: guests.find((g) => g.id === m.guestId)! })).filter((m) => m.guest);
+    return memberships.map((m) => ({ membership: m, guest: guests.find((g) => g.id === m.guestId)! })).filter((entry) => entry.guest);
   },
   getGuestRelationships: (guestId) => {
     const memberships = get().relationshipMemberships.filter((m) => m.guestId === guestId);
     const groups = get().relationshipGroups;
-    return memberships.map((m) => ({ group: groups.find((g) => g.id === m.groupId)!, membership: m })).filter((r) => r.group);
+    return memberships.map((m) => ({ group: groups.find((g) => g.id === m.groupId)!, membership: m })).filter((entry) => entry.group);
   },
 
+  // ── Selectors ──
   getEventGuests: (eventId) => get().guests.filter((g) => g.eventId === eventId),
   getEventVersions: (eventId) => get().versions.filter((v) => v.eventId === eventId),
   getVersionObjects: (versionId) => get().layoutObjects.filter((o) => o.versionId === versionId),
@@ -247,58 +250,76 @@ export const useEventStore = create<EventStore>()(
 
   setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
 
-  loadSampleData: () => set((s) => ({
-    hasCompletedOnboarding: true,
-    organizations: [...s.organizations, ...mockOrganizations],
-    activeOrgId: mockOrganizations[0]?.id ?? s.activeOrgId,
-    events: [...s.events, ...mockEvents],
-    guests: [...s.guests, ...mockGuests],
-    versions: [...s.versions, ...mockVersions],
-    layoutObjects: [...s.layoutObjects, ...mockLayoutObjects],
-    seatingAssignments: [...s.seatingAssignments, ...mockSeatingAssignments],
-    seatingRules: [...s.seatingRules, ...mockSeatingRules],
-  })),
+  // Load sample data — idempotent (checks for existing IDs before adding)
+  loadSampleData: () => set((s) => {
+    const existingEventIds = new Set(s.events.map((e) => e.id));
+    const existingGuestIds = new Set(s.guests.map((g) => g.id));
+    const existingOrgIds = new Set(s.organizations.map((o) => o.id));
+    const existingVersionIds = new Set(s.versions.map((v) => v.id));
+
+    return {
+      hasCompletedOnboarding: true,
+      organizations: [...s.organizations, ...mockOrganizations.filter((o) => !existingOrgIds.has(o.id))],
+      activeOrgId: s.activeOrgId ?? mockOrganizations[0]?.id ?? null,
+      events: [...s.events, ...mockEvents.filter((e) => !existingEventIds.has(e.id))],
+      guests: [...s.guests, ...mockGuests.filter((g) => !existingGuestIds.has(g.id))],
+      versions: [...s.versions, ...mockVersions.filter((v) => !existingVersionIds.has(v.id))],
+      layoutObjects: [...s.layoutObjects, ...mockLayoutObjects.filter((o) => !s.layoutObjects.some((x) => x.id === o.id))],
+      seatingAssignments: [...s.seatingAssignments, ...mockSeatingAssignments.filter((a) => !s.seatingAssignments.some((x) => x.id === a.id))],
+      seatingRules: [...s.seatingRules, ...mockSeatingRules.filter((r) => !s.seatingRules.some((x) => x.id === r.id))],
+    };
+  }),
 
   resetStore: () => {
     // Keep accounts so users can re-sign-in, but clear session and data
     const accounts = get().accounts;
-    localStorage.removeItem('event-intelligence-hub-store');
-    set({
-      accounts,
-      userProfile: null,
-      collaborators: [],
-      relationshipGroups: [],
-      relationshipMemberships: [],
-      organizations: [],
-      activeOrgId: null,
-      events: [],
-      guests: [],
-      versions: [],
-      layoutObjects: [],
-      seatingAssignments: [],
-      seatingRules: [],
-      hasCompletedOnboarding: false,
-    });
+    set({ ...PERSISTED_DEFAULTS, accounts });
   },
 }),
     {
       name: 'event-intelligence-hub-store',
-      partialize: (state) => ({
-        accounts: state.accounts,
-        userProfile: state.userProfile,
-        collaborators: state.collaborators,
-        hasCompletedOnboarding: state.hasCompletedOnboarding,
-        organizations: state.organizations,
-        activeOrgId: state.activeOrgId,
-        events: state.events,
-        guests: state.guests,
-        versions: state.versions,
-        layoutObjects: state.layoutObjects,
-        seatingAssignments: state.seatingAssignments,
-        seatingRules: state.seatingRules,
-        relationshipGroups: state.relationshipGroups,
-        relationshipMemberships: state.relationshipMemberships,
-      }),
+      version: STORE_VERSION,
+
+      // Migrate old store versions to current schema.
+      // The key insight: merge saved state ON TOP of defaults so new fields
+      // always have valid initial values and existing data is preserved.
+      migrate: (persisted: unknown, version: number): PersistedState => {
+        const saved = persisted as Partial<PersistedState> | null;
+        if (!saved) return { ...PERSISTED_DEFAULTS };
+
+        // For any version → current: merge saved data onto defaults.
+        // This ensures new fields (added in newer versions) get their
+        // default values, while all existing user data is kept.
+        const migrated: PersistedState = { ...PERSISTED_DEFAULTS };
+        for (const key of Object.keys(PERSISTED_DEFAULTS) as Array<keyof PersistedState>) {
+          if (key in saved && saved[key] !== undefined) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (migrated as any)[key] = saved[key];
+          }
+        }
+
+        return migrated;
+      },
+
+      // Only persist data fields (not functions/selectors)
+      partialize: (state): PersistedState => {
+        const result = {} as PersistedState;
+        for (const key of Object.keys(PERSISTED_DEFAULTS) as Array<keyof PersistedState>) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (result as any)[key] = state[key];
+        }
+        return result;
+      },
+
+      // Merge rehydrated state with store defaults so new fields are
+      // always present even if the stored version predates them
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<PersistedState>;
+        return {
+          ...current,
+          ...saved,
+        };
+      },
     }
   )
 );
