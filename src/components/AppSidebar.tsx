@@ -57,16 +57,19 @@ function SidebarLink({
   end,
   icon: Icon,
   label,
+  onClick,
 }: {
   to: string;
   end?: boolean;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  onClick?: () => void;
 }) {
   return (
     <NavLink
       to={to}
       end={end}
+      onClick={onClick}
       className={({ isActive }) =>
         cn(
           'group relative flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium',
@@ -115,7 +118,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { eventId } = useParams();
   const events = useEventStore((s) => s.events);
   const currentEvent = events.find((e) => e.id === eventId);
@@ -150,6 +153,7 @@ export function AppSidebar() {
               end
               icon={item.icon}
               label={item.label}
+              onClick={onNavigate}
             />
           ))}
         </div>
@@ -198,6 +202,7 @@ export function AppSidebar() {
                   end={item.path === ''}
                   icon={item.icon}
                   label={item.label}
+                  onClick={onNavigate}
                 />
               ))}
             </div>
@@ -217,6 +222,7 @@ export function AppSidebar() {
         {currentEvent && (
           <NavLink
             to="/"
+            onClick={onNavigate}
             className={cn(
               'flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-medium',
               'text-sidebar-foreground/60 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/40',

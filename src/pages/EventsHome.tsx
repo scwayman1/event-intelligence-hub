@@ -307,9 +307,9 @@ export default function EventsHome() {
           <div className="absolute top-1/2 right-1/3 w-[300px] h-[300px] bg-violet-500/[0.03] rounded-full blur-[80px]" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-8 pt-10 pb-8">
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            <div className="space-y-4">
+        <div className="relative max-w-7xl mx-auto px-4 md:px-6 lg:px-8 pt-6 md:pt-10 pb-6 md:pb-8">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
+            <div className="space-y-3 sm:space-y-4">
               {/* Eyebrow label */}
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.3em] text-primary/80 font-semibold">
@@ -322,7 +322,7 @@ export default function EventsHome() {
 
               {/* Main title */}
               <div>
-                <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1]">
+                <h1 className="text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1]">
                   <span className="bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent">
                     Event Intelligence
                   </span>
@@ -333,7 +333,7 @@ export default function EventsHome() {
                 </h1>
               </div>
 
-              <p className="text-base text-muted-foreground max-w-lg leading-relaxed">
+              <p className="text-sm sm:text-base text-muted-foreground max-w-lg leading-relaxed">
                 Intelligent event planning, seating &amp; logistics.
                 <span className="text-foreground/50"> Monitor readiness, guest pressure, and layout health across your entire portfolio.</span>
               </p>
@@ -353,9 +353,9 @@ export default function EventsHome() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8 space-y-6 md:space-y-8">
         {/* ── Quick Stats Bar ───────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <StatCard
             icon={<Calendar className="w-5 h-5 text-primary" />}
             value={filtered.length}
@@ -412,7 +412,7 @@ export default function EventsHome() {
         )}
 
         {/* ── Event Cards Grid ──────────────────────────────────── */}
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(({ event, analytics }) => {
             const seatingCoverage = analytics.confirmedGuests.length > 0
               ? Math.round((analytics.assignedConfirmed / analytics.confirmedGuests.length) * 100)

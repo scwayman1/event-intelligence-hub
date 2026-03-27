@@ -468,7 +468,7 @@ export default function EventLayout() {
         </div>
 
         {analytics && (
-          <div className="border-b border-border bg-card/30 px-4 py-3 grid gap-3 md:grid-cols-4">
+          <div className="border-b border-border bg-card/30 px-3 md:px-4 py-2 md:py-3 grid gap-2 md:gap-3 grid-cols-2 md:grid-cols-4">
             <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground"><Sparkles className="w-3 h-3" /> Readiness</div>
               <div className="text-lg font-semibold text-foreground mt-1">{analytics.readinessScore}</div>
@@ -618,12 +618,28 @@ export default function EventLayout() {
         </div>
       </div>
 
-      {/* Inspector */}
-      <div className="w-72 border-l border-border bg-card/50 overflow-y-auto">
+      {/* Inspector backdrop on mobile */}
+      {inspectorOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setInspectorOpen(false)}
+        />
+      )}
+
+      {/* Inspector - slide-out drawer on mobile, static sidebar on desktop */}
+      <div className={`
+        fixed inset-y-0 right-0 z-50 w-72 border-l border-border bg-card/95 backdrop-blur-xl overflow-y-auto
+        transform transition-transform duration-300 ease-in-out
+        lg:relative lg:translate-x-0 lg:transition-none lg:bg-card/50 lg:backdrop-blur-none
+        ${inspectorOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+      `}>
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">Inspector</h3>
+            <button className="ml-auto lg:hidden p-1 rounded hover:bg-muted" onClick={() => setInspectorOpen(false)}>
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
           </div>
         </div>
 
