@@ -1,17 +1,19 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react';
-import { 
-  ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff, 
-  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles
+import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
+import {
+  ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff,
+  Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles,
+  Box, Calculator, Move, ArrowLeftRight, ArrowUpDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SaveIndicator } from '@/components/SaveIndicator';
 import { cn } from '@/lib/utils';
-import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
+import { type UnitSystem, formatScale, formatDimension, userInputToMeters, metersToUserUnit, formatWithUnit, formatDistance } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
 import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from '@/lib/layout-presets';
+import { calculateTableFit, edgeDistances, nearestEdgeDistances, type RoomBounds } from '@/lib/space-calculator';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
 
@@ -76,6 +78,16 @@ export default function EventLayout() {
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [snapMode, setSnapMode] = useState<'grid' | 'measured'>('grid');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+  // Room bounds: the real-world dimensions of the physical space
+  const [roomBounds, setRoomBounds] = useState<RoomBounds | null>(null);
+  const [roomInputW, setRoomInputW] = useState('40');
+  const [roomInputH, setRoomInputH] = useState('40');
+  const [showRoomSetup, setShowRoomSetup] = useState(false);
+  const [showCapCalc, setShowCapCalc] = useState(false);
+  const [calcPresetIdx, setCalcPresetIdx] = useState(0);
+  const [calcSpacing, setCalcSpacing] = useState('4');
+  const [calcMargin, setCalcMargin] = useState('3');
+  const [showMeasureGuides, setShowMeasureGuides] = useState(true);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,6 +116,38 @@ export default function EventLayout() {
     : 20;
 
   const snapValue = (v: number) => showGrid ? Math.round(v / snapIncrement) * snapIncrement : Math.round(v);
+
+  // Compute room bounds in pixels for boundary drawing
+  const roomBoundsPx = useMemo(() => {
+    if (!roomBounds || !metersPerPixel) return null;
+    return {
+      width: Math.round(roomBounds.widthMeters / metersPerPixel),
+      height: Math.round(roomBounds.heightMeters / metersPerPixel),
+    };
+  }, [roomBounds, metersPerPixel]);
+
+  // Capacity calculator results
+  const allPresets = [...tablePresets, ...supportPresets];
+  const calcPreset = allPresets[calcPresetIdx] ?? tablePresets[0];
+  const calcResult = useMemo(() => {
+    if (!roomBounds) return null;
+    const spacingM = userInputToMeters(parseFloat(calcSpacing) || 4, unitSystem);
+    const marginM = userInputToMeters(parseFloat(calcMargin) || 3, unitSystem);
+    return calculateTableFit(roomBounds, calcPreset, spacingM, marginM);
+  }, [roomBounds, calcPreset, calcSpacing, calcMargin, unitSystem]);
+
+  // Live measurement guides for dragging/selected object
+  const measureGuides = useMemo(() => {
+    if (!selected || !showMeasureGuides) return null;
+    const cw = roomBoundsPx?.width ?? canvasSize.width;
+    const ch = roomBoundsPx?.height ?? canvasSize.height;
+    const edges = edgeDistances(selected.x, selected.y, selected.width, selected.height, cw, ch);
+    const neighbors = nearestEdgeDistances(
+      selected,
+      objects.filter(o => o.id !== selected.id && o.visible),
+    );
+    return { edges, neighbors };
+  }, [selected, objects, roomBoundsPx, canvasSize, showMeasureGuides]);
 
   const nearestNeighborDistance = selected
     ? objects
@@ -270,6 +314,16 @@ export default function EventLayout() {
           <Button variant={snapMode === 'measured' ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setSnapMode((mode) => mode === 'grid' ? 'measured' : 'grid')}>
             <Ruler className="w-3.5 h-3.5" />{snapMode === 'grid' ? 'Grid Snap' : 'Measured Snap'}
           </Button>
+          <Button variant={showMeasureGuides ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowMeasureGuides(!showMeasureGuides)}>
+            <Move className="w-3.5 h-3.5" />Guides
+          </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant={roomBounds ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowRoomSetup(!showRoomSetup)}>
+            <Box className="w-3.5 h-3.5" />{roomBounds ? `${formatWithUnit(metersToUserUnit(roomBounds.widthMeters, unitSystem), unitSystem)} x ${formatWithUnit(metersToUserUnit(roomBounds.heightMeters, unitSystem), unitSystem)}` : 'Set Room Size'}
+          </Button>
+          <Button variant={showCapCalc ? 'secondary' : 'ghost'} size="sm" className="text-xs h-7 px-2 gap-1" onClick={() => setShowCapCalc(!showCapCalc)}>
+            <Calculator className="w-3.5 h-3.5" />Fit Calc
+          </Button>
           <div className="text-[10px] text-muted-foreground font-mono">{metersPerPixel ? `snap ${formatDimension(snapIncrement, metersPerPixel, unitSystem)}` : 'set map scale for precise snap'}</div>
           <div className="w-px h-6 bg-border mx-1" />
           <div className="flex gap-1">
@@ -322,8 +376,129 @@ export default function EventLayout() {
           </div>
         )}
 
+        {/* Room Setup Panel */}
+        {showRoomSetup && (
+          <div className="border-b border-border bg-card/40 px-4 py-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Box className="w-3.5 h-3.5" /> Define Room / Space Dimensions</div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-muted-foreground">Width</label>
+                <input
+                  className="w-16 px-1.5 py-1 text-xs bg-muted border border-border rounded text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                  type="number" min="1" step="1" value={roomInputW}
+                  onChange={(e) => setRoomInputW(e.target.value)}
+                />
+                <span className="text-[10px] text-muted-foreground">{unitSystem === 'imperial' ? 'ft' : 'm'}</span>
+              </div>
+              <X className="w-3 h-3 text-muted-foreground" />
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-muted-foreground">Length</label>
+                <input
+                  className="w-16 px-1.5 py-1 text-xs bg-muted border border-border rounded text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                  type="number" min="1" step="1" value={roomInputH}
+                  onChange={(e) => setRoomInputH(e.target.value)}
+                />
+                <span className="text-[10px] text-muted-foreground">{unitSystem === 'imperial' ? 'ft' : 'm'}</span>
+              </div>
+              <Button size="sm" className="text-xs h-7 px-3" onClick={() => {
+                const w = parseFloat(roomInputW) || 40;
+                const h = parseFloat(roomInputH) || 40;
+                const wMeters = userInputToMeters(w, unitSystem);
+                const hMeters = userInputToMeters(h, unitSystem);
+                setRoomBounds({ widthMeters: wMeters, heightMeters: hMeters });
+                // Auto-set metersPerPixel if not set from satellite
+                if (!metersPerPixel) {
+                  const maxCanvasPx = 800;
+                  const mpp = Math.max(wMeters, hMeters) / maxCanvasPx;
+                  setMetersPerPixel(mpp);
+                  setCanvasSize({
+                    width: Math.round(wMeters / mpp),
+                    height: Math.round(hMeters / mpp),
+                  });
+                }
+                setShowRoomSetup(false);
+              }}>
+                Apply Room Size
+              </Button>
+              {roomBounds && (
+                <Button variant="ghost" size="sm" className="text-xs h-7 px-2 text-destructive" onClick={() => { setRoomBounds(null); setShowRoomSetup(false); }}>
+                  Clear
+                </Button>
+              )}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5">Enter real-world dimensions. This defines the boundary on your canvas so you can see exactly what fits.</p>
+          </div>
+        )}
+
+        {/* Capacity Calculator Panel */}
+        {showCapCalc && roomBounds && (
+          <div className="border-b border-border bg-card/40 px-4 py-3">
+            <div className="flex items-start gap-4 flex-wrap">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Calculator className="w-3.5 h-3.5" /> Table Fit Calculator</div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground">Table type</label>
+                  <select
+                    className="px-1.5 py-1 text-xs bg-muted border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={calcPresetIdx}
+                    onChange={(e) => setCalcPresetIdx(Number(e.target.value))}
+                  >
+                    {allPresets.map((p, i) => (
+                      <option key={i} value={i}>{p.label} ({formatWithUnit(metersToUserUnit(p.widthMeters, unitSystem), unitSystem)} x {formatWithUnit(metersToUserUnit(p.heightMeters, unitSystem), unitSystem)})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-muted-foreground">Aisle spacing</label>
+                    <input className="w-12 px-1 py-0.5 text-xs bg-muted border border-border rounded font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" min="0" step="0.5" value={calcSpacing} onChange={(e) => setCalcSpacing(e.target.value)} />
+                    <span className="text-[10px] text-muted-foreground">{unitSystem === 'imperial' ? 'ft' : 'm'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-muted-foreground">Wall margin</label>
+                    <input className="w-12 px-1 py-0.5 text-xs bg-muted border border-border rounded font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" min="0" step="0.5" value={calcMargin} onChange={(e) => setCalcMargin(e.target.value)} />
+                    <span className="text-[10px] text-muted-foreground">{unitSystem === 'imperial' ? 'ft' : 'm'}</span>
+                  </div>
+                </div>
+              </div>
+              {calcResult && (
+                <div className="grid grid-cols-4 gap-2 flex-1 min-w-[320px]">
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Tables fit</div>
+                    <div className="text-lg font-bold text-foreground">{calcResult.total}</div>
+                    <div className="text-[10px] text-muted-foreground">{calcResult.cols} cols x {calcResult.rows} rows</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total seats</div>
+                    <div className="text-lg font-bold text-foreground">{calcResult.totalCapacity}</div>
+                    <div className="text-[10px] text-muted-foreground">{calcPreset.capacity ?? 0} per table</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Table area</div>
+                    <div className="text-lg font-bold text-foreground">{formatWithUnit(metersToUserUnit(calcResult.usedArea, unitSystem), unitSystem).replace('ft', 'ft²').replace('m', 'm²')}</div>
+                    <div className="text-[10px] text-muted-foreground">of {formatWithUnit(metersToUserUnit(calcResult.totalArea, unitSystem), unitSystem).replace('ft', 'ft²').replace('m', 'm²')}</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Utilization</div>
+                    <div className="text-lg font-bold text-foreground">{calcResult.utilization.toFixed(0)}%</div>
+                    <div className="text-[10px] text-muted-foreground">floor coverage</div>
+                  </div>
+                </div>
+              )}
+              {!roomBounds && (
+                <p className="text-xs text-muted-foreground">Set room dimensions first to calculate table capacity.</p>
+              )}
+            </div>
+          </div>
+        )}
+        {showCapCalc && !roomBounds && (
+          <div className="border-b border-border bg-card/40 px-4 py-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-2"><Calculator className="w-3.5 h-3.5" /> Set room dimensions first (click "Set Room Size" above) to calculate how many tables fit.</p>
+          </div>
+        )}
+
         <div className="border-b border-border bg-card/20 px-4 py-2 flex items-center justify-between gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2"><WandSparkles className="w-3.5 h-3.5" /> New objects now drop into organized rows using standard preset sizes instead of piling up at one point.</div>
+          <div className="flex items-center gap-2"><WandSparkles className="w-3.5 h-3.5" /> {roomBounds ? `Room: ${formatWithUnit(metersToUserUnit(roomBounds.widthMeters, unitSystem), unitSystem)} x ${formatWithUnit(metersToUserUnit(roomBounds.heightMeters, unitSystem), unitSystem)} — drag objects to see live measurements` : 'Set room size for precise measurements, or use satellite capture for scale'}</div>
           <div className="font-mono">{selected && nearestNeighborDistance && metersPerPixel ? `nearest object ${formatDimension(nearestNeighborDistance, metersPerPixel, unitSystem)}` : 'select an object to inspect spacing'}</div>
         </div>
 
@@ -340,6 +515,36 @@ export default function EventLayout() {
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: canvasSize.width, height: canvasSize.height, position: 'relative' }}
             className={cn('transition-transform', showGrid && !venueImage && 'bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]')}
           >
+            {/* Room boundary outline */}
+            {roomBoundsPx && (
+              <>
+                <div
+                  className="absolute border-2 border-dashed border-blue-500/40 pointer-events-none z-[1]"
+                  style={{ left: 0, top: 0, width: roomBoundsPx.width, height: roomBoundsPx.height }}
+                />
+                {/* Room dimension labels */}
+                <div className="absolute pointer-events-none z-[2] flex items-center justify-center" style={{ left: 0, top: -22, width: roomBoundsPx.width, height: 20 }}>
+                  <div className="flex items-center gap-1">
+                    <ArrowLeftRight className="w-3 h-3 text-blue-400/70" />
+                    <span className="text-[10px] font-mono font-semibold text-blue-400/90 bg-card/80 px-1.5 py-0.5 rounded border border-blue-400/30">
+                      {formatWithUnit(metersToUserUnit(roomBounds!.widthMeters, unitSystem), unitSystem)}
+                    </span>
+                  </div>
+                </div>
+                <div className="absolute pointer-events-none z-[2] flex items-center justify-center" style={{ left: -8, top: 0, width: 20, height: roomBoundsPx.height, transform: 'translateX(-100%)' }}>
+                  <div className="flex items-center gap-1 -rotate-90">
+                    <ArrowUpDown className="w-3 h-3 text-blue-400/70" />
+                    <span className="text-[10px] font-mono font-semibold text-blue-400/90 bg-card/80 px-1.5 py-0.5 rounded border border-blue-400/30 whitespace-nowrap">
+                      {formatWithUnit(metersToUserUnit(roomBounds!.heightMeters, unitSystem), unitSystem)}
+                    </span>
+                  </div>
+                </div>
+                {/* Corner labels */}
+                <div className="absolute text-[8px] font-mono text-blue-400/60 pointer-events-none z-[2]" style={{ left: 2, top: roomBoundsPx.height + 2 }}>
+                  {formatDistance(roomBounds!.widthMeters * roomBounds!.heightMeters, unitSystem).replace('ft', 'ft²').replace('m', 'm²')} total
+                </div>
+              </>
+            )}
             {/* Venue background image */}
             {venueImage && (
               <img
@@ -356,6 +561,95 @@ export default function EventLayout() {
                 className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]"
                 style={{ opacity: 0.4 }}
               />
+            )}
+
+            {/* Live measurement guides for selected/dragging object */}
+            {selected && showMeasureGuides && measureGuides && metersPerPixel && (
+              <>
+                {/* Distance to left edge */}
+                {measureGuides.edges.left > 10 && (
+                  <div className="absolute pointer-events-none z-[50]" style={{ left: 0, top: selected.y + selected.height / 2, width: selected.x, height: 0 }}>
+                    <div className="border-t border-dashed border-emerald-400/60 w-full" />
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                      {formatDimension(measureGuides.edges.left, metersPerPixel, unitSystem)}
+                    </div>
+                  </div>
+                )}
+                {/* Distance to right edge */}
+                {measureGuides.edges.right > 10 && (
+                  <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width, top: selected.y + selected.height / 2, width: measureGuides.edges.right, height: 0 }}>
+                    <div className="border-t border-dashed border-emerald-400/60 w-full" />
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                      {formatDimension(measureGuides.edges.right, metersPerPixel, unitSystem)}
+                    </div>
+                  </div>
+                )}
+                {/* Distance to top edge */}
+                {measureGuides.edges.top > 10 && (
+                  <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width / 2, top: 0, width: 0, height: selected.y }}>
+                    <div className="border-l border-dashed border-emerald-400/60 h-full" />
+                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                      {formatDimension(measureGuides.edges.top, metersPerPixel, unitSystem)}
+                    </div>
+                  </div>
+                )}
+                {/* Distance to bottom edge */}
+                {measureGuides.edges.bottom > 10 && (
+                  <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width / 2, top: selected.y + selected.height, width: 0, height: measureGuides.edges.bottom }}>
+                    <div className="border-l border-dashed border-emerald-400/60 h-full" />
+                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                      {formatDimension(measureGuides.edges.bottom, metersPerPixel, unitSystem)}
+                    </div>
+                  </div>
+                )}
+                {/* Alignment guides */}
+                {measureGuides.neighbors.alignments.map((a, i) => (
+                  <div
+                    key={`align-${i}`}
+                    className="absolute pointer-events-none z-[49]"
+                    style={a.axis === 'v'
+                      ? { left: a.position, top: 0, width: 0, height: canvasSize.height, borderLeft: '1px solid rgba(168,85,247,0.4)' }
+                      : { left: 0, top: a.position, width: canvasSize.width, height: 0, borderTop: '1px solid rgba(168,85,247,0.4)' }
+                    }
+                  />
+                ))}
+                {/* Nearest neighbor distance line */}
+                {measureGuides.neighbors.nearest && (() => {
+                  const n = measureGuides.neighbors.nearest;
+                  const neighbor = objects.find(o => o.id === n.id);
+                  if (!neighbor) return null;
+                  const sCX = selected.x + selected.width / 2;
+                  const sCY = selected.y + selected.height / 2;
+                  const nCX = neighbor.x + neighbor.width / 2;
+                  const nCY = neighbor.y + neighbor.height / 2;
+                  // Draw a line between the two nearest edges
+                  let x1: number, y1: number, x2: number, y2: number;
+                  switch (n.direction) {
+                    case 'right': x1 = selected.x + selected.width; y1 = sCY; x2 = neighbor.x; y2 = sCY; break;
+                    case 'left': x1 = neighbor.x + neighbor.width; y1 = sCY; x2 = selected.x; y2 = sCY; break;
+                    case 'bottom': x1 = sCX; y1 = selected.y + selected.height; x2 = sCX; y2 = neighbor.y; break;
+                    case 'top': x1 = sCX; y1 = neighbor.y + neighbor.height; x2 = sCX; y2 = selected.y; break;
+                    default: return null;
+                  }
+                  const isHoriz = n.direction === 'left' || n.direction === 'right';
+                  return (
+                    <div
+                      className="absolute pointer-events-none z-[51]"
+                      style={isHoriz
+                        ? { left: Math.min(x1, x2), top: y1 - 0.5, width: Math.abs(x2 - x1), height: 1, background: 'rgba(251,146,60,0.7)' }
+                        : { left: x1 - 0.5, top: Math.min(y1, y2), width: 1, height: Math.abs(y2 - y1), background: 'rgba(251,146,60,0.7)' }
+                      }
+                    >
+                      <div className={cn(
+                        "absolute text-[9px] font-mono font-semibold text-orange-400 bg-card/95 px-1 rounded border border-orange-400/40 whitespace-nowrap",
+                        isHoriz ? "top-[-18px] left-1/2 -translate-x-1/2" : "left-2 top-1/2 -translate-y-1/2"
+                      )}>
+                        {formatDimension(n.distance, metersPerPixel, unitSystem)}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
             )}
             {objects.filter((o) => o.visible).sort((a, b) => a.zIndex - b.zIndex).map((obj) => {
               const isTable = ['round_table', 'rect_table'].includes(obj.type);
@@ -467,6 +761,25 @@ export default function EventLayout() {
                 onChange={(e) => updateLayoutObject(selected.id, { name: e.target.value })}
               />
             </div>
+            {/* Real-world dimensions summary */}
+            {metersPerPixel && (
+              <div className="rounded-lg border border-blue-400/30 bg-blue-50/5 px-3 py-2 space-y-1">
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-blue-400/80"><Ruler className="w-3 h-3" /> Real-World Size</div>
+                <div className="flex items-center gap-3 text-sm font-mono font-semibold text-foreground">
+                  <span>{formatDimension(selected.width, metersPerPixel, unitSystem)}</span>
+                  <X className="w-3 h-3 text-muted-foreground" />
+                  <span>{formatDimension(selected.height, metersPerPixel, unitSystem)}</span>
+                </div>
+                {measureGuides && (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground font-mono mt-1">
+                    <span>Left: {formatDimension(measureGuides.edges.left, metersPerPixel, unitSystem)}</span>
+                    <span>Right: {formatDimension(measureGuides.edges.right, metersPerPixel, unitSystem)}</span>
+                    <span>Top: {formatDimension(measureGuides.edges.top, metersPerPixel, unitSystem)}</span>
+                    <span>Bottom: {formatDimension(measureGuides.edges.bottom, metersPerPixel, unitSystem)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs text-muted-foreground">X</label>
@@ -477,11 +790,11 @@ export default function EventLayout() {
                 <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.y} onChange={(e) => updateLayoutObject(selected.id, { y: Number(e.target.value) })} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Width</label>
+                <label className="text-xs text-muted-foreground">Width {metersPerPixel ? `(${formatDimension(selected.width, metersPerPixel, unitSystem)})` : ''}</label>
                 <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Height</label>
+                <label className="text-xs text-muted-foreground">Height {metersPerPixel ? `(${formatDimension(selected.height, metersPerPixel, unitSystem)})` : ''}</label>
                 <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
               </div>
             </div>
