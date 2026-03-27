@@ -7,7 +7,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface VenueCaptureProps {
-  onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number) => void;
+  onCapture: (imageDataUrl: string, metersPerPixel: number | null, imageWidth: number, imageHeight: number, cssRegionWidth: number) => void;
   onClose: () => void;
 }
 
@@ -32,7 +32,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{ place_name: string; center: [number, number] }>>([]);
   const [capturing, setCapturing] = useState(false);
-  const [currentZoom, setCurrentZoom] = useState(19);
+  const [currentZoom, setCurrentZoom] = useState(20);
   const [currentLat, setCurrentLat] = useState(0);
   const [placeName, setPlaceName] = useState('');
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
@@ -55,13 +55,15 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     try {
       const map = new mapboxgl.Map({
         container: mapRef.current,
-        style: 'mapbox://styles/mapbox/satellite-v9',
+        style: 'mapbox://styles/mapbox/satellite-streets-v12',
         center: [-77.0365, 38.8977],
-        zoom: 19,
+        zoom: 20,
         maxZoom: 22,
         minZoom: 14,
         attributionControl: false,
         preserveDrawingBuffer: true, // needed for canvas capture
+        // Request high-resolution tiles for crisp zoom
+        pixelRatio: Math.max(window.devicePixelRatio || 1, 2),
       });
 
       map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
@@ -72,7 +74,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
       });
 
       map.on('zoom', () => {
-        setCurrentZoom(Math.round(map.getZoom()));
+        setCurrentZoom(parseFloat(map.getZoom().toFixed(1)));
       });
 
       map.on('move', () => {
@@ -205,30 +207,35 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     const center = map.getCenter();
 
     try {
-      // Use preserveDrawingBuffer canvas capture
       const canvas = map.getCanvas();
-      const dpr = window.devicePixelRatio || 1;
+      // The Mapbox canvas renders at its own pixel ratio (set via pixelRatio option)
+      // We need to figure out the ratio between CSS pixels and actual canvas pixels
+      const canvasPixelRatio = canvas.width / canvas.clientWidth;
 
       const cvs = document.createElement('canvas');
-      cvs.width = Math.round(region.width * dpr);
-      cvs.height = Math.round(region.height * dpr);
+      cvs.width = Math.round(region.width * canvasPixelRatio);
+      cvs.height = Math.round(region.height * canvasPixelRatio);
       const ctx = cvs.getContext('2d');
 
       if (ctx) {
         ctx.drawImage(
           canvas,
-          Math.round(region.x * dpr),
-          Math.round(region.y * dpr),
-          Math.round(region.width * dpr),
-          Math.round(region.height * dpr),
+          Math.round(region.x * canvasPixelRatio),
+          Math.round(region.y * canvasPixelRatio),
+          Math.round(region.width * canvasPixelRatio),
+          Math.round(region.height * canvasPixelRatio),
           0, 0,
           cvs.width,
           cvs.height,
         );
 
-        const dataUrl = cvs.toDataURL('image/png');
-        const mpp = metersPerPxAtZoom(zoom, center.lat);
-        onCapture(dataUrl, mpp, cvs.width, cvs.height);
+        // Use high-quality JPEG for smaller size at same visual quality
+        const dataUrl = cvs.toDataURL('image/jpeg', 0.95);
+        // metersPerPixel at the CSS level — one CSS pixel on the map equals this many meters
+        const mppCss = metersPerPxAtZoom(zoom, center.lat);
+        // Report the CSS-level mpp and the full captured pixel dimensions.
+        // The layout editor will use these to compute the correct scale.
+        onCapture(dataUrl, mppCss, cvs.width, cvs.height, region.width);
       }
     } catch (err) {
       console.error('Capture failed:', err);
@@ -241,7 +248,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
   const handleZoom = useCallback((delta: number) => {
     if (mapInstance.current) {
       const current = mapInstance.current.getZoom();
-      mapInstance.current.zoomTo(Math.max(14, Math.min(22, current + delta)), { duration: 300 });
+      mapInstance.current.zoomTo(Math.max(14, Math.min(22, current + delta)), { duration: 200 });
     }
   }, []);
 
@@ -314,11 +321,11 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
         )}
 
         <div className="flex items-center gap-1 mr-2">
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleZoom(-1)}>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleZoom(-0.5)}>
             <ZoomOut className="w-3.5 h-3.5" />
           </Button>
-          <span className="text-xs font-mono text-muted-foreground w-8 text-center">{currentZoom}</span>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleZoom(1)}>
+          <span className="text-xs font-mono text-muted-foreground w-10 text-center">{currentZoom.toFixed(1)}</span>
+          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleZoom(0.5)}>
             <ZoomIn className="w-3.5 h-3.5" />
           </Button>
         </div>

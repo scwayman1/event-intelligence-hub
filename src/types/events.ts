@@ -93,6 +93,9 @@ export interface EventVersion {
   notes: string;
 }
 
+export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'custom';
+export type SeatingIntent = 'same_table' | 'nearby' | 'separate';
+
 export interface SeatingRule {
   id: string;
   eventId: string;
@@ -100,4 +103,13 @@ export interface SeatingRule {
   description: string;
   enabled: boolean;
   priority: number;
+  /** Structured rule definition — undefined for legacy/custom rules */
+  ruleType?: SeatingRuleType;
+  /** For same_tag: guests sharing this tag should be seated per the intent */
+  tag?: string;
+  /** For cross_tag: seat guests with tagA near/with guests with tagB */
+  tagA?: string;
+  tagB?: string;
+  /** What the rule wants: same table, nearby tables, or keep apart */
+  intent?: SeatingIntent;
 }

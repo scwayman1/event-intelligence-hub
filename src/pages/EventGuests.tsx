@@ -1,11 +1,12 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Mail, Phone, Search, Sparkles, Upload } from 'lucide-react';
+import { AlertTriangle, Mail, Phone, Plus, Search, Sparkles, Tag, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import { collectAllTags } from '@/lib/rule-engine';
 import type { GuestCategory, RSVPStatus } from '@/types/events';
 
 const categoryLabels: Record<GuestCategory, string> = {
@@ -48,9 +49,13 @@ export default function EventGuests() {
     ? buildEventAnalytics({ event, guests, versions, layoutObjects, seatingAssignments, seatingRules })
     : null;
 
+  const updateGuest = useEventStore((s) => s.updateGuest);
+
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<GuestCategory | 'all'>('all');
   const [rsvpFilter, setRsvpFilter] = useState<RSVPStatus | 'all'>('all');
+  const [editingTagsGuestId, setEditingTagsGuestId] = useState<string | null>(null);
+  const [newTag, setNewTag] = useState('');
 
   const eventGuests = useMemo(() => {
     return guests
@@ -81,6 +86,23 @@ export default function EventGuests() {
     invited: allEventGuests.filter((g) => g.rsvpStatus === 'invited').length,
     waitlist: allEventGuests.filter((g) => g.rsvpStatus === 'waitlist').length,
   };
+
+  const allEventGuests2 = useMemo(() => guests.filter((g) => g.eventId === eventId), [guests, eventId]);
+  const allTags = useMemo(() => collectAllTags(allEventGuests2), [allEventGuests2]);
+
+  function addTagToGuest(guestId: string, tag: string) {
+    const guest = guests.find((g) => g.id === guestId);
+    if (!guest || !tag.trim()) return;
+    const normalized = tag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (guest.relationshipTags.includes(normalized)) return;
+    updateGuest(guestId, { relationshipTags: [...guest.relationshipTags, normalized] });
+  }
+
+  function removeTagFromGuest(guestId: string, tag: string) {
+    const guest = guests.find((g) => g.id === guestId);
+    if (!guest) return;
+    updateGuest(guestId, { relationshipTags: guest.relationshipTags.filter((t) => t !== tag) });
+  }
 
   const categories: (GuestCategory | 'all')[] = ['all', 'donor', 'scholarship_recipient', 'board_member', 'vip', 'staff', 'family', 'sponsor', 'volunteer', 'other'];
   const rsvpStatuses: (RSVPStatus | 'all')[] = ['all', 'invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
@@ -174,7 +196,7 @@ export default function EventGuests() {
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">RSVP</th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Organization</th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Seat / Table</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Signals</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Tags & Signals</th>
                 </tr>
               </thead>
               <tbody>
@@ -210,7 +232,72 @@ export default function EventGuests() {
                         <div className="text-xs font-mono text-muted-foreground/80">Party {guest.partySize}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="space-y-1 max-w-[260px]">
+                        <div className="space-y-2 max-w-[300px]">
+                          {/* Tags */}
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {guest.relationshipTags.map((t) => (
+                              <span key={t} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                <Tag className="w-2.5 h-2.5" />
+                                {t}
+                                {editingTagsGuestId === guest.id && (
+                                  <button onClick={() => removeTagFromGuest(guest.id, t)} className="hover:text-destructive ml-0.5">
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </span>
+                            ))}
+                            <button
+                              onClick={() => setEditingTagsGuestId(editingTagsGuestId === guest.id ? null : guest.id)}
+                              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+                            >
+                              <Plus className="w-2.5 h-2.5" />
+                              {guest.relationshipTags.length === 0 ? 'Add tag' : ''}
+                            </button>
+                          </div>
+
+                          {/* Inline tag editor */}
+                          {editingTagsGuestId === guest.id && (
+                            <div className="space-y-1.5">
+                              <div className="flex gap-1">
+                                <Input
+                                  placeholder="New tag..."
+                                  value={newTag}
+                                  onChange={(e) => setNewTag(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && newTag.trim()) {
+                                      addTagToGuest(guest.id, newTag);
+                                      setNewTag('');
+                                    }
+                                  }}
+                                  className="h-6 text-xs px-2"
+                                  autoFocus
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs"
+                                  onClick={() => { if (newTag.trim()) { addTagToGuest(guest.id, newTag); setNewTag(''); } }}
+                                >
+                                  Add
+                                </Button>
+                              </div>
+                              {allTags.filter((t) => !guest.relationshipTags.includes(t)).length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {allTags.filter((t) => !guest.relationshipTags.includes(t)).slice(0, 8).map((t) => (
+                                    <button
+                                      key={t}
+                                      onClick={() => addTagToGuest(guest.id, t)}
+                                      className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted/50 border border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
+                                    >
+                                      + {t}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Signals */}
                           {guest.accessibilityNeeds && (
                             <p className="text-xs text-info">Accessibility: {guest.accessibilityNeeds}</p>
                           )}
@@ -223,7 +310,6 @@ export default function EventGuests() {
                           {guest.seatingPreference && (
                             <p className="text-xs text-muted-foreground">Seat pref: {guest.seatingPreference}</p>
                           )}
-                          {!hasSignals && <p className="text-xs text-muted-foreground">No special signals recorded</p>}
                         </div>
                       </td>
                     </tr>

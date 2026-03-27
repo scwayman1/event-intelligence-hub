@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { AlertTriangle, Calendar, ChevronRight, Clock3, Grid3X3, MapPin, Search, Sparkles, Users } from 'lucide-react';
+import { AlertTriangle, Calendar, ChevronRight, Clock3, Grid3X3, MapPin, Plus, Search, Sparkles, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useMemo, useState } from 'react';
 import { buildEventAnalytics } from '@/lib/event-analytics';
+import { CreateEventDialog } from '@/components/CreateEventDialog';
 
 const typeLabels: Record<string, string> = {
   ceremony: 'Ceremony', dinner: 'Dinner', gala: 'Gala', reception: 'Reception',
@@ -24,6 +25,7 @@ export default function EventsHome() {
   const getActiveOrg = useEventStore((s) => s.getActiveOrg);
   const activeOrg = getActiveOrg();
   const events = getOrgEvents();
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
   const getOrgGuests = useEventStore((s) => s.getOrgGuests);
   const guests = getOrgGuests();
   const versions = useEventStore((s) => s.versions);
@@ -62,7 +64,8 @@ export default function EventsHome() {
             <span className="font-semibold text-foreground">{activeOrg?.name ?? 'all organizations'}</span>.
           </p>
         </div>
-        <Button size="sm" className="gap-2">
+        <Button size="sm" className="gap-2" onClick={() => setShowCreateEvent(true)}>
+          <Plus className="w-4 h-4" />
           Create Event
         </Button>
       </div>
@@ -195,6 +198,22 @@ export default function EventsHome() {
           );
         })}
       </div>
+
+      {events.length === 0 && (
+        <div className="glass-panel p-8 text-center space-y-3">
+          <Calendar className="w-8 h-8 text-muted-foreground mx-auto" />
+          <h3 className="font-semibold text-foreground">No events yet</h3>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            Create your first event to start planning layouts, managing guests, and coordinating seating.
+          </p>
+          <Button size="sm" className="gap-2" onClick={() => setShowCreateEvent(true)}>
+            <Plus className="w-4 h-4" />
+            Create your first event
+          </Button>
+        </div>
+      )}
+
+      <CreateEventDialog open={showCreateEvent} onOpenChange={setShowCreateEvent} />
     </div>
   );
 }
