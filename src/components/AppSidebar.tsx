@@ -1,11 +1,12 @@
-import { NavLink, useParams, useLocation } from 'react-router-dom';
+import { NavLink, useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
-  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
 import { cn } from '@/lib/utils';
+import { useState, useRef, useEffect } from 'react';
 
 const globalNav = [
   { label: 'Events', icon: Calendar, path: '/' },
@@ -29,10 +30,27 @@ interface AppSidebarProps {
 export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps) {
   const { eventId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const organizations = useEventStore((s) => s.organizations);
+  const activeOrgId = useEventStore((s) => s.activeOrgId);
+  const setActiveOrg = useEventStore((s) => s.setActiveOrg);
   const events = useEventStore((s) => s.events);
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
   const currentEvent = events.find((e) => e.id === eventId);
   const isLayoutPage = location.pathname.endsWith('/layout');
+  const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOrgDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <aside className="w-60 min-h-screen border-r border-sidebar-border flex flex-col relative overflow-hidden">
@@ -61,6 +79,48 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
             <span className="text-[10px] text-muted-foreground ml-1.5 font-medium">EventMap</span>
           </div>
         </div>
+      </div>
+
+      {/* Org Switcher */}
+      <div className="relative px-3 pt-3" ref={dropdownRef}>
+        <button
+          onClick={() => setOrgDropdownOpen(!orgDropdownOpen)}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm bg-sidebar-accent/60 hover:bg-sidebar-accent transition-colors"
+        >
+          <Building2 className="w-4 h-4 text-primary shrink-0" />
+          <span className="flex-1 text-left font-medium text-foreground truncate">
+            {activeOrg?.name ?? 'Select organization'}
+          </span>
+          <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform', orgDropdownOpen && 'rotate-180')} />
+        </button>
+        {orgDropdownOpen && (
+          <div className="absolute left-3 right-3 mt-1 z-50 rounded-md border border-sidebar-border bg-sidebar shadow-lg py-1">
+            {organizations.map((org) => (
+              <button
+                key={org.id}
+                onClick={() => {
+                  setActiveOrg(org.id);
+                  setOrgDropdownOpen(false);
+                  // Navigate home when switching orgs so user sees that org's events
+                  if (eventId) navigate('/');
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/50',
+                  org.id === activeOrgId && 'bg-sidebar-accent'
+                )}
+              >
+                <div
+                  className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                  style={{ background: org.primaryColor || 'hsl(152 55% 48%)' }}
+                >
+                  {org.shortName.charAt(0)}
+                </div>
+                <span className="flex-1 text-left truncate text-sidebar-foreground">{org.name}</span>
+                {org.id === activeOrgId && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <nav className="relative flex-1 py-3 px-3 space-y-1 overflow-y-auto">

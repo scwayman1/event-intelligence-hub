@@ -5,8 +5,19 @@ export type GuestCategory = 'donor' | 'scholarship_recipient' | 'family' | 'boar
 export type LayoutObjectType = 'tent' | 'round_table' | 'rect_table' | 'chair' | 'stage' | 'podium' | 'checkin' | 'photo_area' | 'registration' | 'vip_area' | 'aisle' | 'dance_floor' | 'catering' | 'bar' | 'signage' | 'custom_zone';
 export type VersionStatus = 'draft' | 'active' | 'archived' | 'approved';
 
+/** An organization / school instance — all data is scoped to one */
+export interface Organization {
+  id: string;
+  name: string;
+  shortName: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  createdAt: string;
+}
+
 export interface AppEvent {
   id: string;
+  orgId: string;
   name: string;
   type: EventType;
   status: EventStatus;
@@ -23,6 +34,7 @@ export interface AppEvent {
 
 export interface Guest {
   id: string;
+  orgId: string;
   eventId: string;
   firstName: string;
   lastName: string;

@@ -1,15 +1,29 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule } from '@/types/events';
-import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules } from './mock-data';
+import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization } from '@/types/events';
+import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 
 interface EventStore {
+  // Organization state
+  organizations: Organization[];
+  activeOrgId: string | null;
+
   events: AppEvent[];
   guests: Guest[];
   versions: EventVersion[];
   layoutObjects: LayoutObject[];
   seatingAssignments: SeatingAssignment[];
   seatingRules: SeatingRule[];
+
+  // Organization actions
+  setActiveOrg: (orgId: string) => void;
+  addOrganization: (org: Organization) => void;
+  updateOrganization: (id: string, updates: Partial<Organization>) => void;
+
+  // Org-scoped selectors
+  getActiveOrg: () => Organization | undefined;
+  getOrgEvents: () => AppEvent[];
+  getOrgGuests: () => Guest[];
 
   // Event actions
   addEvent: (event: AppEvent) => void;
@@ -49,12 +63,33 @@ interface EventStore {
 export const useEventStore = create<EventStore>()(
   persist(
     (set, get) => ({
+  organizations: mockOrganizations,
+  activeOrgId: mockOrganizations[0]?.id ?? null,
+
   events: mockEvents,
   guests: mockGuests,
   versions: mockVersions,
   layoutObjects: mockLayoutObjects,
   seatingAssignments: mockSeatingAssignments,
   seatingRules: mockSeatingRules,
+
+  // Organization actions
+  setActiveOrg: (orgId) => set({ activeOrgId: orgId }),
+  addOrganization: (org) => set((s) => ({ organizations: [...s.organizations, org] })),
+  updateOrganization: (id, updates) => set((s) => ({
+    organizations: s.organizations.map((o) => o.id === id ? { ...o, ...updates } : o),
+  })),
+
+  // Org-scoped selectors
+  getActiveOrg: () => get().organizations.find((o) => o.id === get().activeOrgId),
+  getOrgEvents: () => {
+    const orgId = get().activeOrgId;
+    return orgId ? get().events.filter((e) => e.orgId === orgId) : get().events;
+  },
+  getOrgGuests: () => {
+    const orgId = get().activeOrgId;
+    return orgId ? get().guests.filter((g) => g.orgId === orgId) : get().guests;
+  },
 
   addEvent: (event) => set((s) => ({ events: [...s.events, event] })),
   updateEvent: (id, updates) => set((s) => ({ events: s.events.map((e) => e.id === id ? { ...e, ...updates } : e) })),
@@ -92,6 +127,8 @@ export const useEventStore = create<EventStore>()(
   resetStore: () => {
     localStorage.removeItem('event-intelligence-hub-store');
     set({
+      organizations: mockOrganizations,
+      activeOrgId: mockOrganizations[0]?.id ?? null,
       events: mockEvents,
       guests: mockGuests,
       versions: mockVersions,
@@ -104,6 +141,8 @@ export const useEventStore = create<EventStore>()(
     {
       name: 'event-intelligence-hub-store',
       partialize: (state) => ({
+        organizations: state.organizations,
+        activeOrgId: state.activeOrgId,
         events: state.events,
         guests: state.guests,
         versions: state.versions,
