@@ -1,7 +1,7 @@
 import { NavLink, useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
-  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus, LogOut
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
@@ -34,6 +34,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const userProfile = useEventStore((s) => s.userProfile);
+  const signOut = useEventStore((s) => s.signOut);
   const organizations = useEventStore((s) => s.organizations);
   const activeOrgId = useEventStore((s) => s.activeOrgId);
   const setActiveOrg = useEventStore((s) => s.setActiveOrg);
@@ -214,7 +215,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
         )}
       </nav>
 
-      {/* Footer with profile */}
+      {/* Footer with profile + sign out */}
       <div className="relative p-4 border-t border-sidebar-border space-y-3">
         {userProfile && (
           <div className="flex items-center gap-2.5 px-1 py-1">
@@ -225,8 +226,15 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-foreground truncate">{userProfile.firstName} {userProfile.lastName}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{userProfile.role}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{userProfile.email}</p>
             </div>
+            <button
+              onClick={() => { signOut(); navigate('/sign-in'); }}
+              className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
         <div className="flex items-center justify-between">

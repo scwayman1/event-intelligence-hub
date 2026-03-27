@@ -14,11 +14,20 @@ import EventVersions from "@/pages/EventVersions";
 import EventIntegrations from "@/pages/EventIntegrations";
 import EventSettings from "@/pages/EventSettings";
 import Welcome from "@/pages/Welcome";
+import SignIn from "@/pages/SignIn";
+import SignUp from "@/pages/SignUp";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useEventStore } from "@/data/store";
 
 const queryClient = new QueryClient();
+
+/** Must be signed in to access anything */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const userProfile = useEventStore((s) => s.userProfile);
+  if (!userProfile) return <Navigate to="/sign-in" replace />;
+  return <>{children}</>;
+}
 
 /** Redirects to /welcome if the user hasn't completed onboarding */
 function RequireOnboarding({ children }: { children: React.ReactNode }) {
@@ -34,6 +43,16 @@ function RedirectIfOnboarded({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Redirects signed-in users away from auth pages */
+function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
+  const userProfile = useEventStore((s) => s.userProfile);
+  const hasCompletedOnboarding = useEventStore((s) => s.hasCompletedOnboarding);
+  if (userProfile) {
+    return <Navigate to={hasCompletedOnboarding ? "/" : "/welcome"} replace />;
+  }
+  return <>{children}</>;
+}
+
 const App = () => (
   <ErrorBoundary>
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
@@ -43,8 +62,15 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/welcome" element={<RedirectIfOnboarded><Welcome /></RedirectIfOnboarded>} />
-            <Route element={<RequireOnboarding><AppLayout /></RequireOnboarding>}>
+            {/* Auth pages — accessible without signing in */}
+            <Route path="/sign-in" element={<RedirectIfSignedIn><SignIn /></RedirectIfSignedIn>} />
+            <Route path="/sign-up" element={<RedirectIfSignedIn><SignUp /></RedirectIfSignedIn>} />
+
+            {/* Onboarding — requires auth but not onboarding complete */}
+            <Route path="/welcome" element={<RequireAuth><RedirectIfOnboarded><Welcome /></RedirectIfOnboarded></RequireAuth>} />
+
+            {/* App — requires auth + onboarding complete */}
+            <Route element={<RequireAuth><RequireOnboarding><AppLayout /></RequireOnboarding></RequireAuth>}>
               <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
               <Route path="/events/:eventId" element={<ErrorBoundary><EventDashboard /></ErrorBoundary>} />
               <Route path="/events/:eventId/layout" element={<ErrorBoundary><EventLayout /></ErrorBoundary>} />
