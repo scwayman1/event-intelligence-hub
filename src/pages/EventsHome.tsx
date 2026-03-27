@@ -20,8 +20,12 @@ const statusColors: Record<string, string> = {
 };
 
 export default function EventsHome() {
-  const events = useEventStore((s) => s.events);
-  const guests = useEventStore((s) => s.guests);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
+  const getActiveOrg = useEventStore((s) => s.getActiveOrg);
+  const activeOrg = getActiveOrg();
+  const events = getOrgEvents();
+  const getOrgGuests = useEventStore((s) => s.getOrgGuests);
+  const guests = getOrgGuests();
   const versions = useEventStore((s) => s.versions);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
@@ -53,7 +57,10 @@ export default function EventsHome() {
             <Sparkles className="w-3.5 h-3.5" /> portfolio view
           </div>
           <h1 className="text-3xl font-bold text-foreground">Event operations</h1>
-          <p className="text-sm text-muted-foreground mt-1">A portfolio-level view of readiness, guest pressure, and layout health across your active events.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Readiness, guest pressure, and layout health for{' '}
+            <span className="font-semibold text-foreground">{activeOrg?.name ?? 'all organizations'}</span>.
+          </p>
         </div>
         <Button size="sm" className="gap-2">
           Create Event

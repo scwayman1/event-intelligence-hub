@@ -1,8 +1,28 @@
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule } from '@/types/events';
+import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization } from '@/types/events';
+
+export const mockOrganizations: Organization[] = [
+  {
+    id: 'org-001',
+    name: 'Greenfield University',
+    shortName: 'GFU',
+    logoUrl: undefined,
+    primaryColor: 'hsl(152 55% 48%)',
+    createdAt: '2025-08-01T00:00:00Z',
+  },
+  {
+    id: 'org-002',
+    name: 'Westlake Academy',
+    shortName: 'WLA',
+    logoUrl: undefined,
+    primaryColor: 'hsl(220 65% 52%)',
+    createdAt: '2025-09-15T00:00:00Z',
+  },
+];
 
 export const mockEvents: AppEvent[] = [
   {
     id: 'evt-001',
+    orgId: 'org-001',
     name: '2026 Scholarship Ceremony',
     type: 'ceremony',
     status: 'active',
@@ -18,6 +38,7 @@ export const mockEvents: AppEvent[] = [
   },
   {
     id: 'evt-002',
+    orgId: 'org-001',
     name: "President's Circle Dinner",
     type: 'dinner',
     status: 'planning',
@@ -33,6 +54,7 @@ export const mockEvents: AppEvent[] = [
   },
   {
     id: 'evt-003',
+    orgId: 'org-001',
     name: 'Spring Commencement Reception',
     type: 'reception',
     status: 'planning',
@@ -46,33 +68,71 @@ export const mockEvents: AppEvent[] = [
     createdAt: '2026-02-15T08:00:00Z',
     updatedAt: '2026-03-22T09:15:00Z',
   },
+  {
+    id: 'evt-004',
+    orgId: 'org-002',
+    name: 'Westlake Founders Gala',
+    type: 'gala',
+    status: 'planning',
+    date: '2026-09-12',
+    time: '19:30',
+    venue: 'Lakeview Grand Hall',
+    venueAddress: '800 Lakeshore Drive',
+    estimatedAttendance: 200,
+    notes: 'Annual gala celebrating founding donors and alumni achievement awards.',
+    activeVersionId: 'ver-006',
+    createdAt: '2026-03-01T10:00:00Z',
+    updatedAt: '2026-03-25T14:00:00Z',
+  },
+  {
+    id: 'evt-005',
+    orgId: 'org-002',
+    name: 'Westlake Senior Banquet',
+    type: 'banquet',
+    status: 'planning',
+    date: '2026-06-05',
+    time: '18:00',
+    venue: 'Academy Dining Hall',
+    venueAddress: '100 Academy Way',
+    estimatedAttendance: 150,
+    notes: 'Senior class farewell banquet with faculty recognition.',
+    activeVersionId: 'ver-007',
+    createdAt: '2026-02-20T09:00:00Z',
+    updatedAt: '2026-03-22T10:00:00Z',
+  },
 ];
 
 export const mockGuests: Guest[] = [
   // Donors
-  { id: 'g-001', eventId: 'evt-001', firstName: 'Margaret', lastName: 'Thornton', displayName: 'Margaret Thornton', email: 'mthornton@foundation.org', phone: '555-0101', organization: 'Thornton Family Foundation', category: 'donor', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: 'Vegetarian', accessibilityNeeds: '', notes: 'Major donor. Funds 6 scholarships. Prefers front tables.', relationshipTags: ['thornton-family', 'major-donor'], tablePreference: 'Near stage', seatingPreference: 'With scholarship recipients she funds', plusOneId: 'g-002', householdId: 'h-001' },
-  { id: 'g-002', eventId: 'evt-001', firstName: 'Richard', lastName: 'Thornton', displayName: 'Richard Thornton', email: 'rthornton@foundation.org', phone: '555-0102', organization: 'Thornton Family Foundation', category: 'donor', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: 'Wheelchair accessible seating', notes: 'Plus-one of Margaret. Mobility needs.', relationshipTags: ['thornton-family', 'major-donor'], tablePreference: 'Near stage', seatingPreference: '', plusOneId: 'g-001', householdId: 'h-001' },
-  { id: 'g-003', eventId: 'evt-001', firstName: 'James', lastName: 'Wu', displayName: 'James Wu', email: 'jwu@techventures.com', phone: '555-0103', organization: 'Wu Tech Ventures', category: 'donor', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: 'Gluten-free', accessibilityNeeds: '', notes: 'First-time ceremony attendee. New major gift.', relationshipTags: ['new-donor'], tablePreference: '', seatingPreference: 'Near board members', householdId: 'h-002' },
-  { id: 'g-004', eventId: 'evt-001', firstName: 'Patricia', lastName: 'Alvarez', displayName: 'Patricia Alvarez', email: 'palvarez@alvarez.org', phone: '555-0104', organization: 'Alvarez Education Fund', category: 'donor', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Funds 3 scholarships. Board candidate.', relationshipTags: ['legacy-donor'], tablePreference: 'Donor Table A', seatingPreference: '', householdId: 'h-003' },
-  { id: 'g-005', eventId: 'evt-001', firstName: 'David', lastName: 'Chen', displayName: 'David Chen', email: 'dchen@chengroup.com', phone: '555-0105', organization: 'Chen Group', category: 'donor', rsvpStatus: 'declined', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Declined - sending representative instead.', relationshipTags: ['corporate-donor'], tablePreference: '', seatingPreference: '' },
+  { id: 'g-001', orgId: 'org-001', eventId: 'evt-001', firstName: 'Margaret', lastName: 'Thornton', displayName: 'Margaret Thornton', email: 'mthornton@foundation.org', phone: '555-0101', organization: 'Thornton Family Foundation', category: 'donor', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: 'Vegetarian', accessibilityNeeds: '', notes: 'Major donor. Funds 6 scholarships. Prefers front tables.', relationshipTags: ['thornton-family', 'major-donor'], tablePreference: 'Near stage', seatingPreference: 'With scholarship recipients she funds', plusOneId: 'g-002', householdId: 'h-001' },
+  { id: 'g-002', orgId: 'org-001', eventId: 'evt-001', firstName: 'Richard', lastName: 'Thornton', displayName: 'Richard Thornton', email: 'rthornton@foundation.org', phone: '555-0102', organization: 'Thornton Family Foundation', category: 'donor', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: 'Wheelchair accessible seating', notes: 'Plus-one of Margaret. Mobility needs.', relationshipTags: ['thornton-family', 'major-donor'], tablePreference: 'Near stage', seatingPreference: '', plusOneId: 'g-001', householdId: 'h-001' },
+  { id: 'g-003', orgId: 'org-001', eventId: 'evt-001', firstName: 'James', lastName: 'Wu', displayName: 'James Wu', email: 'jwu@techventures.com', phone: '555-0103', organization: 'Wu Tech Ventures', category: 'donor', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: 'Gluten-free', accessibilityNeeds: '', notes: 'First-time ceremony attendee. New major gift.', relationshipTags: ['new-donor'], tablePreference: '', seatingPreference: 'Near board members', householdId: 'h-002' },
+  { id: 'g-004', orgId: 'org-001', eventId: 'evt-001', firstName: 'Patricia', lastName: 'Alvarez', displayName: 'Patricia Alvarez', email: 'palvarez@alvarez.org', phone: '555-0104', organization: 'Alvarez Education Fund', category: 'donor', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Funds 3 scholarships. Board candidate.', relationshipTags: ['legacy-donor'], tablePreference: 'Donor Table A', seatingPreference: '', householdId: 'h-003' },
+  { id: 'g-005', orgId: 'org-001', eventId: 'evt-001', firstName: 'David', lastName: 'Chen', displayName: 'David Chen', email: 'dchen@chengroup.com', phone: '555-0105', organization: 'Chen Group', category: 'donor', rsvpStatus: 'declined', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Declined - sending representative instead.', relationshipTags: ['corporate-donor'], tablePreference: '', seatingPreference: '' },
   // Scholarship Recipients
-  { id: 'g-006', eventId: 'evt-001', firstName: 'Amara', lastName: 'Johnson', displayName: 'Amara Johnson', email: 'ajohnson@university.edu', phone: '555-0201', organization: 'College of Engineering', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 3, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Thornton Scholar. Speaking at ceremony. Family guests: mother, sister.', relationshipTags: ['thornton-scholar', 'speaker'], tablePreference: 'Near stage', seatingPreference: 'Near Margaret Thornton', householdId: 'h-004' },
-  { id: 'g-007', eventId: 'evt-001', firstName: 'Lucas', lastName: 'Martinez', displayName: 'Lucas Martinez', email: 'lmartinez@university.edu', phone: '555-0202', organization: 'School of Business', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: 'Vegan', accessibilityNeeds: '', notes: 'Alvarez Scholar. First-generation student.', relationshipTags: ['alvarez-scholar'], tablePreference: '', seatingPreference: 'Near Patricia Alvarez' },
-  { id: 'g-008', eventId: 'evt-001', firstName: 'Priya', lastName: 'Patel', displayName: 'Priya Patel', email: 'ppatel@university.edu', phone: '555-0203', organization: 'College of Sciences', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: 'Vegetarian', accessibilityNeeds: '', notes: 'Wu Scholar. Research presentation.', relationshipTags: ['wu-scholar'], tablePreference: '', seatingPreference: 'Near James Wu' },
-  { id: 'g-009', eventId: 'evt-001', firstName: 'Tyler', lastName: 'Brooks', displayName: 'Tyler Brooks', email: 'tbrooks@university.edu', phone: '555-0204', organization: 'School of Arts', category: 'scholarship_recipient', rsvpStatus: 'waitlist', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Thornton Arts Scholar. On waitlist due to late RSVP.', relationshipTags: ['thornton-scholar'], tablePreference: '', seatingPreference: '' },
+  { id: 'g-006', orgId: 'org-001', eventId: 'evt-001', firstName: 'Amara', lastName: 'Johnson', displayName: 'Amara Johnson', email: 'ajohnson@university.edu', phone: '555-0201', organization: 'College of Engineering', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 3, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Thornton Scholar. Speaking at ceremony. Family guests: mother, sister.', relationshipTags: ['thornton-scholar', 'speaker'], tablePreference: 'Near stage', seatingPreference: 'Near Margaret Thornton', householdId: 'h-004' },
+  { id: 'g-007', orgId: 'org-001', eventId: 'evt-001', firstName: 'Lucas', lastName: 'Martinez', displayName: 'Lucas Martinez', email: 'lmartinez@university.edu', phone: '555-0202', organization: 'School of Business', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: 'Vegan', accessibilityNeeds: '', notes: 'Alvarez Scholar. First-generation student.', relationshipTags: ['alvarez-scholar'], tablePreference: '', seatingPreference: 'Near Patricia Alvarez' },
+  { id: 'g-008', orgId: 'org-001', eventId: 'evt-001', firstName: 'Priya', lastName: 'Patel', displayName: 'Priya Patel', email: 'ppatel@university.edu', phone: '555-0203', organization: 'College of Sciences', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: 'Vegetarian', accessibilityNeeds: '', notes: 'Wu Scholar. Research presentation.', relationshipTags: ['wu-scholar'], tablePreference: '', seatingPreference: 'Near James Wu' },
+  { id: 'g-009', orgId: 'org-001', eventId: 'evt-001', firstName: 'Tyler', lastName: 'Brooks', displayName: 'Tyler Brooks', email: 'tbrooks@university.edu', phone: '555-0204', organization: 'School of Arts', category: 'scholarship_recipient', rsvpStatus: 'waitlist', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Thornton Arts Scholar. On waitlist due to late RSVP.', relationshipTags: ['thornton-scholar'], tablePreference: '', seatingPreference: '' },
   // Board Members
-  { id: 'g-010', eventId: 'evt-001', firstName: 'Eleanor', lastName: 'Voss', displayName: 'Dr. Eleanor Voss', email: 'evoss@university.edu', phone: '555-0301', organization: 'Board of Trustees', category: 'board_member', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Board Chair. Opening remarks.', relationshipTags: ['board-chair', 'speaker'], tablePreference: 'Head table', seatingPreference: 'Near podium' },
-  { id: 'g-011', eventId: 'evt-001', firstName: 'Robert', lastName: 'Kim', displayName: 'Robert Kim', email: 'rkim@kimholdings.com', phone: '555-0302', organization: 'Kim Holdings', category: 'board_member', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Board member and donor.', relationshipTags: ['board-member', 'donor'], tablePreference: '', seatingPreference: '' },
-  { id: 'g-012', eventId: 'evt-001', firstName: 'Sandra', lastName: 'Okafor', displayName: 'Sandra Okafor', email: 'sokafor@university.edu', phone: '555-0303', organization: 'Board of Trustees', category: 'board_member', rsvpStatus: 'invited', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Awaiting RSVP. Follow up needed.', relationshipTags: ['board-member'], tablePreference: '', seatingPreference: '' },
+  { id: 'g-010', orgId: 'org-001', eventId: 'evt-001', firstName: 'Eleanor', lastName: 'Voss', displayName: 'Dr. Eleanor Voss', email: 'evoss@university.edu', phone: '555-0301', organization: 'Board of Trustees', category: 'board_member', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Board Chair. Opening remarks.', relationshipTags: ['board-chair', 'speaker'], tablePreference: 'Head table', seatingPreference: 'Near podium' },
+  { id: 'g-011', orgId: 'org-001', eventId: 'evt-001', firstName: 'Robert', lastName: 'Kim', displayName: 'Robert Kim', email: 'rkim@kimholdings.com', phone: '555-0302', organization: 'Kim Holdings', category: 'board_member', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Board member and donor.', relationshipTags: ['board-member', 'donor'], tablePreference: '', seatingPreference: '' },
+  { id: 'g-012', orgId: 'org-001', eventId: 'evt-001', firstName: 'Sandra', lastName: 'Okafor', displayName: 'Sandra Okafor', email: 'sokafor@university.edu', phone: '555-0303', organization: 'Board of Trustees', category: 'board_member', rsvpStatus: 'invited', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Awaiting RSVP. Follow up needed.', relationshipTags: ['board-member'], tablePreference: '', seatingPreference: '' },
   // VIPs
-  { id: 'g-013', eventId: 'evt-001', firstName: 'William', lastName: 'Hayes', displayName: 'President William Hayes', email: 'president@university.edu', phone: '555-0401', organization: 'University', category: 'vip', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'University President. Keynote speaker.', relationshipTags: ['president', 'speaker'], tablePreference: 'Head table', seatingPreference: 'Center stage' },
-  { id: 'g-014', eventId: 'evt-001', firstName: 'Maria', lastName: 'Gonzalez', displayName: 'Mayor Maria Gonzalez', email: 'mgonzalez@city.gov', phone: '555-0402', organization: 'City Hall', category: 'vip', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Special guest. Brief remarks.', relationshipTags: ['city-official'], tablePreference: 'Near stage', seatingPreference: '' },
+  { id: 'g-013', orgId: 'org-001', eventId: 'evt-001', firstName: 'William', lastName: 'Hayes', displayName: 'President William Hayes', email: 'president@university.edu', phone: '555-0401', organization: 'University', category: 'vip', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'University President. Keynote speaker.', relationshipTags: ['president', 'speaker'], tablePreference: 'Head table', seatingPreference: 'Center stage' },
+  { id: 'g-014', orgId: 'org-001', eventId: 'evt-001', firstName: 'Maria', lastName: 'Gonzalez', displayName: 'Mayor Maria Gonzalez', email: 'mgonzalez@city.gov', phone: '555-0402', organization: 'City Hall', category: 'vip', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Special guest. Brief remarks.', relationshipTags: ['city-official'], tablePreference: 'Near stage', seatingPreference: '' },
   // Staff
-  { id: 'g-015', eventId: 'evt-001', firstName: 'Karen', lastName: 'Mitchell', displayName: 'Karen Mitchell', email: 'kmitchell@university.edu', phone: '555-0501', organization: 'Advancement Office', category: 'staff', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Event lead. Needs position near check-in.', relationshipTags: ['event-staff'], tablePreference: 'Staff table', seatingPreference: 'Near entrance' },
-  { id: 'g-016', eventId: 'evt-001', firstName: 'Derek', lastName: 'Washington', displayName: 'Derek Washington', email: 'dwashington@university.edu', phone: '555-0502', organization: 'Advancement Office', category: 'staff', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'AV coordinator.', relationshipTags: ['event-staff', 'av'], tablePreference: 'Staff table', seatingPreference: 'Near AV booth' },
+  { id: 'g-015', orgId: 'org-001', eventId: 'evt-001', firstName: 'Karen', lastName: 'Mitchell', displayName: 'Karen Mitchell', email: 'kmitchell@university.edu', phone: '555-0501', organization: 'Advancement Office', category: 'staff', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Event lead. Needs position near check-in.', relationshipTags: ['event-staff'], tablePreference: 'Staff table', seatingPreference: 'Near entrance' },
+  { id: 'g-016', orgId: 'org-001', eventId: 'evt-001', firstName: 'Derek', lastName: 'Washington', displayName: 'Derek Washington', email: 'dwashington@university.edu', phone: '555-0502', organization: 'Advancement Office', category: 'staff', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'AV coordinator.', relationshipTags: ['event-staff', 'av'], tablePreference: 'Staff table', seatingPreference: 'Near AV booth' },
   // Family
-  { id: 'g-017', eventId: 'evt-001', firstName: 'Grace', lastName: 'Johnson', displayName: 'Grace Johnson', email: 'gjohnson@email.com', phone: '555-0601', organization: '', category: 'family', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Mother of Amara Johnson', relationshipTags: ['family-of-recipient'], tablePreference: '', seatingPreference: 'With Amara Johnson', householdId: 'h-004' },
-  { id: 'g-018', eventId: 'evt-001', firstName: 'Zoe', lastName: 'Johnson', displayName: 'Zoe Johnson', email: '', phone: '', organization: '', category: 'family', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Sister of Amara Johnson', relationshipTags: ['family-of-recipient'], tablePreference: '', seatingPreference: 'With Amara Johnson', householdId: 'h-004' },
+  { id: 'g-017', orgId: 'org-001', eventId: 'evt-001', firstName: 'Grace', lastName: 'Johnson', displayName: 'Grace Johnson', email: 'gjohnson@email.com', phone: '555-0601', organization: '', category: 'family', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Mother of Amara Johnson', relationshipTags: ['family-of-recipient'], tablePreference: '', seatingPreference: 'With Amara Johnson', householdId: 'h-004' },
+  { id: 'g-018', orgId: 'org-001', eventId: 'evt-001', firstName: 'Zoe', lastName: 'Johnson', displayName: 'Zoe Johnson', email: '', phone: '', organization: '', category: 'family', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Sister of Amara Johnson', relationshipTags: ['family-of-recipient'], tablePreference: '', seatingPreference: 'With Amara Johnson', householdId: 'h-004' },
+  // — Westlake Academy guests —
+  { id: 'g-019', orgId: 'org-002', eventId: 'evt-004', firstName: 'Catherine', lastName: 'Blake', displayName: 'Catherine Blake', email: 'cblake@westlake.edu', phone: '555-1001', organization: 'Westlake Board', category: 'board_member', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Board Chair. Welcome address.', relationshipTags: ['board-chair'], tablePreference: 'Head table', seatingPreference: '' },
+  { id: 'g-020', orgId: 'org-002', eventId: 'evt-004', firstName: 'Nathan', lastName: 'Rivera', displayName: 'Nathan Rivera', email: 'nrivera@riverafund.org', phone: '555-1002', organization: 'Rivera Foundation', category: 'donor', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: 'Gluten-free', accessibilityNeeds: '', notes: 'Founding donor. Legacy giving.', relationshipTags: ['founding-donor'], tablePreference: '', seatingPreference: 'Near board members' },
+  { id: 'g-021', orgId: 'org-002', eventId: 'evt-004', firstName: 'Olivia', lastName: 'Park', displayName: 'Olivia Park', email: 'opark@westlake.edu', phone: '555-1003', organization: 'Class of 2026', category: 'scholarship_recipient', rsvpStatus: 'confirmed', partySize: 2, dietaryRestrictions: 'Vegan', accessibilityNeeds: '', notes: 'Rivera Scholar. Valedictorian candidate.', relationshipTags: ['rivera-scholar'], tablePreference: '', seatingPreference: 'Near Nathan Rivera' },
+  { id: 'g-022', orgId: 'org-002', eventId: 'evt-005', firstName: 'Samuel', lastName: 'Grant', displayName: 'Samuel Grant', email: 'sgrant@westlake.edu', phone: '555-1004', organization: 'Faculty', category: 'staff', rsvpStatus: 'confirmed', partySize: 1, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Senior class advisor. MC for banquet.', relationshipTags: ['faculty', 'mc'], tablePreference: 'Head table', seatingPreference: '' },
+  { id: 'g-023', orgId: 'org-002', eventId: 'evt-005', firstName: 'Emily', lastName: 'Torres', displayName: 'Emily Torres', email: 'etorres@westlake.edu', phone: '555-1005', organization: 'Class of 2026', category: 'vip', rsvpStatus: 'confirmed', partySize: 3, dietaryRestrictions: '', accessibilityNeeds: '', notes: 'Senior class president. Guest speaker.', relationshipTags: ['student-leader', 'speaker'], tablePreference: 'Near stage', seatingPreference: '' },
 ];
 
 export const mockVersions: EventVersion[] = [
@@ -81,6 +141,8 @@ export const mockVersions: EventVersion[] = [
   { id: 'ver-003', eventId: 'evt-002', name: 'Draft Layout', status: 'active', createdAt: '2026-02-10T10:00:00Z', updatedAt: '2026-03-10T11:00:00Z', createdBy: 'Admin', notes: 'Initial layout concept.' },
   { id: 'ver-004', eventId: 'evt-001', name: 'Initial Draft', status: 'archived', createdAt: '2026-01-15T10:00:00Z', updatedAt: '2026-02-28T12:00:00Z', createdBy: 'Karen Mitchell', notes: 'First draft. Superseded by Final Layout.' },
   { id: 'ver-005', eventId: 'evt-003', name: 'Outdoor Plan', status: 'active', createdAt: '2026-02-20T10:00:00Z', updatedAt: '2026-03-20T10:00:00Z', createdBy: 'Admin', notes: 'Primary outdoor layout.' },
+  { id: 'ver-006', eventId: 'evt-004', name: 'Gala Draft', status: 'active', createdAt: '2026-03-05T10:00:00Z', updatedAt: '2026-03-25T14:00:00Z', createdBy: 'Catherine Blake', notes: 'Initial gala floor plan.' },
+  { id: 'ver-007', eventId: 'evt-005', name: 'Banquet Layout', status: 'active', createdAt: '2026-02-25T10:00:00Z', updatedAt: '2026-03-22T10:00:00Z', createdBy: 'Samuel Grant', notes: 'Dining hall setup for senior class.' },
 ];
 
 export const mockLayoutObjects: LayoutObject[] = [];

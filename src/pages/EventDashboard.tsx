@@ -19,7 +19,8 @@ function MetricCard({ label, value, icon: Icon, accent }: { label: string; value
 export default function EventDashboard() {
   const { eventId } = useParams();
   const events = useEventStore((s) => s.events);
-  const guests = useEventStore((s) => s.guests);
+  const getOrgGuests = useEventStore((s) => s.getOrgGuests);
+  const guests = getOrgGuests();
   const versions = useEventStore((s) => s.versions);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
