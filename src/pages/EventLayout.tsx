@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SaveIndicator } from '@/components/SaveIndicator';
 import { cn } from '@/lib/utils';
 import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
@@ -289,6 +290,9 @@ export default function EventLayout() {
                 <Plus className="w-3 h-3 mr-1" />{item.label}
               </Button>
             ))}
+          </div>
+          <div className="ml-auto">
+            <SaveIndicator />
           </div>
         </div>
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules } from './mock-data';
 
@@ -40,9 +41,14 @@ interface EventStore {
   getVersionSeating: (versionId: string) => SeatingAssignment[];
   getEventRules: (eventId: string) => SeatingRule[];
   getTableGuests: (tableId: string, versionId: string) => Guest[];
+
+  // Reset
+  resetStore: () => void;
 }
 
-export const useEventStore = create<EventStore>((set, get) => ({
+export const useEventStore = create<EventStore>()(
+  persist(
+    (set, get) => ({
   events: mockEvents,
   guests: mockGuests,
   versions: mockVersions,
@@ -82,4 +88,29 @@ export const useEventStore = create<EventStore>((set, get) => ({
     const guestIds = assignments.map((a) => a.guestId);
     return get().guests.filter((g) => guestIds.includes(g.id));
   },
-}));
+
+  resetStore: () => {
+    localStorage.removeItem('event-intelligence-hub-store');
+    set({
+      events: mockEvents,
+      guests: mockGuests,
+      versions: mockVersions,
+      layoutObjects: mockLayoutObjects,
+      seatingAssignments: mockSeatingAssignments,
+      seatingRules: mockSeatingRules,
+    });
+  },
+}),
+    {
+      name: 'event-intelligence-hub-store',
+      partialize: (state) => ({
+        events: state.events,
+        guests: state.guests,
+        versions: state.versions,
+        layoutObjects: state.layoutObjects,
+        seatingAssignments: state.seatingAssignments,
+        seatingRules: state.seatingRules,
+      }),
+    }
+  )
+);
