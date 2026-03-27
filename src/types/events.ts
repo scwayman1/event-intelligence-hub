@@ -5,6 +5,17 @@ export type GuestCategory = 'donor' | 'scholarship_recipient' | 'family' | 'boar
 export type LayoutObjectType = 'tent' | 'round_table' | 'rect_table' | 'chair' | 'stage' | 'podium' | 'checkin' | 'photo_area' | 'registration' | 'vip_area' | 'aisle' | 'dance_floor' | 'catering' | 'bar' | 'signage' | 'custom_zone';
 export type VersionStatus = 'draft' | 'active' | 'archived' | 'approved';
 
+/** The logged-in user's profile — required before they can use the app */
+export interface UserProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  avatarUrl?: string;
+  createdAt: string;
+}
+
 /** An organization / school instance — all data is scoped to one */
 export interface Organization {
   id: string;

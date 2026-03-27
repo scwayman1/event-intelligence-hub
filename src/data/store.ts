@@ -1,9 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization } from '@/types/events';
+import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 
 interface EventStore {
+  // User profile
+  userProfile: UserProfile | null;
+  setUserProfile: (profile: UserProfile) => void;
+
   // Organization state
   organizations: Organization[];
   activeOrgId: string | null;
@@ -73,6 +77,9 @@ interface EventStore {
 export const useEventStore = create<EventStore>()(
   persist(
     (set, get) => ({
+  userProfile: null,
+  setUserProfile: (profile) => set({ userProfile: profile }),
+
   organizations: [],
   activeOrgId: null,
 
@@ -157,6 +164,7 @@ export const useEventStore = create<EventStore>()(
   resetStore: () => {
     localStorage.removeItem('event-intelligence-hub-store');
     set({
+      userProfile: null,
       organizations: [],
       activeOrgId: null,
       events: [],
@@ -172,6 +180,7 @@ export const useEventStore = create<EventStore>()(
     {
       name: 'event-intelligence-hub-store',
       partialize: (state) => ({
+        userProfile: state.userProfile,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         organizations: state.organizations,
         activeOrgId: state.activeOrgId,
