@@ -16,6 +16,8 @@ import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from 
 import { calculateTableFit, edgeDistances, nearestEdgeDistances, type RoomBounds } from '@/lib/space-calculator';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { TableDetailPopover } from '@/components/layout/TableDetailPopover';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
 
@@ -88,6 +90,7 @@ export default function EventLayout() {
   const [calcSpacing, setCalcSpacing] = useState('4');
   const [calcMargin, setCalcMargin] = useState('3');
   const [showMeasureGuides, setShowMeasureGuides] = useState(true);
+  const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -674,7 +677,7 @@ export default function EventLayout() {
                 nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
               };
 
-              return (
+              const objectEl = (
                 <div
                   key={obj.id}
                   className={cn(
@@ -692,6 +695,12 @@ export default function EventLayout() {
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
                   onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
+                  onDoubleClick={(e) => {
+                    if (isTable) {
+                      e.stopPropagation();
+                      setTablePopoverId(tablePopoverId === obj.id ? null : obj.id);
+                    }
+                  }}
                 >
                   <LayoutObjectRenderer
                     obj={obj}
@@ -737,6 +746,32 @@ export default function EventLayout() {
                   ))}
                 </div>
               );
+
+              // Wrap tables with a popover for guest details on double-click
+              if (isTable) {
+                return (
+                  <Popover key={obj.id} open={tablePopoverId === obj.id} onOpenChange={(open) => setTablePopoverId(open ? obj.id : null)}>
+                    <PopoverTrigger asChild>
+                      {objectEl}
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-80 p-3 z-[100]"
+                      side="right"
+                      align="start"
+                      sideOffset={12}
+                      onPointerDownOutside={() => setTablePopoverId(null)}
+                    >
+                      <TableDetailPopover
+                        table={obj}
+                        guests={tableGuests}
+                        capacity={obj.capacity}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                );
+              }
+
+              return objectEl;
             })}
           </div>
         </div>
