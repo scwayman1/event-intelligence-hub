@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import {
@@ -14,12 +15,15 @@ import {
   Sparkles,
   Users,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import { buildEventAnalytics, type EventInsight } from '@/lib/event-analytics';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EventNotFound } from '@/components/EventNotFound';
+import CheckInView from '@/components/CheckInView';
+import { ExportReportModal } from '@/components/ExportReportModal';
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { DonutChart } from '@/components/charts/DonutChart';
 import { BarChart } from '@/components/charts/BarChart';
@@ -262,6 +266,9 @@ export default function EventDashboard() {
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
 
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [checkInOpen, setCheckInOpen] = useState(false);
+
   const event = events.find((e) => e.id === eventId);
   if (!event) return <EventNotFound />;
 
@@ -288,7 +295,14 @@ export default function EventDashboard() {
         )
       : 0;
 
-  const quickActions = [
+  const quickActions: Array<{
+    label: string;
+    path: string;
+    icon: React.ElementType;
+    description: string;
+    accent: string;
+    onClick?: () => void;
+  }> = [
     {
       label: 'Open Layout Editor',
       path: 'layout',
@@ -312,12 +326,17 @@ export default function EventDashboard() {
     },
     {
       label: 'Export Report',
-      path: 'versions',
+      path: '',
       icon: Download,
-      description: 'Versions & export',
+      description: 'Download CSV & reports',
       accent: 'group-hover:text-orange-500',
+      onClick: () => setExportModalOpen(true),
     },
   ];
+
+  const checkedInCount = analytics.checkedInGuests.length;
+  const totalExpected = checkedInCount + analytics.confirmedGuests.length;
+  const checkInPct = totalExpected > 0 ? Math.round((checkedInCount / totalExpected) * 100) : 0;
 
   const criticalCount = analytics.insights.filter(
     (i) => i.severity === 'critical',
@@ -327,12 +346,12 @@ export default function EventDashboard() {
   ).length;
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8">
       {/* ---- Event Header ---- */}
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground">
               {event.name}
             </h1>
             <Badge variant="secondary" className="text-xs capitalize font-medium">
@@ -367,9 +386,9 @@ export default function EventDashboard() {
       </div>
 
       {/* ---- Hero: Readiness Ring + Stats Grid ---- */}
-      <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6 md:gap-8 items-start">
         {/* Readiness Ring hero card */}
-        <Card className="flex items-center justify-center p-10 bg-gradient-to-br from-background to-muted/40 border-2">
+        <Card className="flex items-center justify-center p-6 md:p-10 bg-gradient-to-br from-background to-muted/40 border-2">
           <ReadinessRing
             score={analytics.readinessScore}
             label={analytics.progressLabel}
@@ -522,6 +541,27 @@ export default function EventDashboard() {
               </p>
             </div>
           </StatCard>
+
+          {/* Checked In */}
+          <StatCard
+            icon={Zap}
+            iconBg="bg-emerald-500/10"
+            iconFg="text-emerald-500"
+            label="Checked In"
+            value={`${checkedInCount} / ${totalExpected}`}
+          >
+            <div className="space-y-1.5">
+              <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all"
+                  style={{ width: `${checkInPct}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {checkInPct}% of expected guests checked in
+              </p>
+            </div>
+          </StatCard>
         </div>
       </div>
 
@@ -600,17 +640,41 @@ export default function EventDashboard() {
         )}
       </div>
 
+      {/* ---- Event Day Check-In CTA ---- */}
+      <div
+        className="relative overflow-hidden rounded-xl border-2 border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent p-5 cursor-pointer hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/10 transition-all group"
+        onClick={() => setCheckInOpen(true)}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors">
+              <Zap className="w-6 h-6 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-foreground">Event Day Check-In</p>
+              <p className="text-sm text-muted-foreground">
+                Go live with a full-screen check-in kiosk — search guests, scan arrivals, track progress in real time.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <p className="text-2xl font-bold font-mono text-emerald-500">{checkedInCount}</p>
+              <p className="text-xs text-muted-foreground">of {totalExpected} arrived</p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-emerald-500 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </div>
+      </div>
+
       {/* ---- Quick Actions ---- */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Quick Actions
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {quickActions.map((action) => (
-            <Link
-              key={action.path}
-              to={`/events/${eventId}/${action.path}`}
-            >
+          {quickActions.map((action) => {
+            const inner = (
               <Button
                 variant="outline"
                 className="w-full h-auto py-5 px-4 flex flex-col items-center gap-2.5 hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all group"
@@ -627,8 +691,25 @@ export default function EventDashboard() {
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                 </span>
               </Button>
-            </Link>
-          ))}
+            );
+
+            if (action.onClick) {
+              return (
+                <div key={action.label} onClick={action.onClick} className="cursor-pointer">
+                  {inner}
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={action.path}
+                to={`/events/${eventId}/${action.path}`}
+              >
+                {inner}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
@@ -739,6 +820,15 @@ export default function EventDashboard() {
             })}
           </div>
         </div>
+      )}
+
+      <ExportReportModal
+        open={exportModalOpen}
+        onOpenChange={setExportModalOpen}
+        analytics={analytics}
+      />
+      {checkInOpen && (
+        <CheckInView eventId={eventId!} onClose={() => setCheckInOpen(false)} />
       )}
     </div>
   );
