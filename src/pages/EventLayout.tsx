@@ -13,25 +13,26 @@ import { type UnitSystem, formatScale, formatDimension } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
 import { metersToPixels, supportPresets, tablePresets, type ObjectPreset } from '@/lib/layout-presets';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
+import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
 
 const objectColors: Record<string, string> = {
-  tent: 'border-info/40 bg-info/5',
-  stage: 'border-warning/50 bg-warning/10',
-  podium: 'border-warning/40 bg-warning/15',
-  round_table: 'border-primary/50 bg-primary/10',
-  rect_table: 'border-primary/50 bg-primary/10',
-  checkin: 'border-success/40 bg-success/10',
-  bar: 'border-accent/40 bg-accent/10',
-  vip_area: 'border-warning/30 bg-warning/5',
-  chair: 'border-muted-foreground/30 bg-muted/20',
-  photo_area: 'border-info/30 bg-info/5',
-  registration: 'border-success/30 bg-success/5',
+  tent: 'border-sky-400/40 bg-sky-50/30',
+  stage: 'border-indigo-500/60 bg-indigo-950/40',
+  podium: 'border-amber-600/50 bg-amber-900/20',
+  round_table: 'border-amber-400/50 bg-amber-50/80',
+  rect_table: 'border-amber-400/50 bg-amber-50/80',
+  checkin: 'border-emerald-400/50 bg-emerald-50/40',
+  bar: 'border-amber-600/50 bg-amber-900/20',
+  vip_area: 'border-yellow-500/50 bg-yellow-50/40',
+  chair: 'border-stone-400/30 bg-stone-100/20',
+  photo_area: 'border-blue-400/40 bg-blue-50/30',
+  registration: 'border-emerald-400/50 bg-emerald-50/40',
   aisle: 'border-border bg-muted/10',
-  dance_floor: 'border-primary/20 bg-primary/5',
-  catering: 'border-accent/30 bg-accent/5',
-  signage: 'border-muted-foreground/30 bg-muted/10',
+  dance_floor: 'border-fuchsia-400/40 bg-fuchsia-50/30',
+  catering: 'border-orange-400/50 bg-orange-50/40',
+  signage: 'border-stone-400/40 bg-stone-100/30',
   custom_zone: 'border-border bg-muted/5',
 };
 
@@ -383,27 +384,27 @@ export default function EventLayout() {
                 <div
                   key={obj.id}
                   className={cn(
-                    'absolute border-2 flex flex-col items-center justify-center cursor-move transition-shadow select-none',
+                    'absolute border-2 flex flex-col items-center justify-center cursor-move transition-shadow select-none overflow-visible',
                     objectColors[obj.type] || 'border-border bg-muted/10',
                     obj.type === 'round_table' && 'rounded-full',
+                    obj.type === 'tent' && 'border-dashed',
                     isSelected && 'ring-2 ring-primary shadow-lg shadow-primary/20',
                     obj.locked && 'cursor-not-allowed opacity-70',
                   )}
                   style={{
                     left: obj.x, top: obj.y, width: obj.width, height: obj.height,
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+                    boxShadow: isSelected ? undefined : '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.05)',
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
                   onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
                 >
-                  <span className="text-[10px] font-medium text-foreground leading-tight text-center px-1 truncate max-w-full">
-                    {obj.name}
-                  </span>
-                  {isTable && (
-                    <span className="text-[9px] font-mono text-muted-foreground">
-                      {tableGuests.length}/{obj.capacity}
-                    </span>
-                  )}
+                  <LayoutObjectRenderer
+                    obj={obj}
+                    isSelected={isSelected}
+                    assignedCount={tableGuests.length}
+                    capacity={obj.capacity}
+                  />
 
                   {/* Dimension labels for selected objects */}
                   {isSelected && (

@@ -21,6 +21,10 @@ export const supportPresets: ObjectPreset[] = [
   { label: 'Podium', type: 'podium', widthMeters: 0.6, heightMeters: 0.6 },
   { label: 'Tent 40x30', type: 'tent', widthMeters: 12, heightMeters: 9 },
   { label: 'Dance Floor', type: 'dance_floor', widthMeters: 6, heightMeters: 6 },
+  { label: 'Photo Backdrop', type: 'photo_area', widthMeters: 3, heightMeters: 1.5 },
+  { label: 'Registration', type: 'registration', widthMeters: 2.44, heightMeters: 0.76 },
+  { label: 'Tent 20x20', type: 'tent', widthMeters: 6, heightMeters: 6 },
+  { label: 'Tent 60x40', type: 'tent', widthMeters: 18, heightMeters: 12 },
 ];
 
 export function metersToPixels(meters: number, metersPerPixel: number | null, fallback: number) {
