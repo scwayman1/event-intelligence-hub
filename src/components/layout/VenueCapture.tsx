@@ -264,13 +264,24 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
     }
   }, []);
 
-  // Compute live region dimensions using map.unproject for accuracy
+  // Compute live meters-per-pixel using map.unproject for accuracy
+  const liveMpp = (() => {
+    const map = mapInstance.current;
+    if (!map) return metersPerPxAtZoom(currentZoom, currentLat);
+    const tl = map.unproject([region.x, region.y]);
+    const tr = map.unproject([region.x + region.width, region.y]);
+    const R = 6371000;
+    const dLon = ((tr.lng - tl.lng) * Math.PI) / 180;
+    const lat1 = (tl.lat * Math.PI) / 180;
+    const lat2 = (tr.lat * Math.PI) / 180;
+    const a = Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    const widthM = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return widthM / region.width;
+  })();
   const regionDims = (() => {
     const map = mapInstance.current;
     if (!map) {
-      // Fallback before map loads
-      const mpp = metersPerPxAtZoom(currentZoom, currentLat);
-      return { widthM: mpp * region.width, heightM: mpp * region.height };
+      return { widthM: liveMpp * region.width, heightM: liveMpp * region.height };
     }
     const tl = map.unproject([region.x, region.y]);
     const tr = map.unproject([region.x + region.width, region.y]);
@@ -337,7 +348,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           <Ruler className="w-3.5 h-3.5" />
           <span className="font-mono">{fmtDist(regionWidthM)} × {fmtDist(regionHeightM)}</span>
           <span className="text-border">|</span>
-          <span className="font-mono">{formatScale(mpp, unitSystem)}</span>
+          <span className="font-mono">{formatScale(liveMpp, unitSystem)}</span>
           <button
             onClick={() => setUnitSystem(u => u === 'imperial' ? 'metric' : 'imperial')}
             className="ml-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground text-[10px] font-medium uppercase tracking-wide"
