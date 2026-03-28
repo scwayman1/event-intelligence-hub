@@ -241,8 +241,34 @@ function TableCard({
 
   const isRound = table.type === 'round_table';
 
+  // Determine the dominant relationship group at this table (the "anchor")
+  const seatedGuestIds = Array.from(seatMap.values()).map((g) => g.id);
+  const groupCounts = new Map<string, number>();
+  seatedGuestIds.forEach((gid) => {
+    relationshipMemberships
+      .filter((m) => m.guestId === gid)
+      .forEach((m) => groupCounts.set(m.groupId, (groupCounts.get(m.groupId) ?? 0) + 1));
+  });
+  // Pick the group with the most members seated at this table
+  let anchorGroup: RelationshipGroup | null = null;
+  let anchorCount = 0;
+  groupCounts.forEach((count, groupId) => {
+    if (count > anchorCount) {
+      anchorCount = count;
+      const g = relationshipGroups.find((rg) => rg.id === groupId);
+      if (g) { anchorGroup = g; anchorCount = count; }
+    }
+  });
+  const anchorColor = anchorGroup
+    ? (anchorGroup as RelationshipGroup).color ?? RELATIONSHIP_TYPE_COLORS[(anchorGroup as RelationshipGroup).type]
+    : null;
+  const isAnchored = anchorGroup !== null && anchorCount >= 2;
+
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 group">
+    <div className={cn(
+      'rounded-xl border bg-card p-4 flex flex-col gap-3 group transition-all',
+      isAnchored ? 'border-opacity-60' : 'border-border',
+    )} style={isAnchored && anchorColor ? { borderColor: `${anchorColor}40` } : undefined}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground truncate">{table.name}</h3>
@@ -271,6 +297,9 @@ function TableCard({
           relationshipMemberships={relationshipMemberships}
           onDrop={onDropGuest}
           onUnseat={onUnseatGuest}
+          anchorGroup={anchorGroup}
+          anchorColor={anchorColor}
+          isAnchored={isAnchored}
         />
       ) : (
         <RectTableSeats
@@ -282,6 +311,9 @@ function TableCard({
           relationshipMemberships={relationshipMemberships}
           onDrop={onDropGuest}
           onUnseat={onUnseatGuest}
+          anchorGroup={anchorGroup}
+          anchorColor={anchorColor}
+          isAnchored={isAnchored}
         />
       )}
     </div>
@@ -299,6 +331,9 @@ interface SeatArrangementProps {
   relationshipMemberships: RelationshipMembership[];
   onDrop: (guestId: string, tableId: string, seatNumber: number) => void;
   onUnseat: (guestId: string) => void;
+  anchorGroup: RelationshipGroup | null;
+  anchorColor: string | null;
+  isAnchored: boolean;
 }
 
 function RoundTableSeats({
@@ -310,28 +345,58 @@ function RoundTableSeats({
   relationshipMemberships,
   onDrop,
   onUnseat,
+  anchorGroup,
+  anchorColor,
+  isAnchored,
 }: SeatArrangementProps) {
   const positions = getCircularSeatPositions(capacity);
-  // The oval container: seats radiate from center; use a fixed radius in px
   const radius = Math.max(80, Math.min(130, 60 + capacity * 8));
-  const containerSize = (radius + 40) * 2; // diameter + seat size
+  const containerSize = (radius + 40) * 2;
+  const surfaceSize = radius * 2 * 0.55;
 
   return (
     <div
       className="relative mx-auto flex-shrink-0"
       style={{ width: containerSize, height: containerSize }}
     >
-      {/* Table surface */}
+      {/* Table surface — glows when anchored */}
       <div
-        className="absolute rounded-full bg-muted/20 border border-border/40"
+        className={cn(
+          'absolute rounded-full border flex items-center justify-center transition-all duration-500',
+          isAnchored
+            ? 'border-2'
+            : 'bg-muted/20 border-border/40',
+        )}
         style={{
-          width: radius * 2 * 0.55,
-          height: radius * 2 * 0.55,
+          width: surfaceSize,
+          height: surfaceSize,
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
+          ...(isAnchored && anchorColor
+            ? {
+                borderColor: anchorColor,
+                background: `radial-gradient(circle, ${anchorColor}25 0%, ${anchorColor}08 70%, transparent 100%)`,
+                boxShadow: `0 0 20px ${anchorColor}20, inset 0 0 15px ${anchorColor}10`,
+              }
+            : {}),
         }}
-      />
+      >
+        {isAnchored && anchorGroup && (
+          <div className="text-center px-2 pointer-events-none select-none" style={{ maxWidth: surfaceSize - 16 }}>
+            <p
+              className="text-[9px] font-semibold leading-tight truncate"
+              style={{ color: anchorColor ?? undefined }}
+              title={(anchorGroup as RelationshipGroup).name}
+            >
+              {(anchorGroup as RelationshipGroup).name}
+            </p>
+            <p className="text-[8px] text-muted-foreground/60 uppercase tracking-wider mt-0.5">
+              anchored
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Seats */}
       {positions.map((pos, i) => {
@@ -378,6 +443,9 @@ function RectTableSeats({
   relationshipMemberships,
   onDrop,
   onUnseat,
+  anchorGroup,
+  anchorColor,
+  isAnchored,
 }: SeatArrangementProps) {
   const positions = getRectSeatPositions(capacity);
   const topSeats = positions.filter((p) => p.row === 'top');
@@ -411,11 +479,31 @@ function RectTableSeats({
       {/* Top row */}
       {renderRow(topSeats, 0)}
 
-      {/* Table surface */}
-      <div className="mx-4 h-8 rounded-md bg-muted/20 border border-border/40 flex items-center justify-center">
-        <span className="text-[10px] text-muted-foreground/50 font-mono uppercase tracking-wider">
-          table
-        </span>
+      {/* Table surface — glows when anchored */}
+      <div
+        className={cn(
+          'mx-4 h-10 rounded-md border flex items-center justify-center transition-all duration-500',
+          isAnchored ? 'border-2' : 'bg-muted/20 border-border/40',
+        )}
+        style={isAnchored && anchorColor ? {
+          borderColor: anchorColor,
+          background: `linear-gradient(90deg, ${anchorColor}15 0%, ${anchorColor}25 50%, ${anchorColor}15 100%)`,
+          boxShadow: `0 0 12px ${anchorColor}15`,
+        } : undefined}
+      >
+        {isAnchored && anchorGroup ? (
+          <span
+            className="text-[10px] font-semibold truncate px-2"
+            style={{ color: anchorColor ?? undefined }}
+            title={(anchorGroup as RelationshipGroup).name}
+          >
+            {(anchorGroup as RelationshipGroup).name}
+          </span>
+        ) : (
+          <span className="text-[10px] text-muted-foreground/50 font-mono uppercase tracking-wider">
+            table
+          </span>
+        )}
       </div>
 
       {/* Bottom row */}
