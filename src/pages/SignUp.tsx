@@ -4,7 +4,7 @@ import { Sprout, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useEventStore } from '@/data/store';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 const ROLE_OPTIONS = [
   'Event Planner',
@@ -18,7 +18,7 @@ const ROLE_OPTIONS = [
 
 export default function SignUp() {
   const navigate = useNavigate();
-  const signUp = useEventStore((s) => s.signUp);
+  const { signUp } = useAuthContext();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -28,10 +28,11 @@ export default function SignUp() {
   const [role, setRole] = useState('Event Planner');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const selectClasses = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
@@ -50,11 +51,18 @@ export default function SignUp() {
       return;
     }
 
-    const result = signUp(firstName, lastName, email, password, role);
-    if (result.success) {
-      navigate('/welcome');
+    setSubmitting(true);
+    const { error: authError } = await signUp(email, password, {
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      role,
+    });
+    setSubmitting(false);
+
+    if (authError) {
+      setError(authError.message);
     } else {
-      setError(result.error || 'Sign up failed.');
+      navigate('/welcome');
     }
   }
 
@@ -161,9 +169,9 @@ export default function SignUp() {
             />
           </div>
 
-          <Button type="submit" className="w-full gap-2" disabled={!firstName.trim() || !lastName.trim() || !email.trim() || !password}>
+          <Button type="submit" className="w-full gap-2" disabled={!firstName.trim() || !lastName.trim() || !email.trim() || !password || submitting}>
             <UserPlus className="w-4 h-4" />
-            Create account
+            {submitting ? 'Creating account...' : 'Create account'}
           </Button>
         </form>
 

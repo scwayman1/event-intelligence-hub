@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect } from 'react';
 import { CreateOrgDialog } from './CreateOrgDialog';
@@ -33,8 +34,8 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const { user: authUser, signOut: authSignOut } = useAuthContext();
   const userProfile = useEventStore((s) => s.userProfile);
-  const signOut = useEventStore((s) => s.signOut);
   const organizations = useEventStore((s) => s.organizations);
   const activeOrgId = useEventStore((s) => s.activeOrgId);
   const setActiveOrg = useEventStore((s) => s.setActiveOrg);
@@ -217,19 +218,19 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
 
       {/* Footer with profile + sign out */}
       <div className="relative p-4 border-t border-sidebar-border space-y-3">
-        {userProfile && (
+        {authUser && (
           <div className="flex items-center gap-2.5 px-1 py-1">
             <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
               <span className="text-xs font-bold text-primary">
-                {userProfile.firstName.charAt(0)}{userProfile.lastName.charAt(0)}
+                {(authUser.user_metadata.first_name ?? '').charAt(0)}{(authUser.user_metadata.last_name ?? '').charAt(0)}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">{userProfile.firstName} {userProfile.lastName}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{userProfile.email}</p>
+              <p className="text-xs font-medium text-foreground truncate">{authUser.user_metadata.first_name ?? ''} {authUser.user_metadata.last_name ?? ''}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{authUser.email}</p>
             </div>
             <button
-              onClick={() => { signOut(); navigate('/sign-in'); }}
+              onClick={() => { authSignOut(); navigate('/sign-in'); }}
               className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
               title="Sign out"
             >

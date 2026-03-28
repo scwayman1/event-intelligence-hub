@@ -4,19 +4,19 @@ import { Sprout, LogIn, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useEventStore } from '@/data/store';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export default function SignIn() {
   const navigate = useNavigate();
-  const signIn = useEventStore((s) => s.signIn);
-  const hasCompletedOnboarding = useEventStore((s) => s.hasCompletedOnboarding);
+  const { signIn } = useAuthContext();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
@@ -25,11 +25,14 @@ export default function SignIn() {
       return;
     }
 
-    const result = signIn(email, password);
-    if (result.success) {
-      navigate(hasCompletedOnboarding ? '/' : '/welcome');
+    setSubmitting(true);
+    const { error: authError } = await signIn(email, password);
+    setSubmitting(false);
+
+    if (authError) {
+      setError(authError.message);
     } else {
-      setError(result.error || 'Sign in failed.');
+      navigate('/');
     }
   }
 
@@ -89,9 +92,9 @@ export default function SignIn() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full gap-2" disabled={!email.trim() || !password}>
+          <Button type="submit" className="w-full gap-2" disabled={!email.trim() || !password || submitting}>
             <LogIn className="w-4 h-4" />
-            Sign in
+            {submitting ? 'Signing in...' : 'Sign in'}
           </Button>
         </form>
 
