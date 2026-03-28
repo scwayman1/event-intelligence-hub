@@ -128,6 +128,10 @@ export interface EventVersion {
   updatedAt: string;
   createdBy: string;
   notes: string;
+  // Venue map / satellite image (data URL or blob URL, persisted in store)
+  venueImageData?: string;
+  venueImageOpacity?: number;
+  metersPerPixel?: number;
 }
 
 export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'relationship_group' | 'custom';

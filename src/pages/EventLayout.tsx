@@ -238,6 +238,8 @@ export default function EventLayout() {
   const { eventId } = useParams();
   const { showInspector } = useOutletContext<LayoutOutletContext>();
   const events = useEventStore((s) => s.events);
+  const versions = useEventStore((s) => s.versions);
+  const updateVersion = useEventStore((s) => s.updateVersion);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const updateLayoutObject = useEventStore((s) => s.updateLayoutObject);
   const addLayoutObject = useEventStore((s) => s.addLayoutObject);
@@ -246,21 +248,32 @@ export default function EventLayout() {
 
   const event = events.find((e) => e.id === eventId);
   const versionId = event?.activeVersionId || '';
+  const activeVersion = versions.find((v) => v.id === versionId);
   const objects = layoutObjects.filter((o) => o.versionId === versionId);
 
   const [zoom, setZoom] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; handle: string; startX: number; startY: number; startW: number; startH: number; startObjX: number; startObjY: number } | null>(null);
   // Draw-to-place tool: click and drag on canvas to create an object at custom size
   const [drawingTool, setDrawingTool] = useState<LayoutObjectType | null>(null);
   const [drawing, setDrawing] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
-  const [venueImage, setVenueImage] = useState<string | null>(null);
-  const [imageOpacity, setImageOpacity] = useState(0.35);
+  // Venue image persisted on the active version so it survives navigation
+  const venueImage = activeVersion?.venueImageData ?? null;
+  const imageOpacity = activeVersion?.venueImageOpacity ?? 0.35;
+  const setVenueImage = useCallback((url: string | null) => {
+    if (versionId) updateVersion(versionId, { venueImageData: url ?? undefined });
+  }, [versionId, updateVersion]);
+  const setImageOpacity = useCallback((opacity: number) => {
+    if (versionId) updateVersion(versionId, { venueImageOpacity: opacity });
+  }, [versionId, updateVersion]);
   const [showSatelliteCapture, setShowSatelliteCapture] = useState(false);
   // Default: 1px ≈ 0.03m (~0.1ft), so 800px canvas ≈ 80ft wide
-  const [metersPerPixel, setMetersPerPixel] = useState<number | null>(0.03048);
+  // Persisted on version so it survives navigation
+  const metersPerPixel = activeVersion?.metersPerPixel ?? 0.03048;
+  const setMetersPerPixel = useCallback((mpp: number | null) => {
+    if (versionId) updateVersion(versionId, { metersPerPixel: mpp ?? undefined });
+  }, [versionId, updateVersion]);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [snapMode, setSnapMode] = useState<'grid' | 'measured' | 'free'>('measured');
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
@@ -307,8 +320,12 @@ export default function EventLayout() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setVenueImage(url);
+    // Convert to data URL so it persists in the store
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setVenueImage(reader.result);
+    };
+    reader.readAsDataURL(file);
     e.target.value = '';
   };
 
@@ -591,6 +608,12 @@ export default function EventLayout() {
     const column = existing % 4;
     const row = Math.floor(existing / 4);
 
+    // Place relative to current scroll position so objects appear in the visible viewport
+    const scrollLeft = canvasRef.current?.scrollLeft ?? 0;
+    const scrollTop = canvasRef.current?.scrollTop ?? 0;
+    const viewX = scrollLeft / zoom;
+    const viewY = scrollTop / zoom;
+
     // Structural objects (tent, stage, dance_floor) get z-index 0 so tables
     // render on top and stay clickable. Tables start at z-index 100+.
     const isStructural = ['tent', 'stage', 'dance_floor', 'bar_area', 'vip_area'].includes(type);
@@ -601,8 +624,8 @@ export default function EventLayout() {
       versionId,
       type,
       name: preset?.label ?? typeLabels[type],
-      x: 120 + column * 140,
-      y: 140 + row * 110,
+      x: snapValue(viewX + 60 + column * 140),
+      y: snapValue(viewY + 60 + row * 110),
       width: w,
       height: h,
       rotation: 0,
@@ -1241,6 +1264,7 @@ export default function EventLayout() {
                   )}
                   style={{
                     left: obj.x, top: obj.y, width: obj.width, height: obj.height,
+                    zIndex: obj.zIndex,
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
                     boxShadow: isObjDragging
                       ? '0 12px 32px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.1)'
