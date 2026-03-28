@@ -354,7 +354,9 @@ export default function EventLayout() {
     if (obj.locked) return;
     e.stopPropagation();
     setSelectedId(obj.id);
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    // Use currentTarget (the object container div) instead of e.target which
+    // may be a child element, causing incorrect offset and "jump" behavior.
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setDragging({ id: obj.id, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top });
   }, []);
 
@@ -456,6 +458,24 @@ export default function EventLayout() {
     handleMouseMove(e);
   }, [drawing, zoom, handleMouseMove]);
 
+  // Window-level mouse handlers during drag/resize to prevent losing the drag
+  // when the cursor passes over child elements that stop propagation.
+  useEffect(() => {
+    if (!dragging && !resizing) return;
+    const onMove = (e: MouseEvent) => {
+      handleCanvasMouseMove(e as unknown as React.MouseEvent);
+    };
+    const onUp = () => {
+      handleMouseUp();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragging, resizing, handleCanvasMouseMove, handleMouseUp]);
+
   // Keyboard shortcuts: Delete/Backspace to remove, Escape to cancel drawing tool
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -541,6 +561,48 @@ export default function EventLayout() {
     updateLayoutObject(id, { zIndex: minZ - 1 });
   }, [objects, updateLayoutObject]);
 
+  // Auto-arrange: snap all tables into a clean evenly-spaced grid
+  const autoArrangeTables = useCallback(() => {
+    const tables = objects.filter((o) => ['round_table', 'rect_table'].includes(o.type));
+    if (tables.length === 0) return;
+
+    // Determine the bounding area (room bounds or canvas)
+    const areaW = roomBoundsPx?.width ?? canvasSize.width;
+    const areaH = roomBoundsPx?.height ?? canvasSize.height;
+
+    // Find the largest table dimensions to standardise spacing
+    const maxW = Math.max(...tables.map((t) => t.width));
+    const maxH = Math.max(...tables.map((t) => t.height));
+
+    // Compute spacing: at least 30% of table size, minimum 20px
+    const spacingX = Math.max(20, Math.round(maxW * 0.5));
+    const spacingY = Math.max(20, Math.round(maxH * 0.5));
+
+    // Margin from edges
+    const marginX = Math.max(30, spacingX);
+    const marginY = Math.max(30, spacingY);
+
+    // Cell size (table + spacing)
+    const cellW = maxW + spacingX;
+    const cellH = maxH + spacingY;
+
+    // How many columns fit?
+    const usableW = areaW - 2 * marginX;
+    const cols = Math.max(1, Math.floor(usableW / cellW));
+
+    // Center the grid horizontally
+    const gridTotalW = cols * cellW - spacingX;
+    const offsetX = marginX + Math.max(0, (usableW - gridTotalW) / 2);
+
+    tables.forEach((table, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = snapValue(offsetX + col * cellW + (maxW - table.width) / 2);
+      const y = snapValue(marginY + row * cellH + (maxH - table.height) / 2);
+      updateLayoutObject(table.id, { x, y });
+    });
+  }, [objects, roomBoundsPx, canvasSize, snapValue, updateLayoutObject]);
+
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
   return (
@@ -593,6 +655,9 @@ export default function EventLayout() {
             </Button>
             <Button variant={showCapCalc ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowCapCalc(!showCapCalc)}>
               <Calculator className="w-3 h-3" />Fit Calc
+            </Button>
+            <Button variant="ghost" size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={autoArrangeTables} title="Auto-arrange tables into a clean grid pattern">
+              <LayoutGrid className="w-3 h-3" />Auto-Arrange
             </Button>
             <div className="ml-auto"><SaveIndicator /></div>
           </div>
@@ -956,8 +1021,8 @@ export default function EventLayout() {
             )}
             {/* Grid overlay on top of image is handled by GridOverlay above */}
 
-            {/* Live measurement guides for selected/dragging object */}
-            {selected && showMeasureGuides && measureGuides && metersPerPixel && (
+            {/* Live measurement guides — ONLY when selected and idle (not during drag/resize) */}
+            {selected && showMeasureGuides && measureGuides && metersPerPixel && !dragging && !resizing && (
               <>
                 {/* Edge distance guides: hidden during resize, shown during drag only when close to edge (<50px) */}
                 {!resizing && (() => {
@@ -1075,6 +1140,11 @@ export default function EventLayout() {
                 nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
               };
 
+              // Structural overlays (tent, stage, etc.) pass through pointer events
+              // when not selected so tables beneath them stay interactive.
+              const isStructuralOverlay = ['tent', 'stage', 'dance_floor', 'bar_area'].includes(obj.type);
+              const passThrough = isStructuralOverlay && !isSelected && !dragging;
+
               const objectEl = (
                 <div
                   key={obj.id}
@@ -1090,6 +1160,7 @@ export default function EventLayout() {
                     left: obj.x, top: obj.y, width: obj.width, height: obj.height,
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
                     boxShadow: isSelected ? undefined : '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.05)',
+                    pointerEvents: passThrough ? 'none' : undefined,
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
                   onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
