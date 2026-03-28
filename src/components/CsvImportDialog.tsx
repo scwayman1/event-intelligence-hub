@@ -90,8 +90,43 @@ function parseRow(
   const email = get('email');
   const phone = get('phone');
   const organization = get('organization');
-  const category = get('category').toLowerCase().replace(/\s+/g, '_') as GuestCategory;
-  const rsvpStatus = get('rsvp_status').toLowerCase().replace(/\s+/g, '_') as RSVPStatus;
+  const rawCategory = get('category').toLowerCase().replace(/\s+/g, '_');
+  const rawRsvp = get('rsvp_status').toLowerCase().replace(/\s+/g, '_');
+
+  // Normalize common category aliases
+  const CATEGORY_ALIASES: Record<string, GuestCategory> = {
+    donor: 'donor',
+    scholar: 'scholarship_recipient',
+    scholarship: 'scholarship_recipient',
+    scholarship_recipient: 'scholarship_recipient',
+    recipient: 'scholarship_recipient',
+    student: 'scholarship_recipient',
+    family: 'family',
+    board: 'board_member',
+    board_member: 'board_member',
+    vip: 'vip',
+    staff: 'staff',
+    sponsor: 'sponsor',
+    volunteer: 'volunteer',
+    other: 'other',
+  };
+
+  const RSVP_ALIASES: Record<string, RSVPStatus> = {
+    invited: 'invited',
+    pending: 'invited',
+    confirmed: 'confirmed',
+    yes: 'confirmed',
+    declined: 'declined',
+    no: 'declined',
+    waitlist: 'waitlist',
+    waitlisted: 'waitlist',
+    checked_in: 'checked_in',
+    'checked in': 'checked_in',
+    checkedin: 'checked_in',
+  };
+
+  const category = CATEGORY_ALIASES[rawCategory] ?? (rawCategory as GuestCategory);
+  const rsvpStatus = RSVP_ALIASES[rawRsvp] ?? (rawRsvp as RSVPStatus);
   const partySizeStr = get('party_size');
   const dietaryRestrictions = get('dietary_restrictions');
   const accessibilityNeeds = get('accessibility_needs');
