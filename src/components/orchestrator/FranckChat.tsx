@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Loader2,
   KeyRound,
+  Trash2,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -65,20 +66,69 @@ const WELCOME_MESSAGE: ChatMessage = {
   timestamp: Date.now(),
 };
 
+// ─── Persistence helpers ──────────────────────────────────────────────────
+
+const STORAGE_PREFIX = 'franck-chat';
+
+function loadMessages(eventId: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}-msgs-${eventId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ChatMessage[];
+      if (parsed.length > 0) return parsed;
+    }
+  } catch { /* ignore corrupt data */ }
+  return [WELCOME_MESSAGE];
+}
+
+function saveMessages(eventId: string, messages: ChatMessage[]) {
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}-msgs-${eventId}`, JSON.stringify(messages));
+  } catch { /* quota exceeded — silently drop */ }
+}
+
+function loadConversation(eventId: string): FranckConversation | null {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}-conv-${eventId}`);
+    if (raw) return JSON.parse(raw) as FranckConversation;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveConversation(eventId: string, conv: FranckConversation) {
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}-conv-${eventId}`, JSON.stringify(conv));
+  } catch { /* quota exceeded */ }
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function FranckChat({ eventId }: FranckChatProps) {
-  // State
+  // State — initialized from localStorage
   const [isOpen, setIsOpen] = useState(false);
   const [conversation, setConversation] = useState<FranckConversation | null>(
-    null
+    () => loadConversation(eventId)
   );
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    () => loadMessages(eventId)
+  );
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [keyStored, setKeyStored] = useState(() => hasApiKey());
+
+  // Persist messages whenever they change
+  useEffect(() => {
+    saveMessages(eventId, messages);
+  }, [eventId, messages]);
+
+  // Persist conversation whenever it changes
+  useEffect(() => {
+    if (conversation) {
+      saveConversation(eventId, conversation);
+    }
+  }, [eventId, conversation]);
 
   // Refs
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -187,6 +237,14 @@ export function FranckChat({ eventId }: FranckChatProps) {
     }
   };
 
+  // ── Clear chat history ─────────────────────────────────────────────────
+  const handleClearChat = () => {
+    setMessages([WELCOME_MESSAGE]);
+    setConversation(null);
+    localStorage.removeItem(`${STORAGE_PREFIX}-msgs-${eventId}`);
+    localStorage.removeItem(`${STORAGE_PREFIX}-conv-${eventId}`);
+  };
+
   // ── Render helpers ─────────────────────────────────────────────────────
 
   const renderMessage = (msg: ChatMessage) => {
@@ -279,6 +337,17 @@ export function FranckChat({ eventId }: FranckChatProps) {
           </div>
 
           <div className="flex items-center gap-1">
+            {/* Clear chat */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleClearChat}
+              title="Clear chat history"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+
             {/* API key settings popover */}
             <Popover>
               <PopoverTrigger asChild>
