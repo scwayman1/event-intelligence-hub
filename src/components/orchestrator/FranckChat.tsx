@@ -57,7 +57,7 @@ const WELCOME_MESSAGE: FranckMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    'Bonjour! I am Franck Eggelhoffer, and I am HERE to make your event absolutely MAGNIFIQUE! \u{1F3A9}\u2728 Ask me anything about your guests, seating, or I can take care of things for you. Franck lives to serve the art of the perfect event!',
+    'Bonjour! I am Franck Eggelhoffer, and I am HERE to make your event absolutely MAGNIFIQUE! 🎩✨ Ask me anything about your guests, seating, or I can take care of things for you. Franck lives to serve the art of the perfect event!',
   timestamp: Date.now(),
 };
 
@@ -203,7 +203,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
           {/* Tool usage indicator */}
           {msg.toolsUsed && msg.toolsUsed.length > 0 && (
             <p className="text-[11px] text-muted-foreground mt-1 ml-1">
-              \u{1F527} Used: {msg.toolsUsed.join(', ')}
+              {'🔧'} Used: {msg.toolsUsed.join(', ')}
             </p>
           )}
         </div>
@@ -254,7 +254,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             </div>
             <div>
               <h2 className="text-sm font-semibold leading-none">
-                Franck Eggelhoffer \u{1F3A9}
+                Franck Eggelhoffer 🎩
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Your Event Planning Genius
@@ -280,7 +280,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     <h4 className="text-sm font-medium">Anthropic API Key</h4>
                     {keyStored && (
                       <span className="ml-auto text-emerald-500 text-xs font-medium flex items-center gap-1">
-                        \u2713 Saved
+                        ✓ Saved
                       </span>
                     )}
                   </div>
