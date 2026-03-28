@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
+import { seedAllGuests, seedRelationshipGroups, seedRelationshipMemberships } from './scholarship-seed-data';
 import * as db from '@/services/supabase-db';
 
 // Fire-and-forget async Supabase write — keeps UI snappy
@@ -442,17 +443,26 @@ export const useEventStore = create<EventStore>()(
     const existingGuestIds = new Set(s.guests.map((g) => g.id));
     const existingOrgIds = new Set(s.organizations.map((o) => o.id));
     const existingVersionIds = new Set(s.versions.map((v) => v.id));
+    const existingGroupIds = new Set(s.relationshipGroups.map((g) => g.id));
+    const existingMembershipIds = new Set(s.relationshipMemberships.map((m) => m.id));
+
+    // Combine mock guests + scholarship seed data
+    const allNewGuests = [...mockGuests, ...seedAllGuests].filter((g) => !existingGuestIds.has(g.id));
+    const newGroups = seedRelationshipGroups.filter((g) => !existingGroupIds.has(g.id));
+    const newMemberships = seedRelationshipMemberships.filter((m) => !existingMembershipIds.has(m.id));
 
     return {
       hasCompletedOnboarding: true,
       organizations: [...s.organizations, ...mockOrganizations.filter((o) => !existingOrgIds.has(o.id))],
       activeOrgId: s.activeOrgId ?? mockOrganizations[0]?.id ?? null,
       events: [...s.events, ...mockEvents.filter((e) => !existingEventIds.has(e.id))],
-      guests: [...s.guests, ...mockGuests.filter((g) => !existingGuestIds.has(g.id))],
+      guests: [...s.guests, ...allNewGuests],
       versions: [...s.versions, ...mockVersions.filter((v) => !existingVersionIds.has(v.id))],
       layoutObjects: [...s.layoutObjects, ...mockLayoutObjects.filter((o) => !s.layoutObjects.some((x) => x.id === o.id))],
       seatingAssignments: [...s.seatingAssignments, ...mockSeatingAssignments.filter((a) => !s.seatingAssignments.some((x) => x.id === a.id))],
       seatingRules: [...s.seatingRules, ...mockSeatingRules.filter((r) => !s.seatingRules.some((x) => x.id === r.id))],
+      relationshipGroups: [...s.relationshipGroups, ...newGroups],
+      relationshipMemberships: [...s.relationshipMemberships, ...newMemberships],
     };
   }),
 
