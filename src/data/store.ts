@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
+import * as db from '@/services/supabase-db';
+
+// Fire-and-forget async Supabase write — keeps UI snappy
+function dbSync(fn: () => Promise<void>) {
+  fn().catch((err) => console.error('[supabase-sync]', err));
+}
 
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
@@ -166,16 +172,30 @@ export const useEventStore = create<EventStore>()(
   signOut: () => set({ userProfile: null }),
 
   // ── Collaborators ──
-  addCollaborator: (collab) => set((s) => ({ collaborators: [...s.collaborators, collab] })),
-  removeCollaborator: (id) => set((s) => ({ collaborators: s.collaborators.filter((c) => c.id !== id) })),
+  addCollaborator: (collab) => {
+    set((s) => ({ collaborators: [...s.collaborators, collab] }));
+    dbSync(() => db.upsertCollaborator(collab));
+  },
+  removeCollaborator: (id) => {
+    set((s) => ({ collaborators: s.collaborators.filter((c) => c.id !== id) }));
+    dbSync(() => db.deleteCollaborator(id));
+  },
   getEventCollaborators: (eventId) => get().collaborators.filter((c) => c.eventId === eventId),
 
   // ── Organization actions ──
   setActiveOrg: (orgId) => set({ activeOrgId: orgId }),
-  addOrganization: (org) => set((s) => ({ organizations: [...s.organizations, org], hasCompletedOnboarding: true })),
-  updateOrganization: (id, updates) => set((s) => ({
-    organizations: s.organizations.map((o) => o.id === id ? { ...o, ...updates } : o),
-  })),
+  addOrganization: (org) => {
+    set((s) => ({ organizations: [...s.organizations, org], hasCompletedOnboarding: true }));
+    const userId = get().userProfile?.id;
+    if (userId) dbSync(() => db.createOrgWithMember(org, userId));
+  },
+  updateOrganization: (id, updates) => {
+    set((s) => ({
+      organizations: s.organizations.map((o) => o.id === id ? { ...o, ...updates } : o),
+    }));
+    const fullOrg = get().organizations.find((o) => o.id === id);
+    if (fullOrg) dbSync(() => db.upsertOrganization(fullOrg));
+  },
 
   // ── Org-scoped selectors ──
   getActiveOrg: () => get().organizations.find((o) => o.id === get().activeOrgId),
@@ -189,46 +209,104 @@ export const useEventStore = create<EventStore>()(
   },
 
   // ── CRUD ──
-  addEvent: (event) => set((s) => ({ events: [...s.events, event] })),
-  updateEvent: (id, updates) => set((s) => ({ events: s.events.map((e) => e.id === id ? { ...e, ...updates } : e) })),
+  addEvent: (event) => {
+    set((s) => ({ events: [...s.events, event] }));
+    dbSync(() => db.upsertEvent(event));
+  },
+  updateEvent: (id, updates) => {
+    set((s) => ({ events: s.events.map((e) => e.id === id ? { ...e, ...updates } : e) }));
+    const fullEvent = get().events.find((e) => e.id === id);
+    if (fullEvent) dbSync(() => db.upsertEvent(fullEvent));
+  },
 
-  addGuest: (guest) => set((s) => ({ guests: [...s.guests, guest] })),
-  updateGuest: (id, updates) => set((s) => ({ guests: s.guests.map((g) => g.id === id ? { ...g, ...updates } : g) })),
-  removeGuest: (id) => set((s) => ({
-    guests: s.guests.filter((g) => g.id !== id),
-    // Also clean up relationship memberships for this guest
-    relationshipMemberships: s.relationshipMemberships.filter((m) => m.guestId !== id),
-  })),
+  addGuest: (guest) => {
+    set((s) => ({ guests: [...s.guests, guest] }));
+    dbSync(() => db.upsertGuest(guest));
+  },
+  updateGuest: (id, updates) => {
+    set((s) => ({ guests: s.guests.map((g) => g.id === id ? { ...g, ...updates } : g) }));
+    const fullGuest = get().guests.find((g) => g.id === id);
+    if (fullGuest) dbSync(() => db.upsertGuest(fullGuest));
+  },
+  removeGuest: (id) => {
+    set((s) => ({
+      guests: s.guests.filter((g) => g.id !== id),
+      relationshipMemberships: s.relationshipMemberships.filter((m) => m.guestId !== id),
+    }));
+    dbSync(() => db.deleteGuest(id));
+  },
 
-  addLayoutObject: (obj) => set((s) => ({ layoutObjects: [...s.layoutObjects, obj] })),
-  updateLayoutObject: (id, updates) => set((s) => ({ layoutObjects: s.layoutObjects.map((o) => o.id === id ? { ...o, ...updates } : o) })),
-  removeLayoutObject: (id) => set((s) => ({ layoutObjects: s.layoutObjects.filter((o) => o.id !== id) })),
+  addLayoutObject: (obj) => {
+    set((s) => ({ layoutObjects: [...s.layoutObjects, obj] }));
+    dbSync(() => db.upsertLayoutObject(obj));
+  },
+  updateLayoutObject: (id, updates) => {
+    set((s) => ({ layoutObjects: s.layoutObjects.map((o) => o.id === id ? { ...o, ...updates } : o) }));
+    const fullObj = get().layoutObjects.find((o) => o.id === id);
+    if (fullObj) dbSync(() => db.upsertLayoutObject(fullObj));
+  },
+  removeLayoutObject: (id) => {
+    set((s) => ({ layoutObjects: s.layoutObjects.filter((o) => o.id !== id) }));
+    dbSync(() => db.deleteLayoutObject(id));
+  },
 
-  addVersion: (version) => set((s) => ({ versions: [...s.versions, version] })),
-  updateVersion: (id, updates) => set((s) => ({ versions: s.versions.map((v) => v.id === id ? { ...v, ...updates } : v) })),
+  addVersion: (version) => {
+    set((s) => ({ versions: [...s.versions, version] }));
+    dbSync(() => db.upsertVersion(version));
+  },
+  updateVersion: (id, updates) => {
+    set((s) => ({ versions: s.versions.map((v) => v.id === id ? { ...v, ...updates } : v) }));
+    const fullVersion = get().versions.find((v) => v.id === id);
+    if (fullVersion) dbSync(() => db.upsertVersion(fullVersion));
+  },
 
-  addSeatingAssignment: (a) => set((s) => ({ seatingAssignments: [...s.seatingAssignments, a] })),
-  removeSeatingAssignment: (id) => set((s) => ({ seatingAssignments: s.seatingAssignments.filter((a) => a.id !== id) })),
-  moveGuestToTable: (guestId, tableId, versionId) => set((s) => {
-    const filtered = s.seatingAssignments.filter((a) => !(a.guestId === guestId && a.versionId === versionId));
+  addSeatingAssignment: (a) => {
+    set((s) => ({ seatingAssignments: [...s.seatingAssignments, a] }));
+    dbSync(() => db.upsertSeatingAssignment(a));
+  },
+  removeSeatingAssignment: (id) => {
+    set((s) => ({ seatingAssignments: s.seatingAssignments.filter((a) => a.id !== id) }));
+    dbSync(() => db.deleteSeatingAssignment(id));
+  },
+  moveGuestToTable: (guestId, tableId, versionId) => {
+    const state = get();
+    const toRemove = state.seatingAssignments.filter((a) => a.guestId === guestId && a.versionId === versionId);
+    const filtered = state.seatingAssignments.filter((a) => !(a.guestId === guestId && a.versionId === versionId));
     const newAssignment: SeatingAssignment = { id: `sa-${crypto.randomUUID()}`, versionId, guestId, tableId };
-    return { seatingAssignments: [...filtered, newAssignment] };
-  }),
+    set({ seatingAssignments: [...filtered, newAssignment] });
+    dbSync(async () => {
+      await Promise.all(toRemove.map((a) => db.deleteSeatingAssignment(a.id)));
+      await db.upsertSeatingAssignment(newAssignment);
+    });
+  },
 
-  assignGuestToSeat: (guestId, tableId, seatNumber, versionId) => set((s) => {
-    // Remove any existing assignment for this guest in this version
-    // and remove any existing assignment for the target seat
-    const filtered = s.seatingAssignments.filter((a) =>
+  assignGuestToSeat: (guestId, tableId, seatNumber, versionId) => {
+    const state = get();
+    const toRemove = state.seatingAssignments.filter((a) =>
+      (a.guestId === guestId && a.versionId === versionId) ||
+      (a.tableId === tableId && a.seatNumber === seatNumber && a.versionId === versionId)
+    );
+    const filtered = state.seatingAssignments.filter((a) =>
       !(a.guestId === guestId && a.versionId === versionId) &&
       !(a.tableId === tableId && a.seatNumber === seatNumber && a.versionId === versionId)
     );
     const newAssignment: SeatingAssignment = { id: `sa-${crypto.randomUUID()}`, versionId, guestId, tableId, seatNumber };
-    return { seatingAssignments: [...filtered, newAssignment] };
-  }),
+    set({ seatingAssignments: [...filtered, newAssignment] });
+    dbSync(async () => {
+      await Promise.all(toRemove.map((a) => db.deleteSeatingAssignment(a.id)));
+      await db.upsertSeatingAssignment(newAssignment);
+    });
+  },
 
-  unassignGuestFromSeat: (guestId, versionId) => set((s) => ({
-    seatingAssignments: s.seatingAssignments.filter((a) => !(a.guestId === guestId && a.versionId === versionId)),
-  })),
+  unassignGuestFromSeat: (guestId, versionId) => {
+    const toRemove = get().seatingAssignments.filter((a) => a.guestId === guestId && a.versionId === versionId);
+    set((s) => ({
+      seatingAssignments: s.seatingAssignments.filter((a) => !(a.guestId === guestId && a.versionId === versionId)),
+    }));
+    dbSync(async () => {
+      await Promise.all(toRemove.map((a) => db.deleteSeatingAssignment(a.id)));
+    });
+  },
 
   autoAssignByRelationshipGroup: (anchorGuestId, tableId, versionId) => {
     const state = get();
@@ -280,6 +358,9 @@ export const useEventStore = create<EventStore>()(
     }));
 
     set((s) => ({ seatingAssignments: [...s.seatingAssignments, ...newAssignments] }));
+    dbSync(async () => {
+      await Promise.all(newAssignments.map((a) => db.upsertSeatingAssignment(a)));
+    });
 
     return toAssign;
   },
@@ -290,19 +371,45 @@ export const useEventStore = create<EventStore>()(
       .filter((a) => a.tableId === tableId && a.versionId === versionId)
       .sort((a, b) => (a.seatNumber ?? 0) - (b.seatNumber ?? 0)),
 
-  addSeatingRule: (rule) => set((s) => ({ seatingRules: [...s.seatingRules, rule] })),
-  updateSeatingRule: (id, updates) => set((s) => ({ seatingRules: s.seatingRules.map((r) => r.id === id ? { ...r, ...updates } : r) })),
-  removeSeatingRule: (id) => set((s) => ({ seatingRules: s.seatingRules.filter((r) => r.id !== id) })),
+  addSeatingRule: (rule) => {
+    set((s) => ({ seatingRules: [...s.seatingRules, rule] }));
+    dbSync(() => db.upsertSeatingRule(rule));
+  },
+  updateSeatingRule: (id, updates) => {
+    set((s) => ({ seatingRules: s.seatingRules.map((r) => r.id === id ? { ...r, ...updates } : r) }));
+    const fullRule = get().seatingRules.find((r) => r.id === id);
+    if (fullRule) dbSync(() => db.upsertSeatingRule(fullRule));
+  },
+  removeSeatingRule: (id) => {
+    set((s) => ({ seatingRules: s.seatingRules.filter((r) => r.id !== id) }));
+    dbSync(() => db.deleteSeatingRule(id));
+  },
 
   // ── Relationship Engine ──
-  addRelationshipGroup: (group) => set((s) => ({ relationshipGroups: [...s.relationshipGroups, group] })),
-  updateRelationshipGroup: (id, updates) => set((s) => ({ relationshipGroups: s.relationshipGroups.map((g) => g.id === id ? { ...g, ...updates } : g) })),
-  removeRelationshipGroup: (id) => set((s) => ({
-    relationshipGroups: s.relationshipGroups.filter((g) => g.id !== id),
-    relationshipMemberships: s.relationshipMemberships.filter((m) => m.groupId !== id),
-  })),
-  addRelationshipMembership: (membership) => set((s) => ({ relationshipMemberships: [...s.relationshipMemberships, membership] })),
-  removeRelationshipMembership: (id) => set((s) => ({ relationshipMemberships: s.relationshipMemberships.filter((m) => m.id !== id) })),
+  addRelationshipGroup: (group) => {
+    set((s) => ({ relationshipGroups: [...s.relationshipGroups, group] }));
+    dbSync(() => db.upsertRelationshipGroup(group));
+  },
+  updateRelationshipGroup: (id, updates) => {
+    set((s) => ({ relationshipGroups: s.relationshipGroups.map((g) => g.id === id ? { ...g, ...updates } : g) }));
+    const fullGroup = get().relationshipGroups.find((g) => g.id === id);
+    if (fullGroup) dbSync(() => db.upsertRelationshipGroup(fullGroup));
+  },
+  removeRelationshipGroup: (id) => {
+    set((s) => ({
+      relationshipGroups: s.relationshipGroups.filter((g) => g.id !== id),
+      relationshipMemberships: s.relationshipMemberships.filter((m) => m.groupId !== id),
+    }));
+    dbSync(() => db.deleteRelationshipGroup(id));
+  },
+  addRelationshipMembership: (membership) => {
+    set((s) => ({ relationshipMemberships: [...s.relationshipMemberships, membership] }));
+    dbSync(() => db.upsertRelationshipMembership(membership));
+  },
+  removeRelationshipMembership: (id) => {
+    set((s) => ({ relationshipMemberships: s.relationshipMemberships.filter((m) => m.id !== id) }));
+    dbSync(() => db.deleteRelationshipMembership(id));
+  },
   getEventRelationshipGroups: (eventId) => get().relationshipGroups.filter((g) => g.eventId === eventId),
   getGroupMembers: (groupId) => {
     const memberships = get().relationshipMemberships.filter((m) => m.groupId === groupId);

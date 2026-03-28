@@ -19,13 +19,21 @@ import SignUp from "@/pages/SignUp";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useEventStore } from "@/data/store";
+import { AuthProvider, useAuthContext } from "@/contexts/AuthContext";
 
 const queryClient = new QueryClient();
 
 /** Must be signed in to access anything */
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const userProfile = useEventStore((s) => s.userProfile);
-  if (!userProfile) return <Navigate to="/sign-in" replace />;
+  const { user, loading } = useAuthContext();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/sign-in" replace />;
   return <>{children}</>;
 }
 
@@ -45,13 +53,44 @@ function RedirectIfOnboarded({ children }: { children: React.ReactNode }) {
 
 /** Redirects signed-in users away from auth pages */
 function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
-  const userProfile = useEventStore((s) => s.userProfile);
+  const { user, loading } = useAuthContext();
   const hasCompletedOnboarding = useEventStore((s) => s.hasCompletedOnboarding);
-  if (userProfile) {
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+  if (user) {
     return <Navigate to={hasCompletedOnboarding ? "/" : "/welcome"} replace />;
   }
   return <>{children}</>;
 }
+
+const AppRoutes = () => (
+  <Routes>
+    {/* Auth pages — accessible without signing in */}
+    <Route path="/sign-in" element={<RedirectIfSignedIn><SignIn /></RedirectIfSignedIn>} />
+    <Route path="/sign-up" element={<RedirectIfSignedIn><SignUp /></RedirectIfSignedIn>} />
+
+    {/* Onboarding — requires auth but not onboarding complete */}
+    <Route path="/welcome" element={<RequireAuth><RedirectIfOnboarded><Welcome /></RedirectIfOnboarded></RequireAuth>} />
+
+    {/* App — requires auth + onboarding complete */}
+    <Route element={<RequireAuth><RequireOnboarding><AppLayout /></RequireOnboarding></RequireAuth>}>
+      <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
+      <Route path="/events/:eventId" element={<ErrorBoundary><EventDashboard /></ErrorBoundary>} />
+      <Route path="/events/:eventId/layout" element={<ErrorBoundary><EventLayout /></ErrorBoundary>} />
+      <Route path="/events/:eventId/guests" element={<ErrorBoundary><EventGuests /></ErrorBoundary>} />
+      <Route path="/events/:eventId/seating" element={<ErrorBoundary><EventSeating /></ErrorBoundary>} />
+      <Route path="/events/:eventId/versions" element={<ErrorBoundary><EventVersions /></ErrorBoundary>} />
+      <Route path="/events/:eventId/integrations" element={<ErrorBoundary><EventIntegrations /></ErrorBoundary>} />
+      <Route path="/events/:eventId/settings" element={<ErrorBoundary><EventSettings /></ErrorBoundary>} />
+    </Route>
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
 
 const App = () => (
   <ErrorBoundary>
@@ -61,27 +100,9 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            {/* Auth pages — accessible without signing in */}
-            <Route path="/sign-in" element={<RedirectIfSignedIn><SignIn /></RedirectIfSignedIn>} />
-            <Route path="/sign-up" element={<RedirectIfSignedIn><SignUp /></RedirectIfSignedIn>} />
-
-            {/* Onboarding — requires auth but not onboarding complete */}
-            <Route path="/welcome" element={<RequireAuth><RedirectIfOnboarded><Welcome /></RedirectIfOnboarded></RequireAuth>} />
-
-            {/* App — requires auth + onboarding complete */}
-            <Route element={<RequireAuth><RequireOnboarding><AppLayout /></RequireOnboarding></RequireAuth>}>
-              <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
-              <Route path="/events/:eventId" element={<ErrorBoundary><EventDashboard /></ErrorBoundary>} />
-              <Route path="/events/:eventId/layout" element={<ErrorBoundary><EventLayout /></ErrorBoundary>} />
-              <Route path="/events/:eventId/guests" element={<ErrorBoundary><EventGuests /></ErrorBoundary>} />
-              <Route path="/events/:eventId/seating" element={<ErrorBoundary><EventSeating /></ErrorBoundary>} />
-              <Route path="/events/:eventId/versions" element={<ErrorBoundary><EventVersions /></ErrorBoundary>} />
-              <Route path="/events/:eventId/integrations" element={<ErrorBoundary><EventIntegrations /></ErrorBoundary>} />
-              <Route path="/events/:eventId/settings" element={<ErrorBoundary><EventSettings /></ErrorBoundary>} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
