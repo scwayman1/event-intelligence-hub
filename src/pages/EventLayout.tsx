@@ -532,6 +532,11 @@ export default function EventLayout() {
     const column = existing % 4;
     const row = Math.floor(existing / 4);
 
+    // Structural objects (tent, stage, dance_floor) get z-index 0 so tables
+    // render on top and stay clickable. Tables start at z-index 100+.
+    const isStructural = ['tent', 'stage', 'dance_floor', 'bar_area', 'vip_area'].includes(type);
+    const baseZ = isStructural ? 0 : 100 + objects.length;
+
     addLayoutObject({
       id,
       versionId,
@@ -547,7 +552,7 @@ export default function EventLayout() {
       category: type.includes('table') ? 'seating' : 'layout',
       locked: false,
       visible: true,
-      zIndex: objects.length,
+      zIndex: baseZ,
     });
   };
 
@@ -1140,11 +1145,6 @@ export default function EventLayout() {
                 nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
               };
 
-              // Structural overlays (tent, stage, etc.) pass through pointer events
-              // when not selected so tables beneath them stay interactive.
-              const isStructuralOverlay = ['tent', 'stage', 'dance_floor', 'bar_area'].includes(obj.type);
-              const passThrough = isStructuralOverlay && !isSelected && !dragging;
-
               const objectEl = (
                 <div
                   key={obj.id}
@@ -1160,7 +1160,6 @@ export default function EventLayout() {
                     left: obj.x, top: obj.y, width: obj.width, height: obj.height,
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
                     boxShadow: isSelected ? undefined : '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.05)',
-                    pointerEvents: passThrough ? 'none' : undefined,
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
                   onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
