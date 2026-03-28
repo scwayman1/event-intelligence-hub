@@ -299,7 +299,7 @@ function getGuestDetails(
 function autoSeatGuests(
   state: StoreState,
   eventId: string,
-  _input: ToolInput,
+  input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
   if (!ctx) return errorResult(`Event "${eventId}" not found.`);
@@ -319,24 +319,49 @@ function autoSeatGuests(
     versionId: ctx.versionId,
   });
 
+  // Apply the assignments to the store
+  const store = useEventStore.getState();
+  let applied = 0;
+  for (const assignment of proposal.assignments) {
+    try {
+      if (assignment.seatNumber != null) {
+        store.assignGuestToSeat(
+          assignment.guestId,
+          assignment.tableId,
+          assignment.seatNumber,
+          ctx.versionId,
+        );
+      } else {
+        store.moveGuestToTable(
+          assignment.guestId,
+          assignment.tableId,
+          ctx.versionId,
+        );
+      }
+      applied++;
+    } catch {
+      // Skip individual failures, continue seating others
+    }
+  }
+
   return json({
-    proposal: {
-      assignments: proposal.assignments.map((a) => {
-        const guest = ctx.guests.find((g) => g.id === a.guestId);
-        const table = ctx.tables.find((t) => t.id === a.tableId);
-        return {
-          guestId: a.guestId,
-          guestName: guest?.displayName ?? 'Unknown',
-          tableId: a.tableId,
-          tableName: table?.name ?? 'Unknown',
-          seatNumber: a.seatNumber,
-          reason: a.reason,
-        };
-      }),
-      score: proposal.score,
-      summary: proposal.summary,
-    },
-    note: 'This is a proposal only. Assignments have NOT been applied yet.',
+    applied,
+    totalProposed: proposal.assignments.length,
+    assignments: proposal.assignments.map((a) => {
+      const guest = ctx.guests.find((g) => g.id === a.guestId);
+      const table = ctx.tables.find((t) => t.id === a.tableId);
+      return {
+        guestId: a.guestId,
+        guestName: guest?.displayName ?? 'Unknown',
+        tableId: a.tableId,
+        tableName: table?.name ?? 'Unknown',
+        seatNumber: a.seatNumber,
+        reason: a.reason,
+      };
+    }),
+    score: proposal.score,
+    summary: proposal.summary,
+    note: `${applied} of ${proposal.assignments.length} guests have been seated. Assignments are now LIVE.`,
   });
 }
 

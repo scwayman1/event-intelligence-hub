@@ -95,7 +95,7 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'auto_seat_guests',
     description:
-      'Automatically assign all unassigned guests to tables using intelligent seating algorithms that respect relationship groups, dietary needs, and seating preferences.',
+      'Automatically assign all unassigned guests to tables and APPLY the assignments immediately. Uses intelligent seating algorithms that respect relationship groups, dietary needs, and seating preferences. Guests will be moved to their assigned seats in real-time.',
     input_schema: {
       type: 'object' as const,
       properties: {},
