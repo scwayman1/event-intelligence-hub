@@ -1,11 +1,14 @@
-import { createContext, useContext, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useEventStore } from '@/data/store';
+import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 
 const AuthContext = createContext<ReturnType<typeof useAuth> | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  const { syncAll } = useSupabaseSync();
+  const syncedUserRef = useRef<string | null>(null);
 
   // Sync Supabase auth state to Zustand store so existing components still work
   useEffect(() => {
@@ -18,11 +21,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: auth.user.user_metadata.role ?? 'coordinator',
         createdAt: auth.user.created_at,
       });
+
+      // Sync data from Supabase once per user session
+      if (syncedUserRef.current !== auth.user.id) {
+        syncedUserRef.current = auth.user.id;
+        syncAll(auth.user.id);
+      }
     } else if (!auth.loading) {
       // User signed out — clear Zustand profile
+      syncedUserRef.current = null;
       useEventStore.getState().signOut();
     }
-  }, [auth.user, auth.loading]);
+  }, [auth.user, auth.loading, syncAll]);
 
   return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
 }
