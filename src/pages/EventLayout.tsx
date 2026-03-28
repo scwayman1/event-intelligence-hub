@@ -4,7 +4,10 @@ import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } fro
 import {
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff,
   Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles,
-  Box, Calculator, Move, ArrowLeftRight, ArrowUpDown
+  Box, Calculator, Move, ArrowLeftRight, ArrowUpDown,
+  ArrowUpToLine, ArrowDownToLine, RotateCw, Maximize2, Tag, StickyNote,
+  CircleDot, Square, Tent, Mic, CheckSquare, Camera, Star, Footprints, Music, UtensilsCrossed, Beer, Type, LayoutGrid,
+  PenTool, ChevronDown, Circle, RectangleHorizontal, Coffee
 } from 'lucide-react';
 
 interface LayoutOutletContext {
@@ -17,7 +20,7 @@ import { SaveIndicator } from '@/components/SaveIndicator';
 import { cn } from '@/lib/utils';
 import { type UnitSystem, formatScale, formatDimension, userInputToMeters, metersToUserUnit, formatWithUnit, formatDistance } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
-import { metersToPixels, supportPresets, tablePresets, drawableTypes, type ObjectPreset } from '@/lib/layout-presets';
+import { metersToPixels, supportPresets, tablePresets, drawableTypes, structurePresets, stationPresets, type ObjectPreset } from '@/lib/layout-presets';
 import { calculateTableFit, edgeDistances, nearestEdgeDistances, type RoomBounds } from '@/lib/space-calculator';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
@@ -179,6 +182,44 @@ const typeLabels: Record<string, string> = {
   custom_zone: 'Zone',
 };
 
+const typeIcons: Record<string, React.ElementType> = {
+  tent: Tent,
+  stage: Mic,
+  podium: Mic,
+  round_table: CircleDot,
+  rect_table: Square,
+  checkin: CheckSquare,
+  bar: Beer,
+  vip_area: Star,
+  chair: Square,
+  photo_area: Camera,
+  registration: CheckSquare,
+  aisle: Footprints,
+  dance_floor: Music,
+  catering: UtensilsCrossed,
+  signage: Type,
+  custom_zone: LayoutGrid,
+};
+
+const typeHeaderColors: Record<string, string> = {
+  tent: 'bg-sky-500/15 border-sky-400/40 text-sky-300',
+  stage: 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300',
+  podium: 'bg-amber-600/15 border-amber-600/40 text-amber-400',
+  round_table: 'bg-amber-400/15 border-amber-400/40 text-amber-300',
+  rect_table: 'bg-amber-400/15 border-amber-400/40 text-amber-300',
+  checkin: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-300',
+  bar: 'bg-amber-600/15 border-amber-600/40 text-amber-400',
+  vip_area: 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300',
+  chair: 'bg-stone-400/15 border-stone-400/40 text-stone-300',
+  photo_area: 'bg-blue-400/15 border-blue-400/40 text-blue-300',
+  registration: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-300',
+  aisle: 'bg-muted/30 border-border text-muted-foreground',
+  dance_floor: 'bg-fuchsia-400/15 border-fuchsia-400/40 text-fuchsia-300',
+  catering: 'bg-orange-400/15 border-orange-400/40 text-orange-300',
+  signage: 'bg-stone-400/15 border-stone-400/40 text-stone-300',
+  custom_zone: 'bg-muted/30 border-border text-muted-foreground',
+};
+
 const objectPalette: { type: LayoutObjectType; label: string }[] = [
   { type: 'catering', label: 'Catering' },
   { type: 'signage', label: 'Signage' },
@@ -224,6 +265,7 @@ export default function EventLayout() {
   const [calcSpacing, setCalcSpacing] = useState('4');
   const [calcMargin, setCalcMargin] = useState('3');
   const [showMeasureGuides, setShowMeasureGuides] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [snappedGridLines, setSnappedGridLines] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const snapHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
@@ -488,6 +530,16 @@ export default function EventLayout() {
       zIndex: objects.length,
     });
   };
+
+  const handleBringToFront = useCallback((id: string) => {
+    const maxZ = Math.max(...objects.map(o => o.zIndex), 0);
+    updateLayoutObject(id, { zIndex: maxZ + 1 });
+  }, [objects, updateLayoutObject]);
+
+  const handleSendToBack = useCallback((id: string) => {
+    const minZ = Math.min(...objects.map(o => o.zIndex), 0);
+    updateLayoutObject(id, { zIndex: minZ - 1 });
+  }, [objects, updateLayoutObject]);
 
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
@@ -1031,7 +1083,7 @@ export default function EventLayout() {
                     objectColors[obj.type] || 'border-border bg-muted/10',
                     obj.type === 'round_table' && 'rounded-full',
                     obj.type === 'tent' && 'border-dashed',
-                    isSelected && 'ring-2 ring-primary shadow-lg shadow-primary/20',
+                    isSelected && 'ring-2 ring-primary ring-offset-1 ring-offset-background shadow-lg shadow-primary/25',
                     obj.locked && 'cursor-not-allowed opacity-70',
                   )}
                   style={{
@@ -1055,18 +1107,18 @@ export default function EventLayout() {
                     capacity={obj.capacity}
                   />
 
-                  {/* Dimension labels for selected objects */}
-                  {isSelected && (
-                    <>
-                      {/* Width label - bottom */}
-                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
-                        {formatDim(obj.width)}
+                  {/* Dimension badge: centered on object when selected or resizing */}
+                  {isSelected && metersPerPixel && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[15]">
+                      <div className={cn(
+                        "font-mono font-semibold whitespace-nowrap rounded-md shadow-lg border",
+                        resizing?.id === obj.id
+                          ? "text-sm px-3 py-1.5 bg-gray-900/85 text-white border-white/20"
+                          : "text-xs px-2 py-1 bg-gray-900/70 text-white/90 border-white/15"
+                      )}>
+                        {formatDim(obj.width)} &times; {formatDim(obj.height)}
                       </div>
-                      {/* Height label - right */}
-                      <div className="absolute top-1/2 -right-1 translate-x-full -translate-y-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
-                        {formatDim(obj.height)}
-                      </div>
-                    </>
+                    </div>
                   )}
 
                   {/* Resize handles */}
@@ -1074,7 +1126,7 @@ export default function EventLayout() {
                     <div
                       key={handle}
                       className={cn(
-                        'absolute w-2.5 h-2.5 bg-primary border border-primary-foreground rounded-sm z-10',
+                        'absolute w-3 h-3 bg-primary border-2 border-primary-foreground rounded-full z-10 shadow-md shadow-primary/30',
                         handlePositions[handle],
                         handleCursors[handle],
                       )}
@@ -1166,15 +1218,25 @@ export default function EventLayout() {
         </div>
 
         {selected ? (
-          <div className="p-4 space-y-4">
-            <div>
-              <label className="text-xs text-muted-foreground">Name</label>
-              <input
-                className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                value={selected.name}
-                onChange={(e) => updateLayoutObject(selected.id, { name: e.target.value })}
-              />
-            </div>
+          <div className="space-y-0">
+            {/* Color-coded object header with type icon */}
+            {(() => {
+              const TypeIcon = typeIcons[selected.type] || Square;
+              return (
+                <div className={cn('px-4 py-3 border-b flex items-center gap-2.5', typeHeaderColors[selected.type] || 'bg-muted/30 border-border text-muted-foreground')}>
+                  <TypeIcon className="w-5 h-5 flex-shrink-0" />
+                  <input
+                    className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground border-none outline-none focus:ring-0 p-0 truncate"
+                    value={selected.name}
+                    onChange={(e) => updateLayoutObject(selected.id, { name: e.target.value })}
+                    placeholder="Object name"
+                  />
+                  <Badge variant="outline" className="text-[10px] flex-shrink-0">{typeLabels[selected.type]}</Badge>
+                </div>
+              );
+            })()}
+
+            <div className="p-4 space-y-5">
             {/* Real-world dimensions summary */}
             {metersPerPixel && (
               <div className="rounded-lg border border-blue-400/30 bg-blue-50/5 px-3 py-2 space-y-1">
@@ -1194,38 +1256,55 @@ export default function EventLayout() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-muted-foreground">X</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.x} onChange={(e) => updateLayoutObject(selected.id, { x: Number(e.target.value) })} />
+
+              {/* Section: Transform */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Move className="w-3 h-3" /> Transform</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground">X</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.x} onChange={(e) => updateLayoutObject(selected.id, { x: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Y</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.y} onChange={(e) => updateLayoutObject(selected.id, { y: Number(e.target.value) })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><RotateCw className="w-3 h-3" /> Rotation</label>
+                  <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.rotation} onChange={(e) => updateLayoutObject(selected.id, { rotation: Number(e.target.value) })} />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Y</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.y} onChange={(e) => updateLayoutObject(selected.id, { y: Number(e.target.value) })} />
+
+              {/* Section: Size */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Maximize2 className="w-3 h-3" /> Size</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Width {metersPerPixel ? `(${formatDimension(selected.width, metersPerPixel, unitSystem)})` : ''}</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Height {metersPerPixel ? `(${formatDimension(selected.height, metersPerPixel, unitSystem)})` : ''}</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Width {metersPerPixel ? `(${formatDimension(selected.width, metersPerPixel, unitSystem)})` : ''}</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
+
+              {/* Section: Properties */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Tag className="w-3 h-3" /> Properties</h4>
+                {['round_table', 'rect_table'].includes(selected.type) && (
+                  <div>
+                    <label className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Capacity</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.capacity} onChange={(e) => updateLayoutObject(selected.id, { capacity: Number(e.target.value) })} />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><StickyNote className="w-3 h-3" /> Notes</label>
+                  <textarea className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none" rows={2} value={selected.notes} onChange={(e) => updateLayoutObject(selected.id, { notes: e.target.value })} />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Height {metersPerPixel ? `(${formatDimension(selected.height, metersPerPixel, unitSystem)})` : ''}</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Rotation</label>
-              <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.rotation} onChange={(e) => updateLayoutObject(selected.id, { rotation: Number(e.target.value) })} />
-            </div>
-            {['round_table', 'rect_table'].includes(selected.type) && (
-              <div>
-                <label className="text-xs text-muted-foreground">Capacity</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.capacity} onChange={(e) => updateLayoutObject(selected.id, { capacity: Number(e.target.value) })} />
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-muted-foreground">Notes</label>
-              <textarea className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" rows={2} value={selected.notes} onChange={(e) => updateLayoutObject(selected.id, { notes: e.target.value })} />
-            </div>
             {selected.type === 'round_table' || selected.type === 'rect_table' ? (
               <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1252,17 +1331,37 @@ export default function EventLayout() {
                 </div>
               </div>
             ) : null}
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => updateLayoutObject(selected.id, { locked: !selected.locked })}>
-                {selected.locked ? <Lock className="w-3.5 h-3.5 mr-1" /> : <Unlock className="w-3.5 h-3.5 mr-1" />}
-                {selected.locked ? 'Locked' : 'Lock'}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => updateLayoutObject(selected.id, { visible: !selected.visible })}>
-                {selected.visible ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
-              </Button>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => { removeLayoutObject(selected.id); setSelectedId(null); }}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              {/* Section: Layer Order */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Layers className="w-3 h-3" /> Layer Order</h4>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => handleBringToFront(selected.id)}>
+                    <ArrowUpToLine className="w-3.5 h-3.5 mr-1" /> Bring to Front
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => handleSendToBack(selected.id)}>
+                    <ArrowDownToLine className="w-3.5 h-3.5 mr-1" /> Send to Back
+                  </Button>
+                </div>
+              </div>
+
+              {/* Section: Actions */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</h4>
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => updateLayoutObject(selected.id, { locked: !selected.locked })}>
+                    {selected.locked ? <Lock className="w-3.5 h-3.5 mr-1" /> : <Unlock className="w-3.5 h-3.5 mr-1" />}
+                    {selected.locked ? 'Locked' : 'Lock'}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => updateLayoutObject(selected.id, { visible: !selected.visible })}>
+                    {selected.visible ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
+                    {selected.visible ? 'Visible' : 'Hidden'}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { removeLayoutObject(selected.id); setSelectedId(null); }}>
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Press <kbd className="px-1 py-0.5 bg-muted rounded border border-border text-[9px] font-mono">Del</kbd> to delete selected object</p>
+              </div>
             </div>
           </div>
         ) : (
