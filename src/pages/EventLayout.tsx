@@ -4,7 +4,10 @@ import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } fro
 import {
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff,
   Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles,
-  Box, Calculator, Move, ArrowLeftRight, ArrowUpDown
+  Box, Calculator, Move, ArrowLeftRight, ArrowUpDown,
+  ArrowUpToLine, ArrowDownToLine, RotateCw, Maximize2, Tag, StickyNote,
+  CircleDot, Square, Tent, Mic, CheckSquare, Camera, Star, Footprints, Music, UtensilsCrossed, Beer, Type, LayoutGrid,
+  PenTool, ChevronDown, Circle, RectangleHorizontal, Coffee
 } from 'lucide-react';
 
 interface LayoutOutletContext {
@@ -17,7 +20,7 @@ import { SaveIndicator } from '@/components/SaveIndicator';
 import { cn } from '@/lib/utils';
 import { type UnitSystem, formatScale, formatDimension, userInputToMeters, metersToUserUnit, formatWithUnit, formatDistance } from '@/lib/units';
 import { buildEventAnalytics } from '@/lib/event-analytics';
-import { metersToPixels, supportPresets, tablePresets, drawableTypes, type ObjectPreset } from '@/lib/layout-presets';
+import { metersToPixels, supportPresets, tablePresets, drawableTypes, structurePresets, stationPresets, type ObjectPreset } from '@/lib/layout-presets';
 import { calculateTableFit, edgeDistances, nearestEdgeDistances, type RoomBounds } from '@/lib/space-calculator';
 import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
@@ -25,6 +28,132 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { TableDetailPopover } from '@/components/layout/TableDetailPopover';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
+
+// ─── Grid overlay component ────────────────────────────────────────────────────
+interface GridOverlayProps {
+  metersPerPixel: number;
+  unitSystem: UnitSystem;
+  canvasWidth: number;
+  canvasHeight: number;
+  zoom: number;
+  snappedLines?: { x: number | null; y: number | null };
+}
+
+function GridOverlay({ metersPerPixel, unitSystem, canvasWidth, canvasHeight, zoom, snappedLines }: GridOverlayProps) {
+  const majorInterval = unitSystem === 'imperial' ? 5 * 0.3048 : 1; // 5ft or 1m
+  const minorInterval = unitSystem === 'imperial' ? 1 * 0.3048 : 0.25; // 1ft or 0.25m
+  const majorPx = majorInterval / metersPerPixel;
+  const minorPx = minorInterval / metersPerPixel;
+
+  // Skip minor lines if too dense at current zoom
+  const showMinor = minorPx * zoom >= 8;
+  // If even major lines are too dense, double the interval until they are visible
+  let effectiveMajorPx = majorPx;
+  let effectiveMajorInterval = majorInterval;
+  while (effectiveMajorPx * zoom < 10) {
+    effectiveMajorPx *= 2;
+    effectiveMajorInterval *= 2;
+  }
+
+  const unitLabel = unitSystem === 'imperial' ? 'ft' : 'm';
+  const majorStep = unitSystem === 'imperial'
+    ? effectiveMajorInterval / 0.3048 // back to feet
+    : effectiveMajorInterval; // meters
+
+  // Build vertical lines
+  const vLines: React.ReactNode[] = [];
+  const hLines: React.ReactNode[] = [];
+  const topLabels: React.ReactNode[] = [];
+  const leftLabels: React.ReactNode[] = [];
+
+  // Minor vertical lines
+  if (showMinor) {
+    for (let px = minorPx; px < canvasWidth; px += minorPx) {
+      // Skip positions that fall on a major line
+      const onMajor = Math.abs(Math.round(px / effectiveMajorPx) * effectiveMajorPx - px) < 0.5;
+      if (onMajor) continue;
+      vLines.push(
+        <line key={`mv-${px}`} x1={px} y1={0} x2={px} y2={canvasHeight}
+          stroke="hsl(var(--border))" strokeOpacity={0.1} strokeWidth={1} />
+      );
+    }
+  }
+  // Minor horizontal lines
+  if (showMinor) {
+    for (let px = minorPx; px < canvasHeight; px += minorPx) {
+      const onMajor = Math.abs(Math.round(px / effectiveMajorPx) * effectiveMajorPx - px) < 0.5;
+      if (onMajor) continue;
+      hLines.push(
+        <line key={`mh-${px}`} x1={0} y1={px} x2={canvasWidth} y2={px}
+          stroke="hsl(var(--border))" strokeOpacity={0.1} strokeWidth={1} />
+      );
+    }
+  }
+
+  // Major vertical lines + labels
+  for (let i = 0; i * effectiveMajorPx < canvasWidth; i++) {
+    const px = i * effectiveMajorPx;
+    if (px === 0) continue; // skip origin line
+    vLines.push(
+      <line key={`Mv-${i}`} x1={px} y1={0} x2={px} y2={canvasHeight}
+        stroke="hsl(var(--border))" strokeOpacity={0.3} strokeWidth={1} />
+    );
+    const label = Math.round(i * majorStep);
+    topLabels.push(
+      <div key={`tl-${i}`} className="absolute text-[9px] font-mono text-muted-foreground/60 select-none pointer-events-none"
+        style={{ left: px, top: 2, transform: 'translateX(-50%)' }}>
+        {label}{unitLabel}
+      </div>
+    );
+  }
+  // Major horizontal lines + labels
+  for (let i = 0; i * effectiveMajorPx < canvasHeight; i++) {
+    const px = i * effectiveMajorPx;
+    if (px === 0) continue;
+    hLines.push(
+      <line key={`Mh-${i}`} x1={0} y1={px} x2={canvasWidth} y2={px}
+        stroke="hsl(var(--border))" strokeOpacity={0.3} strokeWidth={1} />
+    );
+    const label = Math.round(i * majorStep);
+    leftLabels.push(
+      <div key={`ll-${i}`} className="absolute text-[9px] font-mono text-muted-foreground/60 select-none pointer-events-none"
+        style={{ left: 2, top: px, transform: 'translateY(-50%)' }}>
+        {label}{unitLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 pointer-events-none z-[0]">
+      <svg width={canvasWidth} height={canvasHeight} className="absolute inset-0">
+        {hLines}
+        {vLines}
+      </svg>
+      {/* Ruler labels along top edge */}
+      {topLabels}
+      {/* Ruler labels along left edge */}
+      {leftLabels}
+      {/* Origin label */}
+      <div className="absolute text-[9px] font-mono text-muted-foreground/60 select-none pointer-events-none"
+        style={{ left: 2, top: 2 }}>
+        0
+      </div>
+      {/* Snap highlight lines */}
+      {snappedLines?.x != null && (
+        <div className="absolute top-0 pointer-events-none z-[1]"
+          style={{ left: snappedLines.x, width: 0, height: canvasHeight }}>
+          <div className="w-px h-full bg-primary/40 animate-pulse" />
+        </div>
+      )}
+      {snappedLines?.y != null && (
+        <div className="absolute left-0 pointer-events-none z-[1]"
+          style={{ top: snappedLines.y, width: canvasWidth, height: 0 }}>
+          <div className="w-full h-px bg-primary/40 animate-pulse" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 const objectColors: Record<string, string> = {
   tent: 'border-sky-400/40 bg-sky-50/30',
@@ -51,6 +180,44 @@ const typeLabels: Record<string, string> = {
   registration: 'Registration', vip_area: 'VIP Area', aisle: 'Aisle',
   dance_floor: 'Dance Floor', catering: 'Catering', bar: 'Bar', signage: 'Signage',
   custom_zone: 'Zone',
+};
+
+const typeIcons: Record<string, React.ElementType> = {
+  tent: Tent,
+  stage: Mic,
+  podium: Mic,
+  round_table: CircleDot,
+  rect_table: Square,
+  checkin: CheckSquare,
+  bar: Beer,
+  vip_area: Star,
+  chair: Square,
+  photo_area: Camera,
+  registration: CheckSquare,
+  aisle: Footprints,
+  dance_floor: Music,
+  catering: UtensilsCrossed,
+  signage: Type,
+  custom_zone: LayoutGrid,
+};
+
+const typeHeaderColors: Record<string, string> = {
+  tent: 'bg-sky-500/15 border-sky-400/40 text-sky-300',
+  stage: 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300',
+  podium: 'bg-amber-600/15 border-amber-600/40 text-amber-400',
+  round_table: 'bg-amber-400/15 border-amber-400/40 text-amber-300',
+  rect_table: 'bg-amber-400/15 border-amber-400/40 text-amber-300',
+  checkin: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-300',
+  bar: 'bg-amber-600/15 border-amber-600/40 text-amber-400',
+  vip_area: 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300',
+  chair: 'bg-stone-400/15 border-stone-400/40 text-stone-300',
+  photo_area: 'bg-blue-400/15 border-blue-400/40 text-blue-300',
+  registration: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-300',
+  aisle: 'bg-muted/30 border-border text-muted-foreground',
+  dance_floor: 'bg-fuchsia-400/15 border-fuchsia-400/40 text-fuchsia-300',
+  catering: 'bg-orange-400/15 border-orange-400/40 text-orange-300',
+  signage: 'bg-stone-400/15 border-stone-400/40 text-stone-300',
+  custom_zone: 'bg-muted/30 border-border text-muted-foreground',
 };
 
 const objectPalette: { type: LayoutObjectType; label: string }[] = [
@@ -98,6 +265,9 @@ export default function EventLayout() {
   const [calcSpacing, setCalcSpacing] = useState('4');
   const [calcMargin, setCalcMargin] = useState('3');
   const [showMeasureGuides, setShowMeasureGuides] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [snappedGridLines, setSnappedGridLines] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const snapHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,15 +380,24 @@ export default function EventLayout() {
     const canvasRect = canvasRef.current.getBoundingClientRect();
     const x = (e.clientX - canvasRect.left - dragging.offsetX) / zoom;
     const y = (e.clientY - canvasRect.top - dragging.offsetY) / zoom;
+    const snappedX = snapValue(x);
+    const snappedY = snapValue(y);
     updateLayoutObject(dragging.id, {
-      x: snapValue(x),
-      y: snapValue(y),
+      x: snappedX,
+      y: snappedY,
     });
-  }, [dragging, resizing, zoom, snapValue, updateLayoutObject]);
+    // Show snap highlight on the grid line the object snapped to
+    if (snapMode !== 'free' && showGrid && metersPerPixel) {
+      setSnappedGridLines({ x: snappedX, y: snappedY });
+      if (snapHighlightTimer.current) clearTimeout(snapHighlightTimer.current);
+      snapHighlightTimer.current = setTimeout(() => setSnappedGridLines({ x: null, y: null }), 300);
+    }
+  }, [dragging, resizing, zoom, snapValue, updateLayoutObject, snapMode, showGrid, metersPerPixel]);
 
   const handleMouseUp = useCallback(() => {
     setDragging(null);
     setResizing(null);
+    setSnappedGridLines({ x: null, y: null });
     // Finish drawing: create the object
     if (drawing && drawingTool && canvasRef.current) {
       const x = Math.min(drawing.startX, drawing.currentX);
@@ -352,6 +531,16 @@ export default function EventLayout() {
     });
   };
 
+  const handleBringToFront = useCallback((id: string) => {
+    const maxZ = Math.max(...objects.map(o => o.zIndex), 0);
+    updateLayoutObject(id, { zIndex: maxZ + 1 });
+  }, [objects, updateLayoutObject]);
+
+  const handleSendToBack = useCallback((id: string) => {
+    const minZ = Math.min(...objects.map(o => o.zIndex), 0);
+    updateLayoutObject(id, { zIndex: minZ - 1 });
+  }, [objects, updateLayoutObject]);
+
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
   return (
@@ -408,44 +597,145 @@ export default function EventLayout() {
             <div className="ml-auto"><SaveIndicator /></div>
           </div>
 
-          {/* Row 2: Add objects */}
-          <div className="flex items-center gap-1 px-3 py-1 border-t border-border/50 flex-wrap"
-            style={{ background: 'linear-gradient(90deg, hsla(152,68%,42%,0.06) 0%, hsla(84,60%,48%,0.04) 100%)' }}
-          >
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Tables</span>
-            {tablePresets.map((preset) => (
-              <Button key={preset.label} variant="ghost" size="sm" className="text-[11px] h-6 px-1.5" onClick={() => handleAddObject(preset.type, preset)}>
-                <Plus className="w-3 h-3 mr-0.5" />{preset.label}
-              </Button>
-            ))}
-            <div className="w-px h-4 bg-border mx-1" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Draw to size</span>
-            {drawableTypes.map((item) => (
-              <Button
-                key={item.type}
-                variant={drawingTool === item.type ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn('text-[11px] h-6 px-1.5', drawingTool === item.type && 'ring-1 ring-primary')}
-                onClick={() => setDrawingTool(drawingTool === item.type ? null : item.type)}
-              >
-                {item.label}
-              </Button>
-            ))}
-            {drawingTool && (
-              <span className="text-[10px] text-primary animate-pulse ml-1">Click & drag on canvas to draw</span>
+          {/* Row 2: Add objects — categorized toolbar */}
+          <div className="border-t border-border/50">
+            <div className="flex items-center gap-1 px-3 py-1.5"
+              style={{ background: 'linear-gradient(90deg, hsla(152,68%,42%,0.06) 0%, hsla(84,60%,48%,0.04) 100%)' }}
+            >
+              {/* Category buttons */}
+              {([
+                { key: 'tables' as const, label: 'Tables', icon: CircleDot },
+                { key: 'structures' as const, label: 'Structures', icon: Tent },
+                { key: 'stations' as const, label: 'Stations', icon: Coffee },
+                { key: 'draw' as const, label: 'Draw', icon: PenTool },
+              ]).map(({ key, label, icon: Icon }) => (
+                <Button
+                  key={key}
+                  variant={activeCategory === key || (key === 'draw' && drawingTool != null) ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className={cn(
+                    'text-[11px] h-7 px-2.5 gap-1.5',
+                    activeCategory === key && 'ring-1 ring-primary/50',
+                    key === 'draw' && drawingTool != null && activeCategory !== 'draw' && 'ring-1 ring-primary',
+                  )}
+                  onClick={() => {
+                    if (key === 'draw') {
+                      setActiveCategory(activeCategory === 'draw' ? null : 'draw');
+                    } else {
+                      if (drawingTool) setDrawingTool(null);
+                      setActiveCategory(activeCategory === key ? null : key);
+                    }
+                  }}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                  {key !== 'draw' && <ChevronDown className={cn('w-3 h-3 transition-transform', activeCategory === key && 'rotate-180')} />}
+                </Button>
+              ))}
+
+              {/* Draw mode indicator */}
+              {drawingTool && (
+                <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-md bg-primary/10 border border-primary/30">
+                  <PenTool className="w-3 h-3 text-primary" />
+                  <span className="text-[11px] font-medium text-primary">
+                    Drawing: {drawableTypes.find(d => d.type === drawingTool)?.label}
+                  </span>
+                  <span className="text-[10px] text-primary/70 animate-pulse">— click &amp; drag on canvas</span>
+                  <button onClick={() => setDrawingTool(null)} className="ml-1 rounded hover:bg-primary/20 p-0.5">
+                    <X className="w-3 h-3 text-primary" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Expanded category panel */}
+            {activeCategory != null && activeCategory !== 'draw' && (
+              <div className="border-t border-border/40 bg-card/80 px-3 py-2">
+                <div className="flex flex-wrap gap-2">
+                  {activeCategory === 'tables' && tablePresets.map((preset) => {
+                    const isRound = preset.type === 'round_table';
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => handleAddObject(preset.type, preset)}
+                        className="group flex flex-col items-center justify-center w-16 h-12 rounded-lg border border-border/60 bg-muted/20 hover:bg-accent hover:border-border transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center justify-center h-5">
+                          {isRound
+                            ? <Circle className="w-4 h-4 text-amber-400/80 group-hover:text-amber-300" />
+                            : <RectangleHorizontal className="w-5 h-3.5 text-amber-400/80 group-hover:text-amber-300" />
+                          }
+                        </div>
+                        <span className="text-[9px] text-muted-foreground group-hover:text-foreground leading-tight mt-0.5">
+                          {isRound ? 'Round' : 'Rect'} {preset.capacity}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {activeCategory === 'structures' && structurePresets.map((preset) => {
+                    const Icon = typeIcons[preset.type] || Square;
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => handleAddObject(preset.type, preset)}
+                        className="group flex flex-col items-center justify-center w-16 h-12 rounded-lg border border-border/60 bg-muted/20 hover:bg-accent hover:border-border transition-colors cursor-pointer"
+                      >
+                        <Icon className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+                        <span className="text-[9px] text-muted-foreground group-hover:text-foreground leading-tight mt-0.5">
+                          {preset.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {activeCategory === 'stations' && stationPresets.map((preset) => {
+                    const Icon = typeIcons[preset.type] || Square;
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => handleAddObject(preset.type, preset)}
+                        className="group flex flex-col items-center justify-center w-16 h-12 rounded-lg border border-border/60 bg-muted/20 hover:bg-accent hover:border-border transition-colors cursor-pointer"
+                      >
+                        <Icon className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+                        <span className="text-[9px] text-muted-foreground group-hover:text-foreground leading-tight mt-0.5">
+                          {preset.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
-            <div className="w-px h-4 bg-border mx-1" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Fixtures</span>
-            {supportPresets.map((preset) => (
-              <Button key={preset.label} variant="ghost" size="sm" className="text-[11px] h-6 px-1.5" onClick={() => handleAddObject(preset.type, preset)}>
-                <Plus className="w-3 h-3 mr-0.5" />{preset.label}
-              </Button>
-            ))}
-            {objectPalette.map((item) => (
-              <Button key={item.type} variant="ghost" size="sm" className="text-[11px] h-6 px-1.5" onClick={() => handleAddObject(item.type)}>
-                <Plus className="w-3 h-3 mr-0.5" />{item.label}
-              </Button>
-            ))}
+
+            {/* Draw mode panel */}
+            {activeCategory === 'draw' && (
+              <div className="border-t border-border/40 bg-card/80 px-3 py-2">
+                <div className="flex flex-wrap gap-2">
+                  {drawableTypes.map((item) => {
+                    const Icon = typeIcons[item.type] || Square;
+                    const isActive = drawingTool === item.type;
+                    return (
+                      <button
+                        key={item.type}
+                        onClick={() => setDrawingTool(isActive ? null : item.type)}
+                        className={cn(
+                          'group flex flex-col items-center justify-center w-16 h-12 rounded-lg border transition-colors cursor-pointer',
+                          isActive
+                            ? 'border-primary bg-primary/10 ring-1 ring-primary/50'
+                            : 'border-border/60 bg-muted/20 hover:bg-accent hover:border-border',
+                        )}
+                      >
+                        <Icon className={cn('w-4 h-4', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                        <span className={cn('text-[9px] leading-tight mt-0.5', isActive ? 'text-primary font-medium' : 'text-muted-foreground group-hover:text-foreground')}>
+                          {item.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -597,7 +887,7 @@ export default function EventLayout() {
 
         <div className="border-b border-border bg-card/20 px-4 py-2 flex items-center justify-between gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-2"><WandSparkles className="w-3.5 h-3.5" /> {roomBounds ? `Room: ${formatWithUnit(metersToUserUnit(roomBounds.widthMeters, unitSystem), unitSystem)} x ${formatWithUnit(metersToUserUnit(roomBounds.heightMeters, unitSystem), unitSystem)} — drag objects to see live measurements` : 'Set room size for precise measurements, or use satellite capture for scale'}</div>
-          <div className="font-mono">{selected && nearestNeighborDistance && metersPerPixel ? `nearest object ${formatDimension(nearestNeighborDistance, metersPerPixel, unitSystem)}` : 'select an object to inspect spacing'}</div>
+          <div className="font-mono">{selected ? `${objects.length} objects` : 'select an object to inspect spacing'}</div>
         </div>
 
         {/* Canvas area */}
@@ -611,8 +901,19 @@ export default function EventLayout() {
         >
           <div
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: canvasSize.width, height: canvasSize.height, position: 'relative' }}
-            className={cn('transition-transform', showGrid && !venueImage && 'bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]')}
+            className="transition-transform"
           >
+            {/* Measurement-based grid overlay */}
+            {showGrid && metersPerPixel && (
+              <GridOverlay
+                metersPerPixel={metersPerPixel}
+                unitSystem={unitSystem}
+                canvasWidth={canvasSize.width}
+                canvasHeight={canvasSize.height}
+                zoom={zoom}
+                snappedLines={(dragging || resizing) ? snappedGridLines : undefined}
+              />
+            )}
             {/* Room boundary outline */}
             {roomBoundsPx && (
               <>
@@ -653,53 +954,55 @@ export default function EventLayout() {
                 draggable={false}
               />
             )}
-            {/* Grid overlay on top of image */}
-            {venueImage && showGrid && (
-              <div
-                className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[size:20px_20px]"
-                style={{ opacity: 0.4 }}
-              />
-            )}
+            {/* Grid overlay on top of image is handled by GridOverlay above */}
 
             {/* Live measurement guides for selected/dragging object */}
             {selected && showMeasureGuides && measureGuides && metersPerPixel && (
               <>
-                {/* Distance to left edge */}
-                {measureGuides.edges.left > 10 && (
-                  <div className="absolute pointer-events-none z-[50]" style={{ left: 0, top: selected.y + selected.height / 2, width: selected.x, height: 0 }}>
-                    <div className="border-t border-dashed border-emerald-400/60 w-full" />
-                    <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
-                      {formatDimension(measureGuides.edges.left, metersPerPixel, unitSystem)}
-                    </div>
-                  </div>
-                )}
-                {/* Distance to right edge */}
-                {measureGuides.edges.right > 10 && (
-                  <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width, top: selected.y + selected.height / 2, width: measureGuides.edges.right, height: 0 }}>
-                    <div className="border-t border-dashed border-emerald-400/60 w-full" />
-                    <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
-                      {formatDimension(measureGuides.edges.right, metersPerPixel, unitSystem)}
-                    </div>
-                  </div>
-                )}
-                {/* Distance to top edge */}
-                {measureGuides.edges.top > 10 && (
-                  <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width / 2, top: 0, width: 0, height: selected.y }}>
-                    <div className="border-l border-dashed border-emerald-400/60 h-full" />
-                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
-                      {formatDimension(measureGuides.edges.top, metersPerPixel, unitSystem)}
-                    </div>
-                  </div>
-                )}
-                {/* Distance to bottom edge */}
-                {measureGuides.edges.bottom > 10 && (
-                  <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width / 2, top: selected.y + selected.height, width: 0, height: measureGuides.edges.bottom }}>
-                    <div className="border-l border-dashed border-emerald-400/60 h-full" />
-                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
-                      {formatDimension(measureGuides.edges.bottom, metersPerPixel, unitSystem)}
-                    </div>
-                  </div>
-                )}
+                {/* Edge distance guides: hidden during resize, shown during drag only when close to edge (<50px) */}
+                {!resizing && (() => {
+                  const edgeThreshold = dragging ? 50 : Infinity; // when dragging, only show if <50px; when idle/selected, show all
+                  return (
+                    <>
+                      {/* Distance to left edge */}
+                      {measureGuides.edges.left > 10 && measureGuides.edges.left < edgeThreshold && (
+                        <div className="absolute pointer-events-none z-[50]" style={{ left: 0, top: selected.y + selected.height / 2, width: selected.x, height: 0 }}>
+                          <div className="border-t border-dashed border-emerald-400/60 w-full" />
+                          <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                            {formatDimension(measureGuides.edges.left, metersPerPixel, unitSystem)}
+                          </div>
+                        </div>
+                      )}
+                      {/* Distance to right edge */}
+                      {measureGuides.edges.right > 10 && measureGuides.edges.right < edgeThreshold && (
+                        <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width, top: selected.y + selected.height / 2, width: measureGuides.edges.right, height: 0 }}>
+                          <div className="border-t border-dashed border-emerald-400/60 w-full" />
+                          <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                            {formatDimension(measureGuides.edges.right, metersPerPixel, unitSystem)}
+                          </div>
+                        </div>
+                      )}
+                      {/* Distance to top edge */}
+                      {measureGuides.edges.top > 10 && measureGuides.edges.top < edgeThreshold && (
+                        <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width / 2, top: 0, width: 0, height: selected.y }}>
+                          <div className="border-l border-dashed border-emerald-400/60 h-full" />
+                          <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                            {formatDimension(measureGuides.edges.top, metersPerPixel, unitSystem)}
+                          </div>
+                        </div>
+                      )}
+                      {/* Distance to bottom edge */}
+                      {measureGuides.edges.bottom > 10 && measureGuides.edges.bottom < edgeThreshold && (
+                        <div className="absolute pointer-events-none z-[50]" style={{ left: selected.x + selected.width / 2, top: selected.y + selected.height, width: 0, height: measureGuides.edges.bottom }}>
+                          <div className="border-l border-dashed border-emerald-400/60 h-full" />
+                          <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400 bg-card/90 px-1 rounded border border-emerald-400/30 whitespace-nowrap">
+                            {formatDimension(measureGuides.edges.bottom, metersPerPixel, unitSystem)}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
                 {/* Alignment guides */}
                 {measureGuides.neighbors.alignments.map((a, i) => (
                   <div
@@ -780,7 +1083,7 @@ export default function EventLayout() {
                     objectColors[obj.type] || 'border-border bg-muted/10',
                     obj.type === 'round_table' && 'rounded-full',
                     obj.type === 'tent' && 'border-dashed',
-                    isSelected && 'ring-2 ring-primary shadow-lg shadow-primary/20',
+                    isSelected && 'ring-2 ring-primary ring-offset-1 ring-offset-background shadow-lg shadow-primary/25',
                     obj.locked && 'cursor-not-allowed opacity-70',
                   )}
                   style={{
@@ -804,18 +1107,18 @@ export default function EventLayout() {
                     capacity={obj.capacity}
                   />
 
-                  {/* Dimension labels for selected objects */}
-                  {isSelected && (
-                    <>
-                      {/* Width label - bottom */}
-                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
-                        {formatDim(obj.width)}
+                  {/* Dimension badge: centered on object when selected or resizing */}
+                  {isSelected && metersPerPixel && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[15]">
+                      <div className={cn(
+                        "font-mono font-semibold whitespace-nowrap rounded-md shadow-lg border",
+                        resizing?.id === obj.id
+                          ? "text-sm px-3 py-1.5 bg-gray-900/85 text-white border-white/20"
+                          : "text-xs px-2 py-1 bg-gray-900/70 text-white/90 border-white/15"
+                      )}>
+                        {formatDim(obj.width)} &times; {formatDim(obj.height)}
                       </div>
-                      {/* Height label - right */}
-                      <div className="absolute top-1/2 -right-1 translate-x-full -translate-y-1/2 text-[9px] font-mono text-primary bg-card/90 px-1 rounded border border-primary/30 whitespace-nowrap">
-                        {formatDim(obj.height)}
-                      </div>
-                    </>
+                    </div>
                   )}
 
                   {/* Resize handles */}
@@ -823,7 +1126,7 @@ export default function EventLayout() {
                     <div
                       key={handle}
                       className={cn(
-                        'absolute w-2.5 h-2.5 bg-primary border border-primary-foreground rounded-sm z-10',
+                        'absolute w-3 h-3 bg-primary border-2 border-primary-foreground rounded-full z-10 shadow-md shadow-primary/30',
                         handlePositions[handle],
                         handleCursors[handle],
                       )}
@@ -915,15 +1218,25 @@ export default function EventLayout() {
         </div>
 
         {selected ? (
-          <div className="p-4 space-y-4">
-            <div>
-              <label className="text-xs text-muted-foreground">Name</label>
-              <input
-                className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                value={selected.name}
-                onChange={(e) => updateLayoutObject(selected.id, { name: e.target.value })}
-              />
-            </div>
+          <div className="space-y-0">
+            {/* Color-coded object header with type icon */}
+            {(() => {
+              const TypeIcon = typeIcons[selected.type] || Square;
+              return (
+                <div className={cn('px-4 py-3 border-b flex items-center gap-2.5', typeHeaderColors[selected.type] || 'bg-muted/30 border-border text-muted-foreground')}>
+                  <TypeIcon className="w-5 h-5 flex-shrink-0" />
+                  <input
+                    className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground border-none outline-none focus:ring-0 p-0 truncate"
+                    value={selected.name}
+                    onChange={(e) => updateLayoutObject(selected.id, { name: e.target.value })}
+                    placeholder="Object name"
+                  />
+                  <Badge variant="outline" className="text-[10px] flex-shrink-0">{typeLabels[selected.type]}</Badge>
+                </div>
+              );
+            })()}
+
+            <div className="p-4 space-y-5">
             {/* Real-world dimensions summary */}
             {metersPerPixel && (
               <div className="rounded-lg border border-blue-400/30 bg-blue-50/5 px-3 py-2 space-y-1">
@@ -943,38 +1256,55 @@ export default function EventLayout() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-muted-foreground">X</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.x} onChange={(e) => updateLayoutObject(selected.id, { x: Number(e.target.value) })} />
+
+              {/* Section: Transform */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Move className="w-3 h-3" /> Transform</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground">X</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.x} onChange={(e) => updateLayoutObject(selected.id, { x: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Y</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.y} onChange={(e) => updateLayoutObject(selected.id, { y: Number(e.target.value) })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><RotateCw className="w-3 h-3" /> Rotation</label>
+                  <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.rotation} onChange={(e) => updateLayoutObject(selected.id, { rotation: Number(e.target.value) })} />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Y</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.y} onChange={(e) => updateLayoutObject(selected.id, { y: Number(e.target.value) })} />
+
+              {/* Section: Size */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Maximize2 className="w-3 h-3" /> Size</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Width {metersPerPixel ? `(${formatDimension(selected.width, metersPerPixel, unitSystem)})` : ''}</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Height {metersPerPixel ? `(${formatDimension(selected.height, metersPerPixel, unitSystem)})` : ''}</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Width {metersPerPixel ? `(${formatDimension(selected.width, metersPerPixel, unitSystem)})` : ''}</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
+
+              {/* Section: Properties */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Tag className="w-3 h-3" /> Properties</h4>
+                {['round_table', 'rect_table'].includes(selected.type) && (
+                  <div>
+                    <label className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Capacity</label>
+                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.capacity} onChange={(e) => updateLayoutObject(selected.id, { capacity: Number(e.target.value) })} />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><StickyNote className="w-3 h-3" /> Notes</label>
+                  <textarea className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none" rows={2} value={selected.notes} onChange={(e) => updateLayoutObject(selected.id, { notes: e.target.value })} />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Height {metersPerPixel ? `(${formatDimension(selected.height, metersPerPixel, unitSystem)})` : ''}</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Rotation</label>
-              <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.rotation} onChange={(e) => updateLayoutObject(selected.id, { rotation: Number(e.target.value) })} />
-            </div>
-            {['round_table', 'rect_table'].includes(selected.type) && (
-              <div>
-                <label className="text-xs text-muted-foreground">Capacity</label>
-                <input className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary" type="number" value={selected.capacity} onChange={(e) => updateLayoutObject(selected.id, { capacity: Number(e.target.value) })} />
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-muted-foreground">Notes</label>
-              <textarea className="w-full mt-1 px-2 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" rows={2} value={selected.notes} onChange={(e) => updateLayoutObject(selected.id, { notes: e.target.value })} />
-            </div>
             {selected.type === 'round_table' || selected.type === 'rect_table' ? (
               <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1001,17 +1331,37 @@ export default function EventLayout() {
                 </div>
               </div>
             ) : null}
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => updateLayoutObject(selected.id, { locked: !selected.locked })}>
-                {selected.locked ? <Lock className="w-3.5 h-3.5 mr-1" /> : <Unlock className="w-3.5 h-3.5 mr-1" />}
-                {selected.locked ? 'Locked' : 'Lock'}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => updateLayoutObject(selected.id, { visible: !selected.visible })}>
-                {selected.visible ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
-              </Button>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => { removeLayoutObject(selected.id); setSelectedId(null); }}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              {/* Section: Layer Order */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Layers className="w-3 h-3" /> Layer Order</h4>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => handleBringToFront(selected.id)}>
+                    <ArrowUpToLine className="w-3.5 h-3.5 mr-1" /> Bring to Front
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => handleSendToBack(selected.id)}>
+                    <ArrowDownToLine className="w-3.5 h-3.5 mr-1" /> Send to Back
+                  </Button>
+                </div>
+              </div>
+
+              {/* Section: Actions */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</h4>
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => updateLayoutObject(selected.id, { locked: !selected.locked })}>
+                    {selected.locked ? <Lock className="w-3.5 h-3.5 mr-1" /> : <Unlock className="w-3.5 h-3.5 mr-1" />}
+                    {selected.locked ? 'Locked' : 'Lock'}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => updateLayoutObject(selected.id, { visible: !selected.visible })}>
+                    {selected.visible ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
+                    {selected.visible ? 'Visible' : 'Hidden'}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { removeLayoutObject(selected.id); setSelectedId(null); }}>
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Press <kbd className="px-1 py-0.5 bg-muted rounded border border-border text-[9px] font-mono">Del</kbd> to delete selected object</p>
+              </div>
             </div>
           </div>
         ) : (

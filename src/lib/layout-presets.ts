@@ -23,6 +23,21 @@ export const supportPresets: ObjectPreset[] = [
   { label: 'Registration', type: 'registration', widthMeters: 2.44, heightMeters: 0.76 },
 ];
 
+export const structurePresets: ObjectPreset[] = [
+  { label: 'Tent', type: 'tent', widthMeters: 7.32, heightMeters: 5.49 },
+  { label: 'Stage', type: 'stage', widthMeters: 5.49, heightMeters: 2.74 },
+  { label: 'Dance Floor', type: 'dance_floor', widthMeters: 5.49, heightMeters: 5.49 },
+  { label: 'Aisle', type: 'aisle', widthMeters: 6, heightMeters: 1.2 },
+];
+
+export const stationPresets: ObjectPreset[] = [
+  { label: 'Bar', type: 'bar', widthMeters: 2.44, heightMeters: 0.76 },
+  { label: 'Check-In', type: 'checkin', widthMeters: 2.44, heightMeters: 0.76 },
+  { label: 'Registration', type: 'registration', widthMeters: 2.44, heightMeters: 0.76 },
+  { label: 'Catering', type: 'catering', widthMeters: 2.44, heightMeters: 1.22 },
+  { label: 'Photo Area', type: 'photo_area', widthMeters: 3, heightMeters: 1.5 },
+];
+
 /** Object types that should be drawn to size (click-drag) instead of placed at a preset */
 export const drawableTypes: { type: LayoutObjectType; label: string }[] = [
   { type: 'tent', label: 'Tent' },
