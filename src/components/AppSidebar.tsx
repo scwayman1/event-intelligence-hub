@@ -1,7 +1,7 @@
 import { NavLink, useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
-  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus, LogOut
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus, LogOut, Sparkles
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
@@ -16,6 +16,7 @@ const globalNav = [
 
 const eventNav = [
   { label: 'Dashboard', icon: BarChart3, path: '' },
+  { label: 'Command Center', icon: Sparkles, path: '/orchestrator' },
   { label: 'Layout', icon: LayoutGrid, path: '/layout' },
   { label: 'Guests', icon: Users, path: '/guests' },
   { label: 'Seating', icon: Grid3X3, path: '/seating' },

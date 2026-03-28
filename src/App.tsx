@@ -13,6 +13,7 @@ import EventSeating from "@/pages/EventSeating";
 import EventVersions from "@/pages/EventVersions";
 import EventIntegrations from "@/pages/EventIntegrations";
 import EventSettings from "@/pages/EventSettings";
+import EventOrchestrator from "@/pages/EventOrchestrator";
 import Welcome from "@/pages/Welcome";
 import SignIn from "@/pages/SignIn";
 import SignUp from "@/pages/SignUp";
@@ -87,6 +88,7 @@ const AppRoutes = () => (
       <Route path="/events/:eventId/versions" element={<ErrorBoundary><EventVersions /></ErrorBoundary>} />
       <Route path="/events/:eventId/integrations" element={<ErrorBoundary><EventIntegrations /></ErrorBoundary>} />
       <Route path="/events/:eventId/settings" element={<ErrorBoundary><EventSettings /></ErrorBoundary>} />
+      <Route path="/events/:eventId/orchestrator" element={<ErrorBoundary><EventOrchestrator /></ErrorBoundary>} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>
