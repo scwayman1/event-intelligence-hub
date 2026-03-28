@@ -17,6 +17,9 @@ import EventOrchestrator from "@/pages/EventOrchestrator";
 import Welcome from "@/pages/Welcome";
 import SignIn from "@/pages/SignIn";
 import SignUp from "@/pages/SignUp";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import Profile from "@/pages/Profile";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useEventStore } from "@/data/store";
@@ -74,6 +77,8 @@ const AppRoutes = () => (
     {/* Auth pages — accessible without signing in */}
     <Route path="/sign-in" element={<RedirectIfSignedIn><SignIn /></RedirectIfSignedIn>} />
     <Route path="/sign-up" element={<RedirectIfSignedIn><SignUp /></RedirectIfSignedIn>} />
+    <Route path="/forgot-password" element={<RedirectIfSignedIn><ForgotPassword /></RedirectIfSignedIn>} />
+    <Route path="/reset-password" element={<ResetPassword />} />
 
     {/* Onboarding — requires auth but not onboarding complete */}
     <Route path="/welcome" element={<RequireAuth><RedirectIfOnboarded><Welcome /></RedirectIfOnboarded></RequireAuth>} />
@@ -81,6 +86,7 @@ const AppRoutes = () => (
     {/* App — requires auth + onboarding complete */}
     <Route element={<RequireAuth><RequireOnboarding><AppLayout /></RequireOnboarding></RequireAuth>}>
       <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
+      <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
       <Route path="/events/:eventId" element={<ErrorBoundary><EventDashboard /></ErrorBoundary>} />
       <Route path="/events/:eventId/layout" element={<ErrorBoundary><EventLayout /></ErrorBoundary>} />
       <Route path="/events/:eventId/guests" element={<ErrorBoundary><EventGuests /></ErrorBoundary>} />

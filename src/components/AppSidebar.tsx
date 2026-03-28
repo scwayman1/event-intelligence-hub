@@ -221,15 +221,21 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
       <div className="relative p-4 border-t border-sidebar-border space-y-3">
         {authUser && (
           <div className="flex items-center gap-2.5 px-1 py-1">
-            <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-              <span className="text-xs font-bold text-primary">
-                {(authUser.user_metadata.first_name ?? '').charAt(0)}{(authUser.user_metadata.last_name ?? '').charAt(0)}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">{authUser.user_metadata.first_name ?? ''} {authUser.user_metadata.last_name ?? ''}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{authUser.email}</p>
-            </div>
+            <button
+              onClick={() => navigate('/profile')}
+              className="flex items-center gap-2.5 flex-1 min-w-0 rounded-md hover:bg-sidebar-accent/50 transition-colors py-1 px-1"
+              title="Edit profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-primary">
+                  {(authUser.user_metadata.first_name ?? '').charAt(0)}{(authUser.user_metadata.last_name ?? '').charAt(0)}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-xs font-medium text-foreground truncate">{authUser.user_metadata.first_name ?? ''} {authUser.user_metadata.last_name ?? ''}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{authUser.email}</p>
+              </div>
+            </button>
             <button
               onClick={() => { authSignOut(); navigate('/sign-in'); }}
               className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"

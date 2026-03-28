@@ -8,15 +8,23 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // 1. Set up the auth state listener FIRST (before getSession)
+    //    so we never miss an event that fires between getSession and subscribe.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        // Handle token refresh failures — force sign-out
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          supabase.auth.signOut();
+        }
+      },
+    );
+
+    // 2. Get the initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -25,7 +33,11 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, metadata: { first_name: string; last_name: string; role: string }) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    metadata: { first_name: string; last_name: string; role: string },
+  ) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -35,7 +47,20 @@ export function useAuth() {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { data, error };
+  };
+
+  const signInWithGoogle = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/`,
+      },
+    });
     return { data, error };
   };
 
@@ -43,5 +68,18 @@ export function useAuth() {
     await supabase.auth.signOut();
   };
 
-  return { user, session, loading, signUp, signIn, signOut };
+  const signOutAllDevices = async () => {
+    await supabase.auth.signOut({ scope: 'global' });
+  };
+
+  return {
+    user,
+    session,
+    loading,
+    signUp,
+    signIn,
+    signInWithGoogle,
+    signOut,
+    signOutAllDevices,
+  };
 }
