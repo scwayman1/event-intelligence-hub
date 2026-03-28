@@ -7,6 +7,10 @@ interface GuestDragCardProps {
   guest: Guest;
   relationships: Array<{ group: RelationshipGroup; membership: RelationshipMembership }>;
   isAssigned?: boolean;
+  /** When set, the card glows/pulses with this color to indicate a seated group match */
+  matchColor?: string;
+  /** Name of the matched relationship group */
+  matchGroupName?: string;
 }
 
 const rsvpBadgeStyles: Record<RSVPStatus, string> = {
@@ -25,7 +29,13 @@ const rsvpLabels: Record<RSVPStatus, string> = {
   checked_in: 'Checked in',
 };
 
-export function GuestDragCard({ guest, relationships, isAssigned = false }: GuestDragCardProps) {
+export function GuestDragCard({
+  guest,
+  relationships,
+  isAssigned = false,
+  matchColor,
+  matchGroupName,
+}: GuestDragCardProps) {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
@@ -38,25 +48,56 @@ export function GuestDragCard({ guest, relationships, isAssigned = false }: Gues
     setIsDragging(false);
   };
 
+  const plusN = guest.partySize > 1 ? guest.partySize - 1 : 0;
+
   return (
     <div
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       className={cn(
-        'rounded-lg border border-border bg-card p-2.5 select-none transition-all',
+        'rounded-lg border bg-card p-2.5 select-none transition-all duration-300 ease-in-out',
         'hover:border-primary/40 hover:bg-card/80',
         isDragging
           ? 'opacity-50 cursor-grabbing shadow-lg ring-1 ring-primary/40'
           : 'cursor-grab opacity-100',
         isAssigned && 'opacity-60',
+        matchColor && 'match-pulse',
       )}
+      style={matchColor ? {
+        borderColor: `${matchColor}60`,
+        borderLeftWidth: 3,
+        borderLeftColor: matchColor,
+        boxShadow: `0 0 12px ${matchColor}20, 0 0 4px ${matchColor}15`,
+        background: `linear-gradient(90deg, ${matchColor}08 0%, transparent 40%)`,
+      } : undefined}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground truncate leading-tight">
-            {guest.displayName}
-          </p>
+          <div className="flex items-center gap-1.5">
+            {/* Match dot */}
+            {matchColor && (
+              <span
+                className="shrink-0 w-2 h-2 rounded-full match-pulse-dot"
+                style={{ backgroundColor: matchColor }}
+              />
+            )}
+            <p className="text-sm font-medium text-foreground truncate leading-tight">
+              {guest.displayName}
+            </p>
+            {/* Plus-one badge */}
+            {plusN > 0 && (
+              <span
+                className={cn(
+                  'shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full',
+                  'bg-violet-500/20 text-violet-300 border border-violet-500/30',
+                  'backdrop-blur-sm',
+                )}
+              >
+                +{plusN}
+              </span>
+            )}
+          </div>
           {guest.organization && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">
               {guest.organization}
@@ -73,6 +114,22 @@ export function GuestDragCard({ guest, relationships, isAssigned = false }: Gues
         </span>
       </div>
 
+      {/* Match group tag */}
+      {matchColor && matchGroupName && (
+        <div className="mt-1">
+          <span
+            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border backdrop-blur-sm"
+            style={{
+              color: matchColor,
+              borderColor: `${matchColor}40`,
+              backgroundColor: `${matchColor}15`,
+            }}
+          >
+            {matchGroupName}
+          </span>
+        </div>
+      )}
+
       {relationships.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1.5">
           {relationships.map(({ group, membership }) => (
@@ -83,6 +140,26 @@ export function GuestDragCard({ guest, relationships, isAssigned = false }: Gues
             />
           ))}
         </div>
+      )}
+
+      {/* Inline keyframe styles for match pulse animation */}
+      {matchColor && (
+        <style>{`
+          .match-pulse {
+            animation: matchPulse 2.5s ease-in-out infinite;
+          }
+          .match-pulse-dot {
+            animation: matchDotPulse 2s ease-in-out infinite;
+          }
+          @keyframes matchPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+          }
+          @keyframes matchDotPulse {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+          }
+        `}</style>
       )}
     </div>
   );
