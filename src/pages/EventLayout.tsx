@@ -7,7 +7,7 @@ import {
   Box, Calculator, Move, ArrowLeftRight, ArrowUpDown,
   ArrowUpToLine, ArrowDownToLine, RotateCw, Maximize2, Tag, StickyNote,
   CircleDot, Square, Tent, Mic, CheckSquare, Camera, Star, Footprints, Music, UtensilsCrossed, Beer, Type, LayoutGrid,
-  PenTool, ChevronDown, Circle, RectangleHorizontal, Coffee
+  PenTool, ChevronDown, Circle, RectangleHorizontal, Coffee, Undo2, Redo2
 } from 'lucide-react';
 
 interface LayoutOutletContext {
@@ -26,6 +26,15 @@ import type { LayoutObject, LayoutObjectType } from '@/types/events';
 import { LayoutObjectRenderer } from '@/components/layout/LayoutObjectRenderer';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TableDetailPopover } from '@/components/layout/TableDetailPopover';
+import { useSelectionManager } from '@/hooks/useSelectionManager';
+import { useUndoRedo } from '@/hooks/useUndoRedo';
+import { SnapGuideOverlay } from '@/components/layout/SnapGuideOverlay';
+import { SelectionToolbar } from '@/components/layout/SelectionToolbar';
+import { SelectionMarquee } from '@/components/layout/SelectionMarquee';
+import { ArrangementPanel } from '@/components/layout/ArrangementPanel';
+import { snapToObjects, computeSnapGuides } from '@/lib/snap-engine';
+import { alignObjects, distributeEqual } from '@/lib/arrangement-engine';
+import { moveContainedObjects } from '@/lib/tent-containment';
 
 const VenueCapture = lazy(() => import('@/components/layout/VenueCapture'));
 
@@ -267,6 +276,29 @@ export default function EventLayout() {
   const [showMeasureGuides, setShowMeasureGuides] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [snappedGridLines, setSnappedGridLines] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [activeSnapGuides, setActiveSnapGuides] = useState<{ axis: 'x' | 'y'; position: number; type: 'edge' | 'center' | 'equal-spacing' }[]>([]);
+
+  // Multi-select
+  const selection = useSelectionManager();
+  // Keep selectedId in sync with selection manager for backward compat
+  const selectedId = selection.selectionCount === 1 ? [...selection.selectedIds][0] : null;
+  const setSelectedId = (id: string | null) => {
+    if (id) selection.selectOne(id);
+    else selection.clearSelection();
+  };
+
+  // Undo/redo
+  const undoRedo = useUndoRedo<LayoutObject[]>((snapshot) => {
+    // Restore layout objects from snapshot — bulk replace for this version
+    const currentVersionObjs = layoutObjects.filter((o) => o.versionId === versionId);
+    currentVersionObjs.forEach((o) => removeLayoutObject(o.id));
+    snapshot.forEach((o) => addLayoutObject(o));
+  });
+  // Push state on meaningful actions (add/remove/move complete)
+  const pushUndoSnapshot = useCallback(() => {
+    undoRedo.pushState([...objects]);
+  }, [objects, undoRedo]);
   const snapHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -353,12 +385,16 @@ export default function EventLayout() {
   const handleMouseDown = useCallback((e: React.MouseEvent, obj: LayoutObject) => {
     if (obj.locked) return;
     e.stopPropagation();
-    setSelectedId(obj.id);
-    // Use currentTarget (the object container div) instead of e.target which
-    // may be a child element, causing incorrect offset and "jump" behavior.
+    // Shift-click toggles multi-select; plain click selects one
+    if (e.shiftKey) {
+      selection.toggleSelect(obj.id);
+    } else {
+      selection.selectOne(obj.id);
+    }
+    pushUndoSnapshot();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setDragging({ id: obj.id, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top });
-  }, []);
+  }, [selection, pushUndoSnapshot]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (resizing && canvasRef.current) {
@@ -384,22 +420,45 @@ export default function EventLayout() {
     const y = (e.clientY - canvasRect.top - dragging.offsetY) / zoom;
     const snappedX = snapValue(x);
     const snappedY = snapValue(y);
-    updateLayoutObject(dragging.id, {
-      x: snappedX,
-      y: snappedY,
-    });
+
+    // Smart object-to-object snapping
+    const draggedObj = objects.find((o) => o.id === dragging.id);
+    if (draggedObj && snapMode !== 'free') {
+      const movingRect = { ...draggedObj, x: snappedX, y: snappedY };
+      const others = objects.filter((o) => o.id !== dragging.id);
+      const snapResult = snapToObjects(movingRect, others, 8);
+      const finalX = snapResult.guides.find((g) => g.axis === 'x')?.snappedValue ?? snappedX;
+      const finalY = snapResult.guides.find((g) => g.axis === 'y')?.snappedValue ?? snappedY;
+      updateLayoutObject(dragging.id, { x: finalX, y: finalY });
+      setActiveSnapGuides(computeSnapGuides(snapResult));
+
+      // Move contained objects if dragging a tent
+      if (['tent', 'stage', 'dance_floor'].includes(draggedObj.type)) {
+        const dx = finalX - draggedObj.x;
+        const dy = finalY - draggedObj.y;
+        if (dx !== 0 || dy !== 0) {
+          const moved = moveContainedObjects(draggedObj, dx, dy, objects);
+          moved.forEach((m) => updateLayoutObject(m.id, { x: m.x, y: m.y }));
+        }
+      }
+    } else {
+      updateLayoutObject(dragging.id, { x: snappedX, y: snappedY });
+      setActiveSnapGuides([]);
+    }
     // Show snap highlight on the grid line the object snapped to
     if (snapMode !== 'free' && showGrid && metersPerPixel) {
       setSnappedGridLines({ x: snappedX, y: snappedY });
       if (snapHighlightTimer.current) clearTimeout(snapHighlightTimer.current);
       snapHighlightTimer.current = setTimeout(() => setSnappedGridLines({ x: null, y: null }), 300);
     }
-  }, [dragging, resizing, zoom, snapValue, updateLayoutObject, snapMode, showGrid, metersPerPixel]);
+  }, [dragging, resizing, zoom, snapValue, updateLayoutObject, snapMode, showGrid, metersPerPixel, objects]);
 
   const handleMouseUp = useCallback(() => {
+    if (dragging || resizing) pushUndoSnapshot();
     setDragging(null);
     setResizing(null);
     setSnappedGridLines({ x: null, y: null });
+    setActiveSnapGuides([]);
     // Finish drawing: create the object
     if (drawing && drawingTool && canvasRef.current) {
       const x = Math.min(drawing.startX, drawing.currentX);
@@ -532,6 +591,11 @@ export default function EventLayout() {
     const column = existing % 4;
     const row = Math.floor(existing / 4);
 
+    // Structural objects (tent, stage, dance_floor) get z-index 0 so tables
+    // render on top and stay clickable. Tables start at z-index 100+.
+    const isStructural = ['tent', 'stage', 'dance_floor', 'bar_area', 'vip_area'].includes(type);
+    const baseZ = isStructural ? 0 : 100 + objects.length;
+
     addLayoutObject({
       id,
       versionId,
@@ -547,7 +611,7 @@ export default function EventLayout() {
       category: type.includes('table') ? 'seating' : 'layout',
       locked: false,
       visible: true,
-      zIndex: objects.length,
+      zIndex: baseZ,
     });
   };
 
@@ -656,8 +720,21 @@ export default function EventLayout() {
             <Button variant={showCapCalc ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowCapCalc(!showCapCalc)}>
               <Calculator className="w-3 h-3" />Fit Calc
             </Button>
-            <Button variant="ghost" size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={autoArrangeTables} title="Auto-arrange tables into a clean grid pattern">
-              <LayoutGrid className="w-3 h-3" />Auto-Arrange
+            <ArrangementPanel
+              tables={objects.filter((o) => ['round_table', 'rect_table'].includes(o.type))}
+              boundsWidth={roomBoundsPx?.width ?? canvasSize.width}
+              boundsHeight={roomBoundsPx?.height ?? canvasSize.height}
+              onArrange={(results) => {
+                pushUndoSnapshot();
+                results.forEach((r) => updateLayoutObject(r.id, { x: snapValue(r.x), y: snapValue(r.y) }));
+              }}
+            />
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => undoRedo.undo()} disabled={!undoRedo.canUndo} title="Undo (Ctrl+Z)">
+              <Undo2 className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => undoRedo.redo()} disabled={!undoRedo.canRedo} title="Redo (Ctrl+Shift+Z)">
+              <Redo2 className="w-3.5 h-3.5" />
             </Button>
             <div className="ml-auto"><SaveIndicator /></div>
           </div>
@@ -963,6 +1040,12 @@ export default function EventLayout() {
           onMouseDown={handleCanvasMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onWheel={(e) => {
+            if (!e.ctrlKey && !e.metaKey) return; // only zoom on Ctrl/Cmd + scroll
+            e.preventDefault();
+            const delta = -e.deltaY * 0.001;
+            setZoom((z) => Math.max(0.2, Math.min(4.0, z + delta * z)));
+          }}
         >
           <div
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: canvasSize.width, height: canvasSize.height, position: 'relative' }}
@@ -1120,7 +1203,9 @@ export default function EventLayout() {
             {objects.filter((o) => o.visible).sort((a, b) => a.zIndex - b.zIndex).map((obj) => {
               const isTable = ['round_table', 'rect_table'].includes(obj.type);
               const tableGuests = isTable ? getTableGuests(obj.id, versionId) : [];
-              const isSelected = selectedId === obj.id;
+              const isSelected = selection.isSelected(obj.id);
+              const isObjDragging = dragging?.id === obj.id;
+              const isObjHovered = hoveredId === obj.id && !isSelected;
 
               const formatDim = (px: number) => formatDimension(px, metersPerPixel, unitSystem);
 
@@ -1140,36 +1225,45 @@ export default function EventLayout() {
                 nw: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
               };
 
-              // Structural overlays (tent, stage, etc.) pass through pointer events
-              // when not selected so tables beneath them stay interactive.
-              const isStructuralOverlay = ['tent', 'stage', 'dance_floor', 'bar_area'].includes(obj.type);
-              const passThrough = isStructuralOverlay && !isSelected && !dragging;
-
               const objectEl = (
                 <div
                   key={obj.id}
                   className={cn(
-                    'absolute border-2 flex flex-col items-center justify-center cursor-move transition-shadow select-none overflow-visible',
+                    'absolute border-2 flex flex-col items-center justify-center cursor-move select-none overflow-visible',
+                    'transition-all duration-150 ease-out',
                     objectColors[obj.type] || 'border-border bg-muted/10',
                     obj.type === 'round_table' && 'rounded-full',
                     obj.type === 'tent' && 'border-dashed',
-                    isSelected && 'ring-2 ring-primary ring-offset-1 ring-offset-background shadow-lg shadow-primary/25',
+                    isSelected && 'ring-2 ring-primary ring-offset-1 ring-offset-background',
+                    isObjHovered && !isObjDragging && 'ring-1 ring-primary/40 brightness-110',
+                    isObjDragging && 'opacity-80 scale-[1.02]',
                     obj.locked && 'cursor-not-allowed opacity-70',
                   )}
                   style={{
                     left: obj.x, top: obj.y, width: obj.width, height: obj.height,
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
-                    boxShadow: isSelected ? undefined : '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.05)',
-                    pointerEvents: passThrough ? 'none' : undefined,
+                    boxShadow: isObjDragging
+                      ? '0 12px 32px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.1)'
+                      : isSelected
+                        ? '0 4px 12px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.08)'
+                        : isObjHovered
+                          ? '0 4px 12px rgba(0,0,0,0.12)'
+                          : '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.05)',
                   }}
                   onMouseDown={(e) => handleMouseDown(e, obj)}
-                  onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (e.shiftKey) selection.toggleSelect(obj.id);
+                    else selection.selectOne(obj.id);
+                  }}
                   onDoubleClick={(e) => {
                     if (isTable) {
                       e.stopPropagation();
                       setTablePopoverId(tablePopoverId === obj.id ? null : obj.id);
                     }
                   }}
+                  onMouseEnter={() => setHoveredId(obj.id)}
+                  onMouseLeave={() => setHoveredId((prev) => prev === obj.id ? null : prev)}
                 >
                   <LayoutObjectRenderer
                     obj={obj}
@@ -1275,7 +1369,48 @@ export default function EventLayout() {
                 </div>
               );
             })()}
+
+            {/* Smart snap alignment guides */}
+            {activeSnapGuides.length > 0 && (
+              <SnapGuideOverlay
+                guides={activeSnapGuides}
+                canvasWidth={canvasSize.width}
+                canvasHeight={canvasSize.height}
+              />
+            )}
           </div>
+
+          {/* Selection toolbar — floats above canvas when 2+ objects selected */}
+          {selection.selectionCount >= 2 && (
+            <SelectionToolbar
+              selectedObjects={objects.filter((o) => selection.isSelected(o.id))}
+              onAlign={(edge) => {
+                pushUndoSnapshot();
+                const sel = objects.filter((o) => selection.isSelected(o.id));
+                const results = alignObjects(sel, edge === 'center' ? 'centerH' : edge === 'middle' ? 'centerV' : edge);
+                results.forEach((r) => updateLayoutObject(r.id, { x: r.x, y: r.y }));
+              }}
+              onDistribute={(axis) => {
+                pushUndoSnapshot();
+                const sel = objects.filter((o) => selection.isSelected(o.id));
+                const results = distributeEqual(sel, axis);
+                results.forEach((r) => updateLayoutObject(r.id, { x: r.x, y: r.y }));
+              }}
+              onDelete={() => {
+                pushUndoSnapshot();
+                [...selection.selectedIds].forEach((id) => removeLayoutObject(id));
+                selection.clearSelection();
+              }}
+            />
+          )}
+
+          {/* Marquee selection */}
+          <SelectionMarquee
+            canvasRef={canvasRef}
+            zoom={zoom}
+            active={!drawingTool && !dragging}
+            onSelect={(rect) => selection.selectArea(rect, objects)}
+          />
         </div>
       </div>
 
