@@ -23,6 +23,7 @@ import { CreateSeatingRuleDialog } from '@/components/CreateSeatingRuleDialog';
 import { SeatingBoard } from '@/components/seating/SeatingBoard';
 import { GuestDragCard } from '@/components/seating/GuestDragCard';
 import { toast } from 'sonner';
+import { RELATIONSHIP_TYPE_COLORS } from '@/types/events';
 
 type RsvpFilterTab = 'confirmed' | 'all' | 'invited' | 'waitlist';
 
@@ -111,30 +112,95 @@ export default function EventSeating() {
   // Total unassigned confirmed for header stat
   const unassignedConfirmedCount = analytics.unassignedConfirmed.length;
 
+  // ── Match color map: guestId → { color, groupName } for unassigned guests ──
+  // If a guest belongs to a relationship group that has at least one member
+  // already seated, they get a match color so their queue card glows.
+  const guestMatchInfo = useMemo(() => {
+    const map = new Map<string, { color: string; groupName: string }>();
+
+    // Build set of seated guest IDs (current version)
+    const seatedIds = new Set(assignments.map((a) => a.guestId));
+
+    // For each relationship group, check if any member is seated
+    for (const group of relationshipGroups) {
+      const members = relationshipMemberships.filter((m) => m.groupId === group.id);
+      const hasSeatedMember = members.some((m) => seatedIds.has(m.guestId));
+      if (!hasSeatedMember) continue;
+
+      const color = group.color ?? RELATIONSHIP_TYPE_COLORS[group.type];
+
+      // Tag all unassigned members of this group
+      for (const m of members) {
+        if (!seatedIds.has(m.guestId) && !map.has(m.guestId)) {
+          map.set(m.guestId, { color, groupName: group.name });
+        }
+      }
+    }
+
+    return map;
+  }, [assignments, relationshipGroups, relationshipMemberships]);
+
   // ── Drop handler ──────────────────────────────────────────────────────────
   const handleDropGuest = (guestId: string, tableId: string, seatNumber: number) => {
     assignGuestToSeat(guestId, tableId, seatNumber, versionId);
 
-    const autoIds = autoAssignByRelationshipGroup(guestId, tableId, versionId);
+    const allAutoIds: string[] = [];
 
-    if (autoIds.length > 0) {
+    // Plus-one auto-seating: if the dropped guest has a plusOneId, seat them at
+    // the next open seat at the same table automatically.
+    const droppedGuest = guests.find((g) => g.id === guestId);
+    if (droppedGuest?.plusOneId) {
+      const plusOneGuest = guests.find((g) => g.id === droppedGuest.plusOneId);
+      const alreadySeated = assignments.some((a) => a.guestId === droppedGuest.plusOneId);
+      if (plusOneGuest && !alreadySeated) {
+        // Find the next open seat at this table
+        const tableObj = layoutObjects.find((o) => o.id === tableId);
+        const capacity = tableObj?.capacity ?? 0;
+        const currentAssignments = useEventStore.getState().seatingAssignments;
+        const occupiedSeats = new Set(
+          currentAssignments
+            .filter((a) => a.tableId === tableId && a.versionId === versionId && a.seatNumber !== undefined)
+            .map((a) => a.seatNumber as number),
+        );
+        for (let s = 1; s <= capacity; s++) {
+          if (!occupiedSeats.has(s)) {
+            assignGuestToSeat(droppedGuest.plusOneId, tableId, s, versionId);
+            allAutoIds.push(droppedGuest.plusOneId);
+            break;
+          }
+        }
+      }
+    }
+
+    // Party size note (when > 1 but no explicit plusOneId)
+    if (droppedGuest && droppedGuest.partySize > 1 && !droppedGuest.plusOneId) {
+      toast.info(`${droppedGuest.displayName} has a party of ${droppedGuest.partySize}`, {
+        description: 'Additional party members are not in the guest list — seat them manually if needed.',
+      });
+    }
+
+    // Relationship-group auto-assign
+    const autoIds = autoAssignByRelationshipGroup(guestId, tableId, versionId);
+    allAutoIds.push(...autoIds);
+
+    if (allAutoIds.length > 0) {
       const tableName =
         analytics.tableSummaries.find((t) => t.tableId === tableId)?.name ?? 'table';
-      const names = autoIds
+      const names = allAutoIds
         .map((id) => guests.find((g) => g.id === id)?.displayName ?? id)
         .filter(Boolean);
 
-      toast.success(`${autoIds.length} related guest${autoIds.length === 1 ? '' : 's'} auto-assigned to ${tableName}`, {
+      toast.success(`${allAutoIds.length} related guest${allAutoIds.length === 1 ? '' : 's'} auto-assigned to ${tableName}`, {
         description: names.join(', '),
       });
 
-      const newSet = new Set<string>(autoIds);
+      const newSet = new Set<string>(allAutoIds);
       setAutoAssignedIds(newSet);
 
       setTimeout(() => {
         setAutoAssignedIds((prev) => {
           const next = new Set(prev);
-          autoIds.forEach((id) => next.delete(id));
+          allAutoIds.forEach((id) => next.delete(id));
           return next;
         });
       }, 3000);
@@ -468,12 +534,15 @@ export default function EventSeating() {
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {filteredUnassigned.map((guest) => {
             const relationships = getGuestRelationships(guest.id);
+            const match = guestMatchInfo.get(guest.id);
             return (
               <GuestDragCard
                 key={guest.id}
                 guest={guest}
                 relationships={relationships}
                 isAssigned={false}
+                matchColor={match?.color}
+                matchGroupName={match?.groupName}
               />
             );
           })}

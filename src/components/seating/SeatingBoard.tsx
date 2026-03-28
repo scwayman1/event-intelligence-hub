@@ -123,7 +123,7 @@ function SeatSlot({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          'relative w-[60px] h-[60px] rounded-full flex items-center justify-center transition-all select-none',
+          'relative w-[60px] h-[60px] rounded-full flex items-center justify-center transition-all duration-300 ease-in-out select-none',
           guest
             ? 'border-2'
             : cn(
@@ -262,13 +262,18 @@ function TableCard({
   const anchorColor = anchorGroup
     ? (anchorGroup as RelationshipGroup).color ?? RELATIONSHIP_TYPE_COLORS[(anchorGroup as RelationshipGroup).type]
     : null;
-  const isAnchored = anchorGroup !== null && anchorCount >= 2;
+  const isAnchored = anchorGroup !== null && anchorCount >= 1;
 
   return (
     <div className={cn(
-      'rounded-xl border bg-card p-4 flex flex-col gap-3 group transition-all',
-      isAnchored ? 'border-opacity-60' : 'border-border',
-    )} style={isAnchored && anchorColor ? { borderColor: `${anchorColor}40` } : undefined}>
+      'rounded-xl border p-4 flex flex-col gap-3 group transition-all duration-300 ease-in-out',
+      isAnchored ? 'border-opacity-60' : 'border-border bg-card',
+    )} style={isAnchored && anchorColor ? {
+      borderColor: `${anchorColor}50`,
+      boxShadow: `0 0 20px ${anchorColor}12, 0 0 6px ${anchorColor}08`,
+      background: `linear-gradient(135deg, ${anchorColor}06 0%, transparent 60%)`,
+      backdropFilter: 'blur(8px)',
+    } : undefined}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground truncate">{table.name}</h3>
