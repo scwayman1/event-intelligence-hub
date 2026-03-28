@@ -23,14 +23,18 @@ import {
   createConversation,
   hasApiKey,
   setApiKey,
-  getApiKey,
 } from '@/services/franck-agent';
-import type {
-  FranckConversation,
-  FranckMessage,
-} from '@/services/franck-agent';
+import type { FranckConversation } from '@/services/franck-agent';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  toolsUsed?: string[];
+}
 
 interface FranckChatProps {
   eventId: string;
@@ -53,7 +57,7 @@ const QUICK_ACTIONS = [
   'Draft reminder emails',
 ];
 
-const WELCOME_MESSAGE: FranckMessage = {
+const WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
@@ -69,7 +73,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const [conversation, setConversation] = useState<FranckConversation | null>(
     null
   );
-  const [messages, setMessages] = useState<FranckMessage[]>([WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
@@ -109,7 +113,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
       if (!content || isLoading || !keyStored) return;
 
       // Create user message
-      const userMsg: FranckMessage = {
+      const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
         content,
@@ -124,14 +128,26 @@ export function FranckChat({ eventId }: FranckChatProps) {
         // Ensure we have a conversation
         let conv = conversation;
         if (!conv) {
-          conv = await createConversation(eventId);
+          conv = createConversation(eventId);
           setConversation(conv);
         }
 
-        const response = await sendMessage(conv, content);
-        setMessages((prev) => [...prev, response]);
-      } catch {
-        const errorMsg: FranckMessage = {
+        const result = await sendMessage(conv, content, eventId);
+        setConversation(result.conversation);
+
+        const assistantMsg: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: result.response,
+          timestamp: Date.now(),
+          toolsUsed: result.toolCalls.length > 0
+            ? result.toolCalls.map((tc) => tc.name)
+            : undefined,
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+      } catch (err) {
+        console.error('Franck error:', err);
+        const errorMsg: ChatMessage = {
           id: `error-${Date.now()}`,
           role: 'assistant',
           content:
@@ -173,7 +189,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
   // ── Render helpers ─────────────────────────────────────────────────────
 
-  const renderMessage = (msg: FranckMessage) => {
+  const renderMessage = (msg: ChatMessage) => {
     const isUser = msg.role === 'user';
 
     return (

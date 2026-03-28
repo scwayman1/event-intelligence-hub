@@ -6,6 +6,7 @@
  */
 
 import { executeTool } from './franck-tools';
+import { useEventStore } from '@/data/store';
 
 // ──────────────────────────────────────────────
 // 1. System Prompt
@@ -344,7 +345,8 @@ export async function sendMessage(
           onToolExecution(toolBlock.name);
         }
 
-        const result = await executeTool(toolBlock.name, toolBlock.input, eventId);
+        const storeState = useEventStore.getState();
+        const result = await executeTool(toolBlock.name, toolBlock.input, storeState, eventId);
 
         allToolCalls.push({ name: toolBlock.name, result });
 
