@@ -114,15 +114,34 @@ function parseRow(
   const RSVP_ALIASES: Record<string, RSVPStatus> = {
     invited: 'invited',
     pending: 'invited',
+    sent: 'invited',
+    awaiting: 'invited',
+    not_responded: 'invited',
+    no_response: 'invited',
     confirmed: 'confirmed',
     yes: 'confirmed',
+    accepted: 'confirmed',
+    attending: 'confirmed',
+    going: 'confirmed',
+    rsvp_yes: 'confirmed',
     declined: 'declined',
     no: 'declined',
+    not_attending: 'declined',
+    regrets: 'declined',
+    rsvp_no: 'declined',
+    cancelled: 'declined',
+    canceled: 'declined',
     waitlist: 'waitlist',
     waitlisted: 'waitlist',
+    wait_list: 'waitlist',
+    standby: 'waitlist',
+    maybe: 'waitlist',
+    tentative: 'waitlist',
     checked_in: 'checked_in',
     'checked in': 'checked_in',
     checkedin: 'checked_in',
+    arrived: 'checked_in',
+    present: 'checked_in',
   };
 
   const category = CATEGORY_ALIASES[rawCategory] ?? (rawCategory as GuestCategory);
@@ -210,10 +229,37 @@ export function CsvImportDialog({ eventId, orgId, open, onOpenChange }: CsvImpor
       const headerMap = new Map<string, number>();
       headers.forEach((h, i) => headerMap.set(h, i));
 
+      // Map common header aliases to canonical names
+      const HEADER_ALIASES: Record<string, string> = {
+        'first': 'first_name', 'firstname': 'first_name', 'first_name': 'first_name', 'given_name': 'first_name',
+        'last': 'last_name', 'lastname': 'last_name', 'last_name': 'last_name', 'surname': 'last_name', 'family_name': 'last_name',
+        'email': 'email', 'email_address': 'email',
+        'phone': 'phone', 'phone_number': 'phone', 'telephone': 'phone', 'mobile': 'phone',
+        'organization': 'organization', 'org': 'organization', 'company': 'organization', 'major': 'organization', 'department': 'organization', 'school': 'organization',
+        'category': 'category', 'type': 'category', 'guest_type': 'category', 'guest_category': 'category', 'role': 'category',
+        'rsvp_status': 'rsvp_status', 'rsvp': 'rsvp_status', 'status': 'rsvp_status', 'response': 'rsvp_status', 'attending': 'rsvp_status',
+        'party_size': 'party_size', 'partysize': 'party_size', 'guests': 'party_size', 'party': 'party_size', 'group_size': 'party_size', 'family_size': 'party_size', 'number_attending': 'party_size',
+        'dietary_restrictions': 'dietary_restrictions', 'dietary': 'dietary_restrictions', 'diet': 'dietary_restrictions', 'food': 'dietary_restrictions', 'food_restrictions': 'dietary_restrictions', 'dietary_needs': 'dietary_restrictions', 'meal_preference': 'dietary_restrictions',
+        'accessibility_needs': 'accessibility_needs', 'accessibility': 'accessibility_needs', 'access': 'accessibility_needs', 'special_needs': 'accessibility_needs', 'accommodations': 'accessibility_needs',
+        'notes': 'notes', 'comments': 'notes', 'note': 'notes',
+        'table_preference': 'table_preference', 'table': 'table_preference', 'preferred_table': 'table_preference',
+        'seating_preference': 'seating_preference', 'seating': 'seating_preference', 'seat_preference': 'seating_preference',
+        'relationship_tags': 'relationship_tags', 'tags': 'relationship_tags', 'groups': 'relationship_tags', 'relationships': 'relationship_tags',
+      };
+
+      // Resolve aliases into canonical header map
+      const canonicalMap = new Map<string, number>();
+      for (const [header, idx] of headerMap) {
+        const canonical = HEADER_ALIASES[header] ?? header;
+        if (!canonicalMap.has(canonical)) {
+          canonicalMap.set(canonical, idx);
+        }
+      }
+
       // Parse data rows
       const results: ParsedRow[] = [];
       for (let i = 1; i < rows.length; i++) {
-        results.push(parseRow(rows[i], headerMap, i + 1, eventId, orgId));
+        results.push(parseRow(rows[i], canonicalMap, i + 1, eventId, orgId));
       }
       setParsed(results);
     };
