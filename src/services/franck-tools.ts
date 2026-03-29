@@ -1187,10 +1187,8 @@ function addTableTool(
   const capacity = (input.capacity as number) ?? 8;
   const id = `lo-${crypto.randomUUID()}`;
 
-  // Auto-assign table number (same logic as EventLayout.tsx)
-  const existingNumbers = ctx.tables
-    .map((o) => o.tableNumber ?? 0);
-  const tableNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+  // Auto-assign table number (sequential, no gaps)
+  const tableNumber = ctx.tables.length + 1;
 
   const tableName = (input.name as string) ?? `Table ${tableNumber}`;
 

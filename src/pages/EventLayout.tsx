@@ -244,6 +244,7 @@ export default function EventLayout() {
   const updateLayoutObject = useEventStore((s) => s.updateLayoutObject);
   const addLayoutObject = useEventStore((s) => s.addLayoutObject);
   const removeLayoutObject = useEventStore((s) => s.removeLayoutObject);
+  const renumberTablesByPosition = useEventStore((s) => s.renumberTablesByPosition);
   const getTableGuests = useEventStore((s) => s.getTableGuests);
 
   const event = events.find((e) => e.id === eventId);
@@ -471,7 +472,16 @@ export default function EventLayout() {
   }, [dragging, resizing, zoom, snapValue, updateLayoutObject, snapMode, showGrid, metersPerPixel, objects]);
 
   const handleMouseUp = useCallback(() => {
-    if (dragging || resizing) pushUndoSnapshot();
+    if (dragging || resizing) {
+      pushUndoSnapshot();
+      // Re-number tables by spatial position after move/resize
+      if (dragging) {
+        const draggedObj = objects.find((o) => o.id === dragging.id);
+        if (draggedObj && (draggedObj.type === 'round_table' || draggedObj.type === 'rect_table')) {
+          requestAnimationFrame(() => renumberTablesByPosition(versionId));
+        }
+      }
+    }
     setDragging(null);
     setResizing(null);
     setSnappedGridLines({ x: null, y: null });
@@ -506,7 +516,7 @@ export default function EventLayout() {
       setDrawing(null);
       setDrawingTool(null);
     }
-  }, [drawing, drawingTool, versionId, objects.length, addLayoutObject, snapValue]);
+  }, [drawing, drawingTool, versionId, objects, addLayoutObject, snapValue, dragging, pushUndoSnapshot, renumberTablesByPosition]);
 
   // Canvas mousedown for drawing mode
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
@@ -573,13 +583,17 @@ export default function EventLayout() {
         e.preventDefault();
         const obj = layoutObjects.find((o) => o.id === selectedId);
         if (obj?.locked) return;
+        const wasTable = obj?.type === 'round_table' || obj?.type === 'rect_table';
         removeLayoutObject(selectedId);
         setSelectedId(null);
+        if (wasTable) {
+          requestAnimationFrame(() => renumberTablesByPosition(versionId));
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, layoutObjects, removeLayoutObject, drawingTool]);
+  }, [selectedId, layoutObjects, removeLayoutObject, drawingTool, renumberTablesByPosition, versionId]);
 
   const handleAddObject = (type: LayoutObjectType, preset?: ObjectPreset) => {
     const id = `lo-${crypto.randomUUID()}`;
@@ -619,14 +633,14 @@ export default function EventLayout() {
     const isStructural = ['tent', 'stage', 'dance_floor', 'bar_area', 'vip_area'].includes(type);
     const baseZ = isStructural ? 0 : 100 + objects.length;
 
-    // Auto-assign table number for table types
+    // Auto-assign table number for table types (sequential, no gaps)
     const isTable = type === 'round_table' || type === 'rect_table';
     let tableNumber: number | undefined;
     if (isTable) {
-      const existingNumbers = objects
-        .filter((o) => o.type === 'round_table' || o.type === 'rect_table')
-        .map((o) => o.tableNumber ?? 0);
-      tableNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+      const existingTableCount = objects.filter(
+        (o) => o.type === 'round_table' || o.type === 'rect_table',
+      ).length;
+      tableNumber = existingTableCount + 1;
     }
 
     const tableName = isTable && tableNumber
@@ -651,6 +665,11 @@ export default function EventLayout() {
       visible: true,
       zIndex: baseZ,
     });
+
+    // Renumber all tables by spatial position after adding
+    if (isTable) {
+      requestAnimationFrame(() => renumberTablesByPosition(versionId));
+    }
   };
 
   const handleBringToFront = useCallback((id: string) => {
