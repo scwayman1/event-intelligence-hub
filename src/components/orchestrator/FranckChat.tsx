@@ -1241,8 +1241,8 @@ export function FranckChat({ eventId }: FranckChatProps) {
             {/* Regular quick actions */}
             {QUICK_ACTIONS.map((action) => (
               <button
-                key={action}
-                onClick={() => handleSend(action)}
+                key={action.trigger}
+                onClick={() => handleSend(action.trigger)}
                 disabled={isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
                 className={cn(
                   'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
@@ -1253,8 +1253,8 @@ export function FranckChat({ eventId }: FranckChatProps) {
                 )}
               >
                 <span className="flex items-center gap-1">
-                  <ChevronRight className="h-3 w-3" />
-                  {action}
+                  <action.Icon className="h-3 w-3" />
+                  {action.label}
                 </span>
               </button>
             ))}
