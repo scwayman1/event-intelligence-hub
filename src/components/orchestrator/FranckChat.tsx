@@ -23,8 +23,10 @@ import {
   sendMessage,
   createConversation,
   hasProviderConfig,
+  hasCustomProviderConfig,
   saveProviderConfig,
   getProviderConfig,
+  DEFAULT_FREE_CONFIG,
   PROVIDERS,
 } from '@/services/franck-agent';
 import type { FranckConversation, ProviderType } from '@/services/franck-agent';
@@ -118,13 +120,14 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(
-    () => getProviderConfig()?.provider ?? 'anthropic'
-  );
-  const [selectedModel, setSelectedModel] = useState(
-    () => getProviderConfig()?.model ?? PROVIDERS.anthropic.defaultModel
-  );
+  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(() => {
+    try { return getProviderConfig().provider; } catch { return 'anthropic'; }
+  });
+  const [selectedModel, setSelectedModel] = useState(() => {
+    try { return getProviderConfig().model; } catch { return PROVIDERS.anthropic.defaultModel; }
+  });
   const [keyStored, setKeyStored] = useState(() => hasProviderConfig());
+  const usingFreeDefault = !hasCustomProviderConfig() && !!DEFAULT_FREE_CONFIG;
 
   // Persist messages whenever they change
   useEffect(() => {
@@ -168,7 +171,8 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const handleSend = useCallback(
     async (text?: string) => {
       const content = (text ?? input).trim();
-      if (!content || isLoading || !keyStored) return;
+      const canSend = keyStored || !!DEFAULT_FREE_CONFIG;
+      if (!content || isLoading || !canSend) return;
 
       // Create user message
       const userMsg: ChatMessage = {
@@ -460,7 +464,18 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     Save Configuration
                   </Button>
 
-                  {selectedProvider === 'openrouter' && (
+                  {usingFreeDefault && (
+                    <div className="rounded-md bg-violet-500/10 border border-violet-500/20 px-3 py-2">
+                      <p className="text-[11px] text-violet-400 font-medium">
+                        Currently using free Step 1.5 Flash model
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Add your own API key for Claude, GPT-4.1, Gemini, and more.
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedProvider === 'openrouter' && !usingFreeDefault && (
                     <p className="text-[10px] text-muted-foreground leading-relaxed">
                       OpenRouter provides access to 100+ models with a single API key.
                       Franck's personality works across all providers.
@@ -513,7 +528,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
               <button
                 key={action}
                 onClick={() => handleSend(action)}
-                disabled={isLoading || !keyStored}
+                disabled={isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
                 className={cn(
                   'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
                   'border border-border/60 bg-muted/40',
@@ -533,7 +548,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
         {/* ── Input Area ──────────────────────────────────────────────── */}
         <div className="px-4 pb-4">
-          {!keyStored && (
+          {!keyStored && !DEFAULT_FREE_CONFIG && (
             <p className="text-xs text-amber-500 mb-2 text-center">
               Configure your LLM provider first (click the gear icon above)
             </p>
@@ -547,7 +562,9 @@ export function FranckChat({ eventId }: FranckChatProps) {
               placeholder={
                 keyStored
                   ? 'Ask Franck anything about your event...'
-                  : 'Configure provider first'
+                  : DEFAULT_FREE_CONFIG
+                    ? 'Ask Franck anything about your event...'
+                    : 'Configure provider first'
               }
               disabled={!keyStored || isLoading}
               rows={1}
@@ -562,7 +579,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             <Button
               size="icon"
               onClick={() => handleSend()}
-              disabled={!input.trim() || isLoading || !keyStored}
+              disabled={!input.trim() || isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
               className={cn(
                 'h-8 w-8 shrink-0 rounded-lg',
                 'bg-gradient-to-r from-violet-600 to-fuchsia-600',

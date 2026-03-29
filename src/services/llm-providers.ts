@@ -102,19 +102,31 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 };
 
 // ──────────────────────────────────────────────
+// Default Free Model (works out of the box)
+// ──────────────────────────────────────────────
+
+const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
+const FREE_MODEL = 'stepfun/step-1.5-flash:free';
+
+export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
+  ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
+  : null;
+
+// ──────────────────────────────────────────────
 // Config Persistence
 // ──────────────────────────────────────────────
 
 const CONFIG_KEY = 'franck-provider-config';
 const LEGACY_KEY = 'franck-api-key';
 
-export function getProviderConfig(): ProviderConfig | null {
+export function getProviderConfig(): ProviderConfig {
+  // 1. Check for user-saved config
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (raw) return JSON.parse(raw) as ProviderConfig;
   } catch { /* ignore */ }
 
-  // Migrate legacy Anthropic key
+  // 2. Migrate legacy Anthropic key
   const legacyKey = localStorage.getItem(LEGACY_KEY);
   if (legacyKey) {
     const config: ProviderConfig = {
@@ -127,15 +139,31 @@ export function getProviderConfig(): ProviderConfig | null {
     return config;
   }
 
-  return null;
+  // 3. Fall back to built-in free model
+  if (DEFAULT_FREE_CONFIG) return DEFAULT_FREE_CONFIG;
+
+  // 4. No config at all — should not happen in production
+  throw new Error('No LLM provider configured.');
 }
 
 export function saveProviderConfig(config: ProviderConfig): void {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
 
+/** Whether the user has explicitly configured their own key (not using free default) */
+export function hasCustomProviderConfig(): boolean {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (raw) return true;
+  } catch { /* ignore */ }
+  const legacyKey = localStorage.getItem(LEGACY_KEY);
+  if (legacyKey) return true;
+  return false;
+}
+
+/** Whether Franck can operate — either custom config or free default available */
 export function hasProviderConfig(): boolean {
-  return !!getProviderConfig();
+  return hasCustomProviderConfig() || !!DEFAULT_FREE_CONFIG;
 }
 
 // ──────────────────────────────────────────────

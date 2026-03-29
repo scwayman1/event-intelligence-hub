@@ -12,6 +12,8 @@ import {
   getProviderConfig,
   saveProviderConfig,
   hasProviderConfig,
+  hasCustomProviderConfig,
+  DEFAULT_FREE_CONFIG,
   PROVIDERS,
   type ProviderConfig,
   type ProviderType,
@@ -357,7 +359,9 @@ export {
   getProviderConfig,
   saveProviderConfig,
   hasProviderConfig,
+  hasCustomProviderConfig,
   PROVIDERS,
+  DEFAULT_FREE_CONFIG,
   type ProviderConfig,
   type ProviderType,
 };
@@ -377,9 +381,6 @@ export async function sendMessage(
   toolCalls: { name: string; result: string }[];
 }> {
   const config = getProviderConfig();
-  if (!config) {
-    throw new Error('No LLM provider configured. Please set your API key first.');
-  }
 
   // Deep-clone conversation so we don't mutate the caller's object
   const rawMessages: RawMessage[] = [...conversation.rawMessages];
