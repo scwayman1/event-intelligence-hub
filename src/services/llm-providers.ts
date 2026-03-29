@@ -90,6 +90,8 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
       { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
       { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro' },
       { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash' },
+      { id: 'stepfun/step-1.5-flash:free', label: 'Step 1.5 Flash (Free)' },
+      { id: 'nvidia/llama-3.3-nemotron-super-49b-v1:free', label: 'Nemotron Super 49B (Free)' },
       { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
       { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
       { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
