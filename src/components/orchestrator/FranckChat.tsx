@@ -18,6 +18,7 @@ import {
   Loader2,
   KeyRound,
   Trash2,
+  ExternalLink,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -470,16 +471,49 @@ export function FranckChat({ eventId }: FranckChatProps) {
                         Currently using free Step 1.5 Flash model
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Add your own API key for Claude, GPT-4.1, Gemini, and more.
+                        Upgrade to Claude, GPT-4.1, Gemini &amp; more with one key.
                       </p>
                     </div>
                   )}
 
-                  {selectedProvider === 'openrouter' && !usingFreeDefault && (
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">
-                      OpenRouter provides access to 100+ models with a single API key.
-                      Franck's personality works across all providers.
-                    </p>
+                  {/* OpenRouter onboarding */}
+                  {selectedProvider === 'openrouter' && (
+                    <div className="space-y-2">
+                      <a
+                        href="https://openrouter.ai/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          'flex items-center justify-center gap-2 w-full rounded-md px-3 py-2 text-xs font-medium',
+                          'bg-gradient-to-r from-emerald-600 to-teal-600 text-white',
+                          'hover:from-emerald-700 hover:to-teal-700 transition-all'
+                        )}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Get a free OpenRouter key
+                      </a>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed text-center">
+                        One key, 100+ models, pay only for what you use.
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedProvider === 'anthropic' && (
+                    <div className="space-y-2">
+                      <a
+                        href="https://console.anthropic.com/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          'flex items-center justify-center gap-2 w-full rounded-md px-3 py-2 text-xs font-medium',
+                          'border border-border bg-muted/40 text-muted-foreground',
+                          'hover:bg-muted/70 transition-colors'
+                        )}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Get an Anthropic API key
+                      </a>
+                    </div>
                   )}
                 </div>
               </PopoverContent>
