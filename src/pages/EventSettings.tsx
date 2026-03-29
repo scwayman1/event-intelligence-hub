@@ -155,42 +155,44 @@ export default function EventSettings() {
           <p className="text-sm text-muted-foreground">Configure default seating rules for new versions. Rules can be adjusted per-version in the Seating Planner.</p>
         </section>
 
-        {/* Test Data */}
-        <section className="glass-panel p-6">
-          <h3 className="text-sm font-semibold text-foreground mb-2">Test Data</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Load scholarship ceremony test data: 18 donors and 100 scholarship recipients
-            with relationship groups. Use the CSV import on the Guests page to load the second batch of 100.
-          </p>
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => {
-                useEventStore.getState().loadScholarshipSeedData('first');
-                toast.success('Loaded 18 donors + 100 recipients with relationship groups!');
-              }}
-            >
-              <Database className="w-3.5 h-3.5" />
-              Load First Half (118 guests)
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => {
-                const link = document.createElement('a');
-                link.href = '/scholarship-recipients-batch2.csv';
-                link.download = 'scholarship-recipients-batch2.csv';
-                link.click();
-              }}
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download CSV (100 more)
-            </Button>
-          </div>
-        </section>
+        {/* Test Data — only visible in development mode */}
+        {import.meta.env.DEV && (
+          <section className="glass-panel p-6">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Test Data (Dev Only)</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Load scholarship ceremony test data: 18 donors and 100 scholarship recipients
+              with relationship groups. Use the CSV import on the Guests page to load the second batch of 100.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  useEventStore.getState().loadScholarshipSeedData('first');
+                  toast.success('Loaded 18 donors + 100 recipients with relationship groups!');
+                }}
+              >
+                <Database className="w-3.5 h-3.5" />
+                Load First Half (118 guests)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = '/scholarship-recipients-batch2.csv';
+                  link.download = 'scholarship-recipients-batch2.csv';
+                  link.click();
+                }}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download CSV (100 more)
+              </Button>
+            </div>
+          </section>
+        )}
 
         {/* Branding */}
         <section className="glass-panel p-6">

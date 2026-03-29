@@ -73,6 +73,15 @@ export default function EventVersions() {
             </div>
           );
         })}
+        {eventVersions.length === 0 && (
+          <div className="glass-panel p-8 text-center space-y-3">
+            <GitBranch className="w-8 h-8 text-muted-foreground mx-auto" />
+            <h3 className="font-semibold text-foreground">No versions yet</h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              Create your first version to start designing layouts and seating arrangements for this event.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
