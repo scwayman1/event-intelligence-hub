@@ -1,7 +1,7 @@
 import { NavLink, useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, LayoutGrid, Users, Grid3X3, GitBranch,
-  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus, LogOut, Sparkles
+  Plug, Settings, BarChart3, ChevronLeft, Sprout, Layers, Sun, Moon, Building2, ChevronDown, Check, Plus, LogOut, Sparkles, MessageSquare
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEventStore } from '@/data/store';
@@ -12,6 +12,7 @@ import { CreateOrgDialog } from './CreateOrgDialog';
 
 const globalNav = [
   { label: 'Events', icon: Calendar, path: '/' },
+  { label: 'Messages', icon: MessageSquare, path: '/messaging' },
 ];
 
 const eventNav = [
@@ -21,6 +22,7 @@ const eventNav = [
   { label: 'Guests', icon: Users, path: '/guests' },
   { label: 'Seating', icon: Grid3X3, path: '/seating' },
   { label: 'Versions', icon: GitBranch, path: '/versions' },
+  { label: 'Messaging', icon: MessageSquare, path: '/messaging' },
   { label: 'Integrations', icon: Plug, path: '/integrations' },
   { label: 'Settings', icon: Settings, path: '/settings' },
 ];

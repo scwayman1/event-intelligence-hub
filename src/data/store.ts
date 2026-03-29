@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 import { seedDonors, seedRecipients, seedAllGuests, seedRelationshipGroups, seedRelationshipMemberships } from './scholarship-seed-data';
+import { MESSAGING_DEFAULTS, createMessagingActions, type MessagingState, type MessagingActions } from './messaging-store';
 import * as db from '@/services/supabase-db';
 
 // Fire-and-forget async Supabase write — keeps UI snappy
@@ -13,7 +14,7 @@ function dbSync(fn: () => Promise<void>) {
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
 // ──────────────────────────────────────────────
-const STORE_VERSION = 5;
+const STORE_VERSION = 6;
 
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
@@ -43,11 +44,12 @@ const PERSISTED_DEFAULTS = {
   seatingRules: [] as SeatingRule[],
   relationshipGroups: [] as RelationshipGroup[],
   relationshipMemberships: [] as RelationshipMembership[],
+  ...MESSAGING_DEFAULTS,
 };
 
 type PersistedState = typeof PERSISTED_DEFAULTS;
 
-interface EventStore extends PersistedState {
+interface EventStore extends PersistedState, MessagingActions {
   // Auth actions
   setUserProfile: (profile: UserProfile) => void;
   signUp: (firstName: string, lastName: string, email: string, password: string, role: string) => { success: boolean; error?: string };
@@ -492,6 +494,12 @@ export const useEventStore = create<EventStore>()(
       relationshipMemberships: [...s.relationshipMemberships, ...newMemberships],
     };
   }),
+
+  // ── Messaging actions (delegated to messaging-store.ts) ──
+  ...createMessagingActions(
+    (fn) => set((s) => fn(s as unknown as MessagingState) as unknown as Partial<EventStore>),
+    () => get() as unknown as MessagingState,
+  ),
 
   resetStore: () => {
     // Keep accounts so users can re-sign-in, but clear session and data
