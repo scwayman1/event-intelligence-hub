@@ -165,6 +165,23 @@ export function LayoutObjectRenderer({ obj, assignedCount, capacity }: LayoutObj
       const chairDotSize = Math.max(3, Math.min(8, minDim * 0.06));
       return (
         <div className="relative w-full h-full flex items-center justify-center overflow-visible">
+          {/* Table number badge */}
+          {obj.tableNumber != null && (
+            <div
+              className="absolute z-20 flex items-center justify-center rounded-full font-bold text-white shadow-md"
+              style={{
+                top: -4,
+                right: -4,
+                width: Math.max(16, minDim * 0.18),
+                height: Math.max(16, minDim * 0.18),
+                fontSize: Math.max(7, Math.min(10, minDim * 0.1)),
+                background: 'linear-gradient(135deg, hsl(152 68% 42%), hsl(152 55% 36%))',
+                border: '1.5px solid rgba(255,255,255,0.7)',
+              }}
+            >
+              {obj.tableNumber}
+            </div>
+          )}
           {/* Gradient fill */}
           <div
             className="absolute inset-[3px] rounded-full"
@@ -223,6 +240,23 @@ export function LayoutObjectRenderer({ obj, assignedCount, capacity }: LayoutObj
       const chairDotSize = Math.max(3, Math.min(7, minDim * 0.12));
       return (
         <div className="relative w-full h-full flex items-center justify-center overflow-visible">
+          {/* Table number badge */}
+          {obj.tableNumber != null && (
+            <div
+              className="absolute z-20 flex items-center justify-center rounded-full font-bold text-white shadow-md"
+              style={{
+                top: -4,
+                right: -4,
+                width: Math.max(16, minDim * 0.22),
+                height: Math.max(16, minDim * 0.22),
+                fontSize: Math.max(7, Math.min(10, minDim * 0.12)),
+                background: 'linear-gradient(135deg, hsl(152 68% 42%), hsl(152 55% 36%))',
+                border: '1.5px solid rgba(255,255,255,0.7)',
+              }}
+            >
+              {obj.tableNumber}
+            </div>
+          )}
           {/* Gradient fill */}
           <div
             className="absolute inset-[3px] rounded-md"

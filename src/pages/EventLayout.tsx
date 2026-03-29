@@ -619,11 +619,26 @@ export default function EventLayout() {
     const isStructural = ['tent', 'stage', 'dance_floor', 'bar_area', 'vip_area'].includes(type);
     const baseZ = isStructural ? 0 : 100 + objects.length;
 
+    // Auto-assign table number for table types
+    const isTable = type === 'round_table' || type === 'rect_table';
+    let tableNumber: number | undefined;
+    if (isTable) {
+      const existingNumbers = objects
+        .filter((o) => o.type === 'round_table' || o.type === 'rect_table')
+        .map((o) => o.tableNumber ?? 0);
+      tableNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+    }
+
+    const tableName = isTable && tableNumber
+      ? `Table ${tableNumber}`
+      : (preset?.label ?? typeLabels[type]);
+
     addLayoutObject({
       id,
       versionId,
       type,
-      name: preset?.label ?? typeLabels[type],
+      name: tableName,
+      tableNumber,
       x: snapValue(viewX + 60 + column * 140),
       y: snapValue(viewY + 60 + row * 110),
       width: w,

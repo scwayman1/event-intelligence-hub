@@ -97,6 +97,8 @@ export interface LayoutObject {
   versionId: string;
   type: LayoutObjectType;
   name: string;
+  /** Persistent table number for cross-module identity (layout ↔ seating) */
+  tableNumber?: number;
   x: number;
   y: number;
   width: number;
