@@ -673,6 +673,7 @@ function getAttendanceProjection(
   const projection = computeAttendanceProjection(ctx.guests);
 
   return json({
+    summary: `Projected attendance: ${projection.expected} (range: ${projection.low}-${projection.high})`,
     eventId,
     projection,
   });
@@ -693,6 +694,7 @@ function analyzeDietaryNeedsTool(
   const analysis = analyzeDietaryNeeds(ctx.guests);
 
   return json({
+    summary: `${analysis.totalWithRestrictions ?? 0} guest${(analysis.totalWithRestrictions ?? 0) === 1 ? '' : 's'} with dietary restrictions out of ${ctx.guests.length}`,
     eventId,
     ...analysis,
   });
