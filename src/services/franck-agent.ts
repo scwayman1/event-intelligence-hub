@@ -19,6 +19,16 @@ import {
   type ProviderType,
   type NormalizedResponse,
 } from './llm-providers';
+import {
+  matchWorkflow,
+  runWorkflow,
+  formatWorkflowSummary,
+  type WorkflowProgress,
+} from './franck-workflows';
+import {
+  tryChainExecution,
+  type ChainProgress,
+} from './franck-chain';
 
 // ──────────────────────────────────────────────
 // 1. System Prompt
@@ -220,6 +230,217 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
       required: [],
     },
   },
+  // ── EVENT MANAGEMENT ─────────────────────────────────────────────
+  {
+    name: 'create_event',
+    description:
+      'Create a new event with name, type, date, time, venue, etc. Also creates an initial layout version.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Event name' },
+        type: { type: 'string', enum: ['ceremony', 'dinner', 'gala', 'reception', 'banquet', 'commencement', 'other'], description: 'Event type' },
+        date: { type: 'string', description: 'Event date (YYYY-MM-DD)' },
+        time: { type: 'string', description: 'Event time (HH:MM)' },
+        venue: { type: 'string', description: 'Venue name' },
+        venueAddress: { type: 'string', description: 'Venue address' },
+        estimatedAttendance: { type: 'number', description: 'Estimated number of attendees' },
+        notes: { type: 'string', description: 'Additional notes' },
+      },
+      required: ['name', 'type', 'date'],
+    },
+  },
+  {
+    name: 'update_event',
+    description:
+      'Update event details such as name, date, venue, status, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'New event name' },
+        type: { type: 'string', enum: ['ceremony', 'dinner', 'gala', 'reception', 'banquet', 'commencement', 'other'], description: 'New event type' },
+        status: { type: 'string', enum: ['planning', 'active', 'completed', 'archived'], description: 'New event status' },
+        date: { type: 'string', description: 'New event date (YYYY-MM-DD)' },
+        time: { type: 'string', description: 'New event time (HH:MM)' },
+        venue: { type: 'string', description: 'New venue name' },
+        venueAddress: { type: 'string', description: 'New venue address' },
+        estimatedAttendance: { type: 'number', description: 'New estimated attendance' },
+        notes: { type: 'string', description: 'New notes' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_events',
+    description:
+      'List all events for the current organization.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  // ── GUEST MANAGEMENT (add) ──────────────────────────────────────
+  {
+    name: 'add_guest',
+    description:
+      'Add a new guest to the event.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        firstName: { type: 'string', description: 'Guest first name' },
+        lastName: { type: 'string', description: 'Guest last name' },
+        email: { type: 'string', description: 'Guest email address' },
+        organization: { type: 'string', description: 'Guest organization/company' },
+        category: { type: 'string', enum: ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'other'], description: 'Guest category' },
+        rsvpStatus: { type: 'string', enum: ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'], description: 'RSVP status (default: invited)' },
+        phone: { type: 'string', description: 'Phone number' },
+        partySize: { type: 'number', description: 'Party size (default: 1)' },
+        dietaryRestrictions: { type: 'string', description: 'Dietary restrictions' },
+        accessibilityNeeds: { type: 'string', description: 'Accessibility needs' },
+        notes: { type: 'string', description: 'Notes about the guest' },
+      },
+      required: ['firstName', 'lastName'],
+    },
+  },
+  {
+    name: 'add_guests_bulk',
+    description:
+      'Add multiple guests to the event at once. Provide an array of guest objects.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guests: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              firstName: { type: 'string' },
+              lastName: { type: 'string' },
+              email: { type: 'string' },
+              organization: { type: 'string' },
+              category: { type: 'string' },
+              rsvpStatus: { type: 'string' },
+              phone: { type: 'string' },
+              partySize: { type: 'number' },
+              dietaryRestrictions: { type: 'string' },
+              accessibilityNeeds: { type: 'string' },
+              notes: { type: 'string' },
+            },
+            required: ['firstName', 'lastName'],
+          },
+          description: 'Array of guest objects to add',
+        },
+      },
+      required: ['guests'],
+    },
+  },
+  // ── LAYOUT / TABLE MANAGEMENT ───────────────────────────────────
+  {
+    name: 'add_table',
+    description:
+      'Add a new table to the layout. Auto-assigns a table number. Use type "round_table" or "rect_table".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: { type: 'string', enum: ['round_table', 'rect_table'], description: 'Table type (default: round_table)' },
+        capacity: { type: 'number', description: 'Table capacity / number of seats (default: 8)' },
+        name: { type: 'string', description: 'Custom table name (auto-generated if omitted)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'remove_table',
+    description:
+      'Remove a table from the layout by tableId or tableNumber. Unseats any guests assigned to it.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        tableId: { type: 'string', description: 'Table ID to remove (use this OR tableNumber)' },
+        tableNumber: { type: 'number', description: 'Table number to remove (e.g. 3 for "Table 3")' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'update_table',
+    description:
+      'Update table properties such as name or capacity.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        tableId: { type: 'string', description: 'Table ID to update (use this OR tableNumber)' },
+        tableNumber: { type: 'number', description: 'Table number to update (e.g. 3 for "Table 3")' },
+        name: { type: 'string', description: 'New table name' },
+        capacity: { type: 'number', description: 'New table capacity' },
+      },
+      required: [],
+    },
+  },
+  // ── RELATIONSHIP MANAGEMENT ─────────────────────────────────────
+  {
+    name: 'create_relationship_group',
+    description:
+      'Create a relationship group to link guests together (e.g. scholarship fund, family, mentorship).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Group name (e.g. "Johnson Scholarship Fund")' },
+        type: { type: 'string', enum: ['scholarship', 'mentorship', 'family', 'host_guest', 'sponsor', 'plus_one', 'custom'], description: 'Relationship type' },
+        notes: { type: 'string', description: 'Optional notes about this group' },
+      },
+      required: ['name', 'type'],
+    },
+  },
+  {
+    name: 'add_to_relationship_group',
+    description:
+      'Add a guest to a relationship group with a specific role.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        groupId: { type: 'string', description: 'Relationship group ID' },
+        guestId: { type: 'string', description: 'Guest ID to add' },
+        role: { type: 'string', description: 'Role within the group (e.g. "Donor", "Recipient", "Mentor", "Mentee", "Member")' },
+      },
+      required: ['groupId', 'guestId', 'role'],
+    },
+  },
+  {
+    name: 'list_relationship_groups',
+    description:
+      'List all relationship groups and their members for the current event.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  // ── VERSION MANAGEMENT ──────────────────────────────────────────
+  {
+    name: 'list_versions',
+    description:
+      'List all layout versions for the current event.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'create_version',
+    description:
+      'Create a new layout version for A/B testing seating plans.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Version name (e.g. "Plan B", "VIP Focus")' },
+        notes: { type: 'string', description: 'Notes about this version' },
+      },
+      required: ['name'],
+    },
+  },
   // ── WRITE TOOLS ──────────────────────────────────────────────────
   {
     name: 'update_guest',
@@ -360,6 +581,10 @@ export interface FranckMessage {
   content: string;
   toolCalls?: { name: string; result: string }[];
   timestamp: number;
+  /** If set, this message was produced by a workflow (not an LLM call) */
+  workflowName?: string;
+  /** If set, this message was produced by a chain execution */
+  chainName?: string;
 }
 
 export interface FranckConversation {
@@ -410,20 +635,107 @@ export {
   type ProviderType,
 };
 
+// Re-export workflow/chain types for FranckChat consumption
+export { type WorkflowProgress } from './franck-workflows';
+export { type ChainProgress, type ChainStep, type ChainStepStatus } from './franck-chain';
+export { getAvailableWorkflows } from './franck-workflows';
+export { getChainCapabilities } from './franck-chain';
+export { type WorkflowStepStatus } from './franck-workflows';
+
 // ──────────────────────────────────────────────
 // 5. Core Function: sendMessage
 // ──────────────────────────────────────────────
+
+export interface SendMessageResult {
+  response: string;
+  conversation: FranckConversation;
+  toolCalls: { name: string; result: string }[];
+  /** Set when a workflow handled this message */
+  workflowName?: string;
+  /** Set when a chain handled this message */
+  chainName?: string;
+}
 
 export async function sendMessage(
   conversation: FranckConversation,
   userMessage: string,
   eventId: string,
   onToolExecution?: (toolName: string) => void,
-): Promise<{
-  response: string;
-  conversation: FranckConversation;
-  toolCalls: { name: string; result: string }[];
-}> {
+  onWorkflowProgress?: (progress: WorkflowProgress) => void,
+  onChainProgress?: (progress: ChainProgress) => void,
+): Promise<SendMessageResult> {
+  // ── 1. Try workflow matching first (fastest, most reliable) ──
+  const workflowMatch = matchWorkflow(userMessage);
+  if (workflowMatch) {
+    const result = await runWorkflow(
+      workflowMatch.workflow,
+      workflowMatch.params,
+      eventId,
+      onWorkflowProgress,
+    );
+    const summary = formatWorkflowSummary(workflowMatch.workflow, result);
+
+    const updatedConversation: FranckConversation = {
+      eventId,
+      rawMessages: [
+        ...conversation.rawMessages,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: summary },
+      ],
+      messages: [
+        ...conversation.messages,
+        { role: 'user', content: userMessage, timestamp: Date.now() },
+        {
+          role: 'assistant',
+          content: summary,
+          toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
+          workflowName: workflowMatch.workflow.name,
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    return {
+      response: summary,
+      conversation: updatedConversation,
+      toolCalls: result.toolCalls,
+      workflowName: workflowMatch.workflow.name,
+    };
+  }
+
+  // ── 2. Try chain execution for recognized patterns ──
+  const storeState = useEventStore.getState();
+  const chainResult = await tryChainExecution(userMessage, eventId, storeState, onChainProgress);
+  if (chainResult.handled) {
+    const updatedConversation: FranckConversation = {
+      eventId,
+      rawMessages: [
+        ...conversation.rawMessages,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: chainResult.summary },
+      ],
+      messages: [
+        ...conversation.messages,
+        { role: 'user', content: userMessage, timestamp: Date.now() },
+        {
+          role: 'assistant',
+          content: chainResult.summary,
+          toolCalls: chainResult.toolCalls.length > 0 ? chainResult.toolCalls : undefined,
+          chainName: chainResult.steps[0]?.description ?? 'Chain',
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    return {
+      response: chainResult.summary,
+      conversation: updatedConversation,
+      toolCalls: chainResult.toolCalls,
+      chainName: chainResult.steps[0]?.description ?? 'Chain',
+    };
+  }
+
+  // ── 3. Fall back to LLM for complex/conversational requests ──
   const config = getProviderConfig();
 
   // Deep-clone conversation so we don't mutate the caller's object

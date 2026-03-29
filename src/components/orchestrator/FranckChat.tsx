@@ -20,6 +20,12 @@ import {
   Trash2,
   ExternalLink,
   Zap,
+  CheckCircle2,
+  XCircle,
+  Circle,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -30,8 +36,15 @@ import {
   getProviderConfig,
   DEFAULT_FREE_CONFIG,
   PROVIDERS,
+  getAvailableWorkflows,
+  getChainCapabilities,
 } from '@/services/franck-agent';
-import type { FranckConversation, ProviderType } from '@/services/franck-agent';
+import type {
+  FranckConversation,
+  ProviderType,
+  WorkflowProgress,
+  ChainProgress,
+} from '@/services/franck-agent';
 import {
   runRefinementLoop,
   formatRefinementSummary,
@@ -46,6 +59,10 @@ interface ChatMessage {
   content: string;
   timestamp: number;
   toolsUsed?: string[];
+  /** Set when this message was produced by a workflow */
+  workflowName?: string;
+  /** Set when this message was produced by a chain */
+  chainName?: string;
 }
 
 interface FranckChatProps {
@@ -67,6 +84,14 @@ const QUICK_ACTIONS = [
   "Who hasn't RSVP'd?",
   'Any issues?',
   'Draft reminder emails',
+];
+
+/** Workflow-triggering quick actions shown alongside regular ones */
+const WORKFLOW_ACTIONS = [
+  { label: 'Full Seating Setup', trigger: 'full seating setup', icon: '\uD83D\uDD17' },
+  { label: 'Quick Optimization', trigger: 'quick optimization', icon: '\u26A1' },
+  { label: 'Readiness Check', trigger: 'event readiness check', icon: '\u2705' },
+  { label: 'Guest List Audit', trigger: 'guest list audit', icon: '\uD83D\uDCCB' },
 ];
 
 const WELCOME_MESSAGE: ChatMessage = {
@@ -139,6 +164,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
   // Auto-Pilot refinement state
   const [isRefining, setIsRefining] = useState(false);
   const [refinementProgress, setRefinementProgress] = useState<RefinementProgress | null>(null);
+
+  // Workflow/chain progress state
+  const [workflowProgress, setWorkflowProgress] = useState<WorkflowProgress | null>(null);
+  const [chainProgress, setChainProgress] = useState<ChainProgress | null>(null);
+
+  // Capabilities panel state
+  const [showCapabilities, setShowCapabilities] = useState(false);
 
   // Persist messages whenever they change
   useEffect(() => {
@@ -220,8 +252,23 @@ export function FranckChat({ eventId }: FranckChatProps) {
           setConversation(conv);
         }
 
-        const result = await sendMessage(conv, content, eventId);
+        // Reset progress indicators
+        setWorkflowProgress(null);
+        setChainProgress(null);
+
+        const result = await sendMessage(
+          conv,
+          content,
+          eventId,
+          undefined, // onToolExecution
+          (progress) => setWorkflowProgress(progress),
+          (progress) => setChainProgress(progress),
+        );
         setConversation(result.conversation);
+
+        // Clear progress after completion
+        setWorkflowProgress(null);
+        setChainProgress(null);
 
         const assistantMsg: ChatMessage = {
           id: `assistant-${Date.now()}`,
@@ -231,6 +278,8 @@ export function FranckChat({ eventId }: FranckChatProps) {
           toolsUsed: result.toolCalls.length > 0
             ? result.toolCalls.map((tc) => tc.name)
             : undefined,
+          workflowName: result.workflowName,
+          chainName: result.chainName,
         };
         setMessages((prev) => [...prev, assistantMsg]);
       } catch (err) {
@@ -369,6 +418,22 @@ export function FranckChat({ eventId }: FranckChatProps) {
         )}
 
         <div className="flex flex-col max-w-[80%]">
+          {/* Workflow/Chain badge above the message */}
+          {!isUser && msg.workflowName && (
+            <div className="mb-1 ml-1">
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 border border-violet-500/30 px-2.5 py-0.5 text-[10px] font-medium text-violet-400">
+                {'\uD83D\uDD17'} {msg.workflowName}
+              </span>
+            </div>
+          )}
+          {!isUser && msg.chainName && !msg.workflowName && (
+            <div className="mb-1 ml-1">
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[10px] font-medium text-blue-400">
+                {'\u26D3'} {msg.chainName}
+              </span>
+            </div>
+          )}
+
           <div
             className={cn(
               'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
@@ -642,6 +707,104 @@ export function FranckChat({ eventId }: FranckChatProps) {
               </div>
             )}
 
+            {/* Workflow step progress indicator */}
+            {workflowProgress && (
+              <div className="flex gap-2 mb-4 justify-start">
+                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
+                  F
+                </Badge>
+                <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
+                    <span className="font-medium text-foreground">
+                      {'\uD83D\uDD17'} {workflowProgress.workflowName}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {workflowProgress.steps.map((step, idx) => (
+                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                        {step.status === 'pending' && (
+                          <Circle className="h-3 w-3 text-muted-foreground/50" />
+                        )}
+                        {step.status === 'running' && (
+                          <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
+                        )}
+                        {step.status === 'completed' && (
+                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                        )}
+                        {step.status === 'failed' && (
+                          <XCircle className="h-3 w-3 text-red-500" />
+                        )}
+                        <span className={cn(
+                          step.status === 'completed' && 'text-emerald-500',
+                          step.status === 'failed' && 'text-red-500',
+                          step.status === 'running' && 'text-blue-400 font-medium',
+                          step.status === 'pending' && 'text-muted-foreground/50',
+                        )}>
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                    <div
+                      className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${(workflowProgress.currentStep / workflowProgress.totalSteps) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Chain step progress indicator */}
+            {chainProgress && chainProgress.phase !== 'done' && (
+              <div className="flex gap-2 mb-4 justify-start">
+                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
+                  F
+                </Badge>
+                <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                    <span className="font-medium text-foreground">
+                      {'\u26D3'} Chain Execution
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {chainProgress.steps.map((step) => (
+                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                        {step.status === 'pending' && (
+                          <Circle className="h-3 w-3 text-muted-foreground/50" />
+                        )}
+                        {step.status === 'running' && (
+                          <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
+                        )}
+                        {step.status === 'completed' && (
+                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                        )}
+                        {step.status === 'failed' && (
+                          <XCircle className="h-3 w-3 text-red-500" />
+                        )}
+                        <span className={cn(
+                          step.status === 'completed' && 'text-emerald-500',
+                          step.status === 'failed' && 'text-red-500',
+                          step.status === 'running' && 'text-blue-400 font-medium',
+                          step.status === 'pending' && 'text-muted-foreground/50',
+                        )}>
+                          {step.description}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-cyan-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${(chainProgress.currentStep / chainProgress.totalSteps) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Auto-Pilot refinement progress */}
             {isRefining && (
               <div className="flex gap-2 mb-4 justify-start">
@@ -678,9 +841,117 @@ export function FranckChat({ eventId }: FranckChatProps) {
           </div>
         </ScrollArea>
 
+        {/* ── Capabilities Panel (collapsible) ────────────────────────── */}
+        {showCapabilities && (
+          <div className="px-4 pb-2">
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5 text-violet-400" />
+                  What can Franck do?
+                </h3>
+                <button
+                  onClick={() => setShowCapabilities(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Workflows */}
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                  Workflows (instant, no LLM)
+                </p>
+                <div className="space-y-1.5">
+                  {getAvailableWorkflows().map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => { setShowCapabilities(false); handleSend(w.triggerPhrases[0]); }}
+                      disabled={isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
+                      className="w-full text-left rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1.5 hover:bg-muted/60 transition-colors disabled:opacity-40"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs">{w.icon}</span>
+                        <span className="text-xs font-medium text-foreground">{w.name}</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{w.description}</p>
+                      <p className="text-[10px] text-violet-400 mt-0.5">
+                        Try: &quot;{w.triggerPhrases[0]}&quot;
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chains */}
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                  Chain Patterns (multi-step, no LLM)
+                </p>
+                <div className="space-y-1">
+                  {getChainCapabilities().map((c, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1.5"
+                    >
+                      <span className="text-xs font-medium text-foreground">{c.description}</span>
+                      <p className="text-[10px] text-blue-400 mt-0.5">
+                        Try: &quot;{c.triggerExample}&quot;
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground text-center">
+                Plus any freeform question via LLM chat!
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ── Quick Action Chips ──────────────────────────────────────── */}
         <div className="px-4 pb-2">
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+            {/* Capabilities toggle */}
+            <button
+              onClick={() => setShowCapabilities((v) => !v)}
+              className={cn(
+                'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
+                'border border-violet-500/40 bg-violet-500/10',
+                'text-violet-400 hover:text-violet-300',
+                'hover:bg-violet-500/20 transition-colors',
+              )}
+            >
+              <span className="flex items-center gap-1">
+                <BookOpen className="h-3 w-3" />
+                {showCapabilities ? 'Hide' : 'Capabilities'}
+              </span>
+            </button>
+
+            {/* Workflow action chips */}
+            {WORKFLOW_ACTIONS.map((wa) => (
+              <button
+                key={wa.trigger}
+                onClick={() => handleSend(wa.trigger)}
+                disabled={isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
+                className={cn(
+                  'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
+                  'border border-violet-500/30 bg-violet-500/5',
+                  'text-violet-400 hover:text-violet-300',
+                  'hover:bg-violet-500/15 transition-colors',
+                  'disabled:opacity-40 disabled:cursor-not-allowed'
+                )}
+              >
+                <span className="flex items-center gap-1">
+                  <span>{wa.icon}</span>
+                  {wa.label}
+                </span>
+              </button>
+            ))}
+
+            {/* Regular quick actions */}
             {QUICK_ACTIONS.map((action) => (
               <button
                 key={action}
