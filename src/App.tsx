@@ -20,6 +20,7 @@ import SignUp from "@/pages/SignUp";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Profile from "@/pages/Profile";
+import MessagingHub from "@/pages/MessagingHub";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useEventStore } from "@/data/store";
@@ -95,6 +96,8 @@ const AppRoutes = () => (
       <Route path="/events/:eventId/integrations" element={<ErrorBoundary><EventIntegrations /></ErrorBoundary>} />
       <Route path="/events/:eventId/settings" element={<ErrorBoundary><EventSettings /></ErrorBoundary>} />
       <Route path="/events/:eventId/orchestrator" element={<ErrorBoundary><EventOrchestrator /></ErrorBoundary>} />
+      <Route path="/messaging" element={<ErrorBoundary><MessagingHub /></ErrorBoundary>} />
+      <Route path="/events/:eventId/messaging" element={<ErrorBoundary><MessagingHub /></ErrorBoundary>} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>
