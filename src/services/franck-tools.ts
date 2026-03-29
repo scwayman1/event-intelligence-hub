@@ -63,6 +63,46 @@ function errorResult(message: string): string {
   return json({ error: true, message });
 }
 
+function eventNotFoundError(eventId: string): string {
+  return errorResult(
+    `Event '${eventId}' not found. Make sure you're in an active event.`,
+  );
+}
+
+/** Validate that required string parameters are present and non-empty. */
+function validateRequired(
+  input: ToolInput,
+  ...keys: string[]
+): string | null {
+  for (const key of keys) {
+    const val = input[key];
+    if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+      return `Parameter '${key}' is required but was not provided.`;
+    }
+  }
+  return null;
+}
+
+/** Validate that a value is a finite number. Returns an error string or null. */
+function validateNumber(
+  value: unknown,
+  paramName: string,
+): string | null {
+  if (value === undefined || value === null) return null; // optional
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return `Parameter '${paramName}' must be a valid number, but received: ${JSON.stringify(value)}`;
+  }
+  return null;
+}
+
+/** Build a comma-separated list of valid table numbers from context tables. */
+function validTableNumbers(tables: Array<{ tableNumber?: number | null; name: string }>): string {
+  if (tables.length === 0) return '(no tables exist)';
+  return tables
+    .map((t) => t.tableNumber != null ? `${t.tableNumber} (${t.name})` : t.name)
+    .join(', ');
+}
+
 /** Look up the event and its associated data from the store snapshot. */
 function getEventContext(state: StoreState, eventId: string) {
   const event = state.events.find((e) => e.id === eventId);
@@ -109,13 +149,16 @@ function getEventSummary(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const { event, guests, tables, assignments, versions } = ctx;
   const health = computeEventHealth(event, guests, tables, assignments, versions);
   const guestAnalytics = analyzeGuests(guests, eventId);
 
+  const confirmedCount = guestAnalytics.byStatus.confirmed + guestAnalytics.byStatus.checked_in;
+
   return json({
+    summary: `${event.name}: ${guestAnalytics.total} guests, ${confirmedCount} confirmed, health ${health.overall}/100`,
     eventId: event.id,
     name: event.name,
     type: event.type,
@@ -125,8 +168,7 @@ function getEventSummary(
     venue: event.venue,
     venueAddress: event.venueAddress,
     guestCount: guestAnalytics.total,
-    confirmedCount:
-      guestAnalytics.byStatus.confirmed + guestAnalytics.byStatus.checked_in,
+    confirmedCount,
     declinedCount: guestAnalytics.byStatus.declined,
     pendingCount:
       guestAnalytics.byStatus.invited + guestAnalytics.byStatus.waitlist,
@@ -142,7 +184,7 @@ function analyzeGuestList(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   let filteredGuests = ctx.guests;
 
@@ -162,7 +204,10 @@ function analyzeGuestList(
   const analytics = analyzeGuests(ctx.guests, eventId);
   const segments = getGuestSegments(filteredGuests);
 
+  const filterDesc = [category && `category=${category}`, rsvpStatus && `rsvp=${rsvpStatus}`].filter(Boolean).join(', ') || 'none';
+
   return json({
+    summary: `${filteredGuests.length} guests matched (filters: ${filterDesc}). ${analytics.confirmationRate}% confirmation rate.`,
     totalFiltered: filteredGuests.length,
     filters: {
       category: category ?? null,
@@ -196,11 +241,14 @@ function searchGuests(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const query = (input.query as string | undefined) ?? '';
-  if (!query.trim()) {
-    return errorResult('A search query is required.');
+  const reqErr = validateRequired(input, 'query');
+  if (reqErr) return errorResult(reqErr);
+
+  const query = (input.query as string).trim();
+  if (!query) {
+    return errorResult("Parameter 'query' is required but was not provided.");
   }
 
   const needle = query.toLowerCase();
@@ -219,7 +267,17 @@ function searchGuests(
     return haystack.includes(needle);
   });
 
+  if (matches.length === 0) {
+    return json({
+      summary: `Found 0 guests matching '${query}'. Check the spelling or try a partial name.`,
+      query,
+      resultCount: 0,
+      results: [],
+    });
+  }
+
   return json({
+    summary: `Found ${matches.length} guest${matches.length === 1 ? '' : 's'} matching '${query}'`,
     query,
     resultCount: matches.length,
     results: matches.map((g) => {
@@ -247,10 +305,11 @@ function getGuestDetails(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
-  if (!guestId) return errorResult('guestId is required.');
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+  const guestId = input.guestId as string;
 
   const guest = ctx.guests.find((g) => g.id === guestId);
   if (!guest) {
@@ -273,7 +332,9 @@ function getGuestDetails(
     tableName = table?.name;
   }
 
+  const seatInfo = assignment ? `, seated at ${tableName ?? 'a table'}` : ', not yet seated';
   return json({
+    summary: `${guest.displayName} (${guest.rsvpStatus}, ${guest.category}${seatInfo})`,
     guest: {
       id: guest.id,
       firstName: guest.firstName,
@@ -318,11 +379,11 @@ function autoSeatGuests(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.tables.length === 0) {
     return errorResult(
-      'No tables exist in the active layout version. Add tables before auto-seating.',
+      'No tables exist in the active layout version. Use the add_table tool to create tables first (e.g. add_table with capacity 8).',
     );
   }
 
@@ -377,8 +438,8 @@ function autoSeatGuests(
       };
     }),
     score: proposal.score,
-    summary: proposal.summary,
-    note: `${applied} of ${proposal.assignments.length} guests have been seated. Assignments are now LIVE.`,
+    proposalSummary: proposal.summary,
+    summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.`,
   });
 }
 
@@ -388,7 +449,7 @@ function scoreSeating(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.assignments.length === 0) {
     return errorResult('No seating assignments exist to score.');
@@ -404,6 +465,7 @@ function scoreSeating(
   });
 
   return json({
+    summary: `Seating score: ${score.overall}/100 for ${ctx.assignments.length} assignments`,
     score,
     assignmentCount: ctx.assignments.length,
     versionId: ctx.versionId,
@@ -416,7 +478,7 @@ function getSeatingRecommendationsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const recommendations = getSeatingRecommendations({
     tables: ctx.tables,
@@ -432,6 +494,7 @@ function getSeatingRecommendationsTool(
   const limited = recommendations.slice(0, limit);
 
   return json({
+    summary: `${recommendations.length} seating recommendation${recommendations.length === 1 ? '' : 's'} available (showing ${limited.length})`,
     totalRecommendations: recommendations.length,
     showing: limited.length,
     recommendations: limited.map((r) => {
@@ -456,7 +519,7 @@ function getTableInfo(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const seatingAnalytics = analyzeSeating(
     ctx.tables,
@@ -468,6 +531,7 @@ function getTableInfo(
   );
 
   return json({
+    summary: `${seatingAnalytics.totalTables} tables, ${seatingAnalytics.seatedGuests}/${seatingAnalytics.totalCapacity} seats filled (${seatingAnalytics.averageUtilization}% utilization)`,
     totalTables: seatingAnalytics.totalTables,
     totalCapacity: seatingAnalytics.totalCapacity,
     seatedGuests: seatingAnalytics.seatedGuests,
@@ -496,12 +560,13 @@ function generateEmailDraft(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+
+  const guestId = input.guestId as string;
   const templateType = input.templateType as string | undefined;
-
-  if (!guestId) return errorResult('guestId is required.');
 
   const guest = ctx.guests.find((g) => g.id === guestId);
   if (!guest) {
@@ -530,6 +595,7 @@ function generateEmailDraft(
   const rendered = renderTemplate(template, guest, ctx.event, tableName);
 
   return json({
+    summary: `Email draft for ${guest.displayName} using '${template.name}' template`,
     templateUsed: template.name,
     templateType: template.type,
     guestName: guest.displayName,
@@ -545,7 +611,7 @@ function flagIssues(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const { event, guests, tables, assignments, versions, groups, memberships } =
     ctx;
@@ -574,6 +640,9 @@ function flagIssues(
   );
 
   return json({
+    summary: activeAlerts.length === 0
+      ? `No issues found. Health score: ${health.overall}/100`
+      : `${activeAlerts.length} issue${activeAlerts.length === 1 ? '' : 's'} flagged. Health score: ${health.overall}/100`,
     healthScore: health.overall,
     issueCount: activeAlerts.length,
     issues: activeAlerts.map((i) => ({
@@ -595,7 +664,7 @@ function getAttendanceProjection(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.guests.length === 0) {
     return errorResult('No guests found for this event.');
@@ -615,7 +684,7 @@ function analyzeDietaryNeedsTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.guests.length === 0) {
     return errorResult('No guests found for this event.');
@@ -639,7 +708,7 @@ function updateGuestTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestId = input.guestId as string | undefined;
   if (!guestId) return errorResult('guestId is required.');
@@ -684,7 +753,7 @@ function deleteGuestsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestIds = input.guestIds as string[] | undefined;
   const filter = input.filter as string | undefined;
@@ -732,7 +801,7 @@ function bulkUpdateGuestsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestIds = input.guestIds as string[] | undefined;
   const filter = input.filter as string | undefined;
@@ -787,7 +856,7 @@ function moveGuestToTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestId = input.guestId as string | undefined;
   let tableId = input.tableId as string | undefined;
@@ -827,7 +896,7 @@ function swapGuestsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestId1 = input.guestId1 as string | undefined;
   const guestId2 = input.guestId2 as string | undefined;
@@ -868,7 +937,7 @@ function unseatGuestTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestId = input.guestId as string | undefined;
   if (!guestId) return errorResult('guestId is required.');
@@ -892,7 +961,7 @@ function clearAllSeatingTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.assignments.length === 0) {
     return errorResult('No seating assignments to clear.');
@@ -916,7 +985,7 @@ async function runRefinementLoopTool(
   input: ToolInput,
 ): Promise<string> {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.tables.length === 0) {
     return errorResult('No tables exist in the active layout version. Add tables before running refinement.');
@@ -1013,7 +1082,7 @@ function updateEventTool(
   input: ToolInput,
 ): string {
   const event = state.events.find((e) => e.id === eventId);
-  if (!event) return errorResult(`Event "${eventId}" not found.`);
+  if (!event) return eventNotFoundError(eventId);
 
   const store = useEventStore.getState();
   const updates: Partial<AppEvent> = {};
@@ -1076,7 +1145,7 @@ function addGuestTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const firstName = input.firstName as string | undefined;
   const lastName = input.lastName as string | undefined;
@@ -1123,7 +1192,7 @@ function addGuestsBulkTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestsInput = input.guests as Array<Record<string, unknown>> | undefined;
   if (!guestsInput || guestsInput.length === 0) return errorResult('guests array is required and must not be empty.');
@@ -1180,7 +1249,7 @@ function addTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const store = useEventStore.getState();
   const tableType = (input.type as 'round_table' | 'rect_table') ?? 'round_table';
@@ -1237,7 +1306,7 @@ function removeTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   let tableId = input.tableId as string | undefined;
   const tableNumber = input.tableNumber as number | undefined;
@@ -1278,7 +1347,7 @@ function updateTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   let tableId = input.tableId as string | undefined;
   const tableNumber = input.tableNumber as number | undefined;
@@ -1324,7 +1393,7 @@ function createRelationshipGroupTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const name = input.name as string | undefined;
   const type = input.type as RelationshipType | undefined;
@@ -1361,7 +1430,7 @@ function addToRelationshipGroupTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const groupId = input.groupId as string | undefined;
   const guestId = input.guestId as string | undefined;
@@ -1410,7 +1479,7 @@ function listRelationshipGroupsTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   return json({
     count: ctx.groups.length,
@@ -1446,7 +1515,7 @@ function listVersionsTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   return json({
     activeVersionId: ctx.event.activeVersionId,
@@ -1469,7 +1538,7 @@ function createVersionTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const name = input.name as string | undefined;
   if (!name) return errorResult('name is required.');
