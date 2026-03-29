@@ -71,6 +71,10 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'seat everyone from scratch',
       'redo all seating',
       'start seating over',
+      'redo the seating',
+      'reseat everyone',
+      'clear and reseat',
+      'start fresh',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -97,15 +101,128 @@ export const WORKFLOWS: WorkflowDefinition[] = [
     ],
   },
   {
+    id: 'auto-seat',
+    name: 'Auto-Seat Guests',
+    icon: '\uD83D\uDC65',  // people emoji
+    description: 'Automatically seat all unassigned guests at available tables',
+    triggerPhrases: [
+      'auto seat',
+      'seat everyone',
+      'seat the guests',
+      'seat all guests',
+      'assign seats',
+      'assign seating',
+      'do the seating',
+      'arrange seating',
+      'arrange the guests',
+      'seat people',
+      'fill the tables',
+      'put people at tables',
+      'assign tables',
+      'assign everyone',
+    ],
+    buildSteps: (_params, _eventId) => [
+      {
+        id: 'as-1',
+        label: 'Auto-seat all unassigned guests',
+        toolName: 'auto_seat_guests',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'as-2',
+        label: 'Score the arrangement',
+        toolName: 'score_seating',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'as-3',
+        label: 'Check for issues',
+        toolName: 'flag_issues',
+        toolInput: {},
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'change-seating',
+    name: 'Change Seating Arrangement',
+    icon: '\uD83D\uDD04',  // cycle emoji
+    description: 'Clear current seating and create a fresh optimized arrangement',
+    triggerPhrases: [
+      'change the seating',
+      'change seating',
+      'change the seating assignments',
+      'change seats',
+      'change the arrangement',
+      'rearrange seating',
+      'rearrange the seats',
+      'rearrange everyone',
+      'rearrange the tables',
+      'shuffle seating',
+      'shuffle the seats',
+      'mix up the seating',
+      'new seating arrangement',
+      'new arrangement',
+      'different seating',
+      'different arrangement',
+      'switch things up',
+      'reassign seats',
+      'reassign seating',
+      'reassign everyone',
+      'move everyone around',
+      'change it up',
+    ],
+    buildSteps: (_params, _eventId) => [
+      {
+        id: 'cs-1',
+        label: 'Clear all current seating',
+        toolName: 'clear_all_seating',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'cs-2',
+        label: 'Create new seating arrangement',
+        toolName: 'auto_seat_guests',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'cs-3',
+        label: 'Optimize with refinement loop',
+        toolName: 'run_refinement_loop',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'cs-4',
+        label: 'Score final arrangement',
+        toolName: 'score_seating',
+        toolInput: {},
+        status: 'pending',
+      },
+    ],
+  },
+  {
     id: 'quick-optimization',
     name: 'Quick Optimization',
     icon: '\u26A1',  // zap emoji
-    description: 'Score current seating, get recommendations, and flag any issues',
+    description: 'Optimize current seating with refinement loop, then score',
     triggerPhrases: [
       'quick optimization',
       'optimize seating',
+      'optimize the seating',
       'improve seating',
+      'improve the seating',
       'make seating better',
+      'better seating',
+      'refine seating',
+      'refine the seating',
+      'optimize',
+      'tweak the seating',
+      'fine tune',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -117,14 +234,21 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       },
       {
         id: 'wo-2',
-        label: 'Get recommendations',
-        toolName: 'get_seating_recommendations',
-        toolInput: { limit: 5 },
+        label: 'Run optimization loop',
+        toolName: 'run_refinement_loop',
+        toolInput: {},
         status: 'pending',
       },
       {
         id: 'wo-3',
-        label: 'Flag issues',
+        label: 'Score optimized arrangement',
+        toolName: 'score_seating',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'wo-4',
+        label: 'Flag remaining issues',
         toolName: 'flag_issues',
         toolInput: {},
         status: 'pending',
@@ -142,6 +266,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'is everything ready',
       'pre-event check',
       'event checklist',
+      'how is the event',
+      'event status',
+      'event overview',
+      'how are we looking',
+      'status report',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -184,6 +313,9 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'audit guest list',
       'check guest list',
       'review guests',
+      'guest overview',
+      'who is coming',
+      'guest report',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -216,21 +348,60 @@ export const WORKFLOWS: WorkflowDefinition[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Match a user message to a workflow by checking trigger phrases.
- * Returns null if no workflow matches.
+ * Match a user message to a workflow using fuzzy keyword matching.
+ * Scores each workflow by how many trigger-phrase words appear in the message.
+ * Returns the best match if it meets a minimum threshold, or null.
  */
 export function matchWorkflow(userMessage: string): WorkflowMatch | null {
-  const normalized = userMessage.toLowerCase().trim();
+  const normalized = userMessage.toLowerCase().trim()
+    .replace(/[?!.,;:'"]/g, '') // strip punctuation
+    .replace(/\s+/g, ' ');
+
+  // Quick exit for very short or clearly conversational messages
+  if (normalized.length < 4) return null;
+  const conversationalPrefixes = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'yes', 'no', 'ok', 'sure'];
+  if (conversationalPrefixes.includes(normalized)) return null;
+
+  let bestMatch: WorkflowDefinition | null = null;
+  let bestScore = 0;
 
   for (const workflow of WORKFLOWS) {
+    // Check for exact phrase inclusion first (highest priority)
     for (const phrase of workflow.triggerPhrases) {
       if (normalized === phrase || normalized.includes(phrase)) {
         return { workflow, params: {} };
       }
     }
+
+    // Fuzzy matching: score based on keyword overlap
+    // Collect all unique significant words from trigger phrases
+    const triggerWords = new Set<string>();
+    for (const phrase of workflow.triggerPhrases) {
+      for (const word of phrase.split(' ')) {
+        if (word.length >= 3) triggerWords.add(word); // skip tiny words like "a", "up"
+      }
+    }
+
+    // Count how many trigger words appear in the user message
+    const messageWords = normalized.split(' ');
+    let hits = 0;
+    for (const tw of triggerWords) {
+      if (messageWords.some(mw => mw === tw || mw.includes(tw) || tw.includes(mw))) {
+        hits++;
+      }
+    }
+
+    // Score = hits / total trigger words (percentage of keywords matched)
+    const score = triggerWords.size > 0 ? hits / triggerWords.size : 0;
+
+    // Require at least 2 keyword hits AND at least 30% match
+    if (hits >= 2 && score > bestScore && score >= 0.3) {
+      bestScore = score;
+      bestMatch = workflow;
+    }
   }
 
-  return null;
+  return bestMatch ? { workflow: bestMatch, params: {} } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +467,45 @@ export async function runWorkflow(
 /**
  * Format a Franck-style summary of a completed workflow.
  */
+/** Extract human-readable highlights from a tool result JSON string */
+function summarizeToolResult(toolName: string, resultStr: string): string {
+  try {
+    const data = JSON.parse(resultStr);
+    if (data.error) return `Error: ${data.message}`;
+
+    switch (toolName) {
+      case 'auto_seat_guests':
+        return `Seated **${data.applied ?? 0}** guests across tables. ${data.summary ?? ''}`;
+      case 'clear_all_seating':
+        return `Cleared **${data.cleared ?? 0}** seating assignments.`;
+      case 'score_seating':
+        return `Seating score: **${data.score ?? 'N/A'}**/100`;
+      case 'run_refinement_loop':
+        return `Refinement: score ${data.startScore ?? '?'} → ${data.endScore ?? '?'} (${data.swapsApplied ?? 0} swaps, ${data.guestsPlaced ?? 0} guests placed)`;
+      case 'flag_issues':
+        return data.issueCount === 0
+          ? 'No issues found — magnifique!'
+          : `Found **${data.issueCount}** issue(s): ${(data.issues ?? []).slice(0, 3).map((i: { title: string }) => i.title).join(', ')}`;
+      case 'get_event_summary':
+        return `**${data.name}** — ${data.guestCount ?? 0} guests, ${data.confirmedCount ?? 0} confirmed, ${data.declinedCount ?? 0} declined`;
+      case 'get_attendance_projection':
+        return `Projected attendance: ${data.projection?.expected ?? '?'} (best: ${data.projection?.bestCase ?? '?'}, worst: ${data.projection?.worstCase ?? '?'})`;
+      case 'analyze_dietary_needs':
+        return `${data.totalWithRestrictions ?? 0} guests with dietary needs, ${data.totalWithAccessibility ?? 0} with accessibility needs`;
+      case 'analyze_guest_list':
+        return `${data.totalFiltered ?? 0} guests — confirmation rate: ${data.analytics?.confirmationRate ?? '?'}%`;
+      case 'get_seating_recommendations':
+        return `${data.totalRecommendations ?? 0} recommendations found`;
+      default:
+        // Generic: show a few key fields
+        const keys = Object.keys(data).filter(k => k !== 'error');
+        return keys.slice(0, 3).map(k => `${k}: ${JSON.stringify(data[k])}`).join(', ');
+    }
+  } catch {
+    return resultStr.slice(0, 200);
+  }
+}
+
 export function formatWorkflowSummary(
   workflow: WorkflowDefinition,
   result: WorkflowResult,
@@ -303,19 +513,13 @@ export function formatWorkflowSummary(
   const completedSteps = result.steps.filter((s) => s.status === 'completed');
   const failedSteps = result.steps.filter((s) => s.status === 'failed');
 
-  let summary = `${workflow.icon} **${workflow.name}** -- C'est magnifique! Franck has completed all the steps!\n\n`;
+  let summary = result.success
+    ? `${workflow.icon} **${workflow.name}** — C'est magnifique! Franck has executed every step with perfection!\n\n`
+    : `${workflow.icon} **${workflow.name}** — Franck completed the workflow, but encountered some turbulence.\n\n`;
 
   for (const step of completedSteps) {
-    let resultText = step.result ?? '';
-    try {
-      const parsed = JSON.parse(resultText);
-      if (typeof parsed === 'object' && parsed !== null) {
-        resultText = JSON.stringify(parsed, null, 2);
-      }
-    } catch {
-      // keep as-is
-    }
-    summary += `### ${step.label}\n${resultText}\n\n`;
+    const readable = summarizeToolResult(step.toolName, step.result ?? '{}');
+    summary += `**${step.label}:** ${readable}\n\n`;
   }
 
   if (failedSteps.length > 0) {
@@ -324,6 +528,8 @@ export function formatWorkflowSummary(
       summary += `- ${step.label}: ${step.error}\n`;
     }
   }
+
+  summary += '\n*The choreography of human connection has been orchestrated. Franck does not do mediocre!*';
 
   return summary;
 }
