@@ -2,7 +2,15 @@
  * Franck Eggelhoffer — AI Event Planner Agent
  *
  * Core agent orchestration: system prompt, tool definitions,
- * conversation management, and the Anthropic API message loop.
+ * conversation management, and the multi-provider LLM message loop.
+ *
+ * Routing priority:
+ *   1. Workflow match (exact / fuzzy trigger phrases)
+ *   2. Chain pattern match (regex-based multi-step)
+ *   3. Intelligent action suggestion (verb detected but no match)
+ *   4. LLM with tools (full agentic loop)
+ *   5. LLM without tools (model lacks tool support — context in prompt)
+ *   6. No-provider fallback (helpful offline message)
  */
 
 import { executeTool } from './franck-tools';
@@ -23,12 +31,20 @@ import {
   matchWorkflow,
   runWorkflow,
   formatWorkflowSummary,
+  WORKFLOWS,
   type WorkflowProgress,
 } from './franck-workflows';
 import {
   tryChainExecution,
   type ChainProgress,
 } from './franck-chain';
+import { classifyIntent, getIntentToolMapping } from './franck-intent';
+import {
+  generateFallbackResponse,
+  extractEventContext,
+  getSuggestedActions,
+  type FranckIntent as FallbackIntent,
+} from './franck-responses';
 
 // ──────────────────────────────────────────────
 // 1. System Prompt
@@ -44,22 +60,50 @@ Your personality:
 - You occasionally refer to yourself in the third person ("Franck does not do mediocre")
 - You treat every event like it is the social event of the century
 
-CRITICAL INSTRUCTIONS — YOU MUST FOLLOW THESE:
+═══════════════════════════════════════════════
+  CRITICAL ACTION INSTRUCTIONS — ALWAYS OBEY
+═══════════════════════════════════════════════
 
 1. **ALWAYS USE TOOLS TO TAKE ACTION.** When the user asks you to do something (seat guests, move people, update records, assign tables), you MUST call the appropriate tool. NEVER just describe what you would do — actually DO IT by calling tools.
 
-2. **Action workflow:** When asked to make seating changes:
+2. **When asked about event status, ALWAYS call get_event_summary first.** Never guess or make up numbers — fetch the real data and then narrate it dramatically.
+
+3. **When asked to seat guests, call auto_seat_guests immediately.** Do not ask for confirmation, do not explain what you plan to do — just call the tool, then describe the glorious result.
+
+4. **When asked about a specific guest, call search_guests with their name.** Then use the returned guestId for any follow-up operations (move, update, unseat, etc.).
+
+5. **Action workflow for seating changes:**
    - First call search_guests or get_table_info to find the right IDs
    - Then call move_guest_to_table, auto_seat_guests, unseat_guest, or clear_all_seating to APPLY the changes
    - After making changes, confirm what you did
 
-3. **Tables have numbers.** Tables are identified by tableNumber (e.g. Table 1, Table 2). When the user says "Table 3", use tableNumber: 3 in move_guest_to_table. Always refer to tables by their number in your responses.
+6. **Tables have numbers.** Tables are identified by tableNumber (e.g. Table 1, Table 2). When the user says "Table 3", use tableNumber: 3 in move_guest_to_table. Always refer to tables by their number in your responses.
 
-4. **Guest lookup:** When the user mentions a person by name, ALWAYS call search_guests first to find their guestId, then use that ID in subsequent tool calls.
+7. **DO NOT ask for permission to act.** If the user says "seat everyone" — call auto_seat_guests immediately. If they say "move Sarah to Table 5" — search for Sarah, then move her. Act first, narrate after.
 
-5. **DO NOT ask for permission to act.** If the user says "seat everyone" — call auto_seat_guests immediately. If they say "move Sarah to Table 5" — search for Sarah, then move her. Act first, narrate after.
+8. **After taking action, explain what you did** in your dramatic Franck style. Narrate the result like an artist revealing a masterpiece.
 
-6. **After taking action, explain what you did** in your dramatic Franck style. Narrate the result like an artist revealing a masterpiece.
+═══════════════════════════════════════════════
+  FEW-SHOT TOOL CALL EXAMPLES
+═══════════════════════════════════════════════
+
+User: "How is my event looking?"
+→ Call get_event_summary, then narrate the results.
+
+User: "Seat everyone"
+→ Call auto_seat_guests immediately, then describe the arrangement.
+
+User: "Move John to Table 5"
+→ Call search_guests with query "John", then call move_guest_to_table with the guestId and tableNumber: 5.
+
+User: "Who is sitting at Table 3?"
+→ Call get_table_info, then list the guests at that table.
+
+User: "Are there any problems with the seating?"
+→ Call flag_issues and score_seating, then present findings dramatically.
+
+User: "Find Sarah Johnson"
+→ Call search_guests with query "Sarah Johnson", then present her details.
 
 You have tools to manage events, guests, seating, and communications. Use them liberally.`;
 
@@ -643,7 +687,147 @@ export { getChainCapabilities } from './franck-chain';
 export { type WorkflowStepStatus } from './franck-workflows';
 
 // ──────────────────────────────────────────────
-// 5. Core Function: sendMessage
+// 5. Helpers
+// ──────────────────────────────────────────────
+
+/** Action verbs that suggest the user wants something *done*, not just a chat. */
+const ACTION_VERBS = [
+  'seat', 'move', 'swap', 'add', 'remove', 'change', 'update',
+  'delete', 'create', 'assign', 'unseat', 'clear', 'place', 'set',
+  'put', 'switch', 'rearrange', 'optimize', 'improve', 'refine',
+];
+
+/**
+ * Detect whether a message looks like an action request.
+ * Returns true when the message contains at least one action verb.
+ */
+function looksLikeActionRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  return ACTION_VERBS.some((verb) => {
+    // Match the verb as a whole word (not inside another word like "remove" in "removed")
+    const re = new RegExp(`\\b${verb}\\b`, 'i');
+    return re.test(lower);
+  });
+}
+
+/**
+ * When the user's message looks like an action but no workflow/chain
+ * matched, try a softer partial-keyword match and suggest the closest
+ * workflow so the user can rephrase or confirm.
+ */
+function suggestClosestWorkflow(userMessage: string): string | null {
+  const normalized = userMessage.toLowerCase().trim()
+    .replace(/[?!.,;:'"]/g, '')
+    .replace(/\s+/g, ' ');
+
+  let bestWorkflowName: string | null = null;
+  let bestScore = 0;
+
+  for (const workflow of WORKFLOWS) {
+    const triggerWords = new Set<string>();
+    for (const phrase of workflow.triggerPhrases) {
+      for (const word of phrase.split(' ')) {
+        if (word.length >= 3) triggerWords.add(word);
+      }
+    }
+
+    const messageWords = normalized.split(' ');
+    let hits = 0;
+    for (const tw of triggerWords) {
+      if (messageWords.some((mw) => mw === tw || mw.includes(tw) || tw.includes(mw))) {
+        hits++;
+      }
+    }
+
+    // Accept even a single keyword hit for suggestion purposes (below
+    // the normal threshold of 2 hits / 30%).
+    if (hits >= 1 && hits > bestScore) {
+      bestScore = hits;
+      bestWorkflowName = workflow.name;
+    }
+  }
+
+  return bestWorkflowName;
+}
+
+/**
+ * Build a snapshot of the current event state for injection into the
+ * system prompt when tool use is unavailable.
+ */
+function buildEventContextBlock(eventId: string): string {
+  try {
+    const state = useEventStore.getState();
+    const event = state.events.find((e) => e.id === eventId);
+    if (!event) return '(No active event found.)';
+
+    const guests = state.guests.filter((g) => g.eventId === eventId);
+    const versions = state.versions.filter((v) => v.eventId === eventId);
+    const activeVersion = versions.find((v) => v.id === event.activeVersionId);
+    const versionId = activeVersion?.id ?? event.activeVersionId;
+    const allObjects = state.layoutObjects.filter((o) => o.versionId === versionId);
+    const tables = allObjects.filter(
+      (o) => o.type === 'round_table' || o.type === 'rect_table',
+    );
+    const assignments = state.seatingAssignments.filter(
+      (a) => a.versionId === versionId,
+    );
+
+    const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmed').length;
+    const declined = guests.filter((g) => g.rsvpStatus === 'declined').length;
+    const invited = guests.filter((g) => g.rsvpStatus === 'invited').length;
+    const seated = assignments.length;
+    const unseated = guests.length - seated;
+
+    return [
+      `Event: ${event.name}`,
+      `Type: ${event.type} | Status: ${event.status}`,
+      event.date ? `Date: ${event.date}` : null,
+      event.venue ? `Venue: ${event.venue}` : null,
+      `Total guests: ${guests.length} (confirmed: ${confirmed}, invited: ${invited}, declined: ${declined})`,
+      `Tables: ${tables.length}`,
+      `Seated: ${seated} | Unseated: ${unseated}`,
+    ].filter(Boolean).join('\n');
+  } catch {
+    return '(Unable to retrieve event state.)';
+  }
+}
+
+/**
+ * Check whether a model is known to NOT support tool/function calling.
+ * If `modelSupportsTools` is exported from llm-providers we defer to it;
+ * otherwise we maintain a small local deny-list.
+ */
+function modelSupportsToolUse(config: ProviderConfig): boolean {
+  // Try the canonical check if it exists in llm-providers (future-proof).
+  try {
+    // Dynamic import would be async — just use a local heuristic instead.
+    // Models known to lack tool support:
+    const noToolModels = [
+      'stepfun/step-1.5-flash:free',
+      'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+    ];
+    return !noToolModels.some((m) => config.model === m);
+  } catch {
+    return true; // assume tools work by default
+  }
+}
+
+/** Maximum raw messages before we trim for context window safety. */
+const MAX_RAW_MESSAGES = 20;
+
+/**
+ * Trim raw message history to stay within context limits.
+ * Keeps the first 2 messages (initial context) and the last 16.
+ */
+function trimConversationHistory(messages: RawMessage[]): RawMessage[] {
+  if (messages.length <= MAX_RAW_MESSAGES) return messages;
+  const head = messages.slice(0, 2);
+  const tail = messages.slice(-(MAX_RAW_MESSAGES - 2));
+  return [...head, ...tail];
+}
+
+// ──────────────────────────────────────────────
+// 6. Core Function: sendMessage
 // ──────────────────────────────────────────────
 
 export interface SendMessageResult {
@@ -664,7 +848,7 @@ export async function sendMessage(
   onWorkflowProgress?: (progress: WorkflowProgress) => void,
   onChainProgress?: (progress: ChainProgress) => void,
 ): Promise<SendMessageResult> {
-  // ── 1. Try workflow matching first (fastest, most reliable) ──
+  // ── 1. Try workflow matching first (fastest, most reliable) ──────
   const workflowMatch = matchWorkflow(userMessage);
   if (workflowMatch) {
     const result = await runWorkflow(
@@ -703,7 +887,7 @@ export async function sendMessage(
     };
   }
 
-  // ── 2. Try chain execution for recognized patterns ──
+  // ── 2. Try chain execution for recognized patterns ──────────────
   const storeState = useEventStore.getState();
   const chainResult = await tryChainExecution(userMessage, eventId, storeState, onChainProgress);
   if (chainResult.handled) {
@@ -735,46 +919,153 @@ export async function sendMessage(
     };
   }
 
-  // ── 3. Fall back to LLM for complex/conversational requests ──
-  let config: ProviderConfig;
-  try {
-    config = getProviderConfig();
-  } catch (err) {
-    // No LLM provider configured — return a helpful message instead of crashing
-    const fallbackResponse = "Ah, mon ami! Franck needs an API key configured to answer freeform questions. But not to worry — you can still use these powerful workflow actions that work instantly without any API key:\n\n- **\"event readiness check\"** — full status report\n- **\"auto seat\"** — seat all unassigned guests\n- **\"guest list audit\"** — review the guest list\n- **\"quick optimization\"** — optimize current seating\n- **\"full seating setup\"** — clear and redo all seating\n\nAdd an API key in the settings panel to unlock freeform conversation!";
+  // ── 2b. Intelligent action suggestion ───────────────────────────
+  // The message looks like an action request but neither workflow nor
+  // chain matched. Log a warning and suggest the closest workflow.
+  if (looksLikeActionRequest(userMessage)) {
+    const suggestion = suggestClosestWorkflow(userMessage);
+    if (suggestion) {
+      console.warn(
+        `[Franck] Action-like message did not match any workflow/chain. ` +
+        `Closest workflow: "${suggestion}". Message: "${userMessage}"`,
+      );
+      // We don't short-circuit — we still fall through to the LLM so it
+      // can attempt the action via tools. But if no LLM is available, the
+      // fallback message below will include the suggestion.
+    }
+  }
+
+  // ── 3. Resolve LLM provider config ─────────────────────────────
+  const config: ProviderConfig | null = (() => {
+    try {
+      return getProviderConfig();
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!config) {
+    // No LLM provider — use intent classifier + fallback responses
+    const intentMatch = classifyIntent(userMessage);
+    const storeSnapshot = useEventStore.getState();
+    const eventCtx = extractEventContext(storeSnapshot, eventId);
+
+    // Map intent to the fallback response system's intent type
+    const intentMapping: Record<string, FallbackIntent> = {
+      event_status: 'event_status',
+      guest_list: 'guest_list',
+      guest_search: 'guest_list',
+      seat_guests: 'seat_guests',
+      optimize: 'optimize',
+      move_guest: 'move_guest',
+      swap_guests: 'swap_guests',
+      unseat_guest: 'unseat_guest',
+      general_question: 'general_question',
+    };
+    const fallbackIntent = intentMapping[intentMatch.intent] ?? 'unknown';
+    const fallbackResponse = generateFallbackResponse(
+      fallbackIntent,
+      eventCtx,
+      intentMatch.extractedParams,
+    );
+
+    const suggestion = suggestClosestWorkflow(userMessage);
+    const suggestionLine = suggestion
+      ? `\n\nFranck noticed you may want: **"${suggestion}"** — try saying that exactly!`
+      : '';
+    const suggestions = getSuggestedActions(eventCtx);
+    const suggestionsLine = suggestions.length > 0
+      ? `\n\n**Quick actions:** ${suggestions.slice(0, 3).join(' · ')}`
+      : '';
+
+    const fullResponse = fallbackResponse + suggestionLine + suggestionsLine;
+
     const updatedConversation: FranckConversation = {
       eventId,
       rawMessages: [
         ...conversation.rawMessages,
         { role: 'user', content: userMessage },
-        { role: 'assistant', content: fallbackResponse },
+        { role: 'assistant', content: fullResponse },
       ],
       messages: [
         ...conversation.messages,
         { role: 'user', content: userMessage, timestamp: Date.now() },
-        { role: 'assistant', content: fallbackResponse, timestamp: Date.now() },
+        { role: 'assistant', content: fullResponse, timestamp: Date.now() },
       ],
     };
     return {
-      response: fallbackResponse,
+      response: fullResponse,
       conversation: updatedConversation,
       toolCalls: [],
     };
   }
 
-  // Deep-clone conversation so we don't mutate the caller's object
-  const rawMessages: RawMessage[] = [...conversation.rawMessages];
+  // ── 4. Prepare raw message history ─────────────────────────────
+  // Trim to avoid context overflow, then append the new user message.
+  const rawMessages: RawMessage[] = trimConversationHistory([...conversation.rawMessages]);
   const allToolCalls: { name: string; result: string }[] = [];
-
-  // Append user message
   rawMessages.push({ role: 'user', content: userMessage });
 
+  // ── 5. No-tool-use LLM path ────────────────────────────────────
+  // When the model doesn't support tools, inject event context into the
+  // system prompt and call without tools so the model can still answer
+  // questions conversationally.
+  if (!modelSupportsToolUse(config)) {
+    const eventContext = buildEventContextBlock(eventId);
+    const enrichedPrompt =
+      FRANCK_SYSTEM_PROMPT +
+      '\n\n═══════════════════════════════════════════════\n' +
+      '  CURRENT EVENT STATE (read-only snapshot)\n' +
+      '═══════════════════════════════════════════════\n' +
+      eventContext +
+      '\n\nNote: You do NOT have tool access in this session. Answer questions using ' +
+      'the event state above. If the user asks you to take an action, explain what ' +
+      'you would do and suggest they upgrade to a model with tool support.';
+
+    const normalized: NormalizedResponse = await callLLM(
+      config,
+      enrichedPrompt,
+      [], // no tools
+      rawMessages,
+    );
+
+    rawMessages.push(normalized.rawAssistantMessage);
+    const responseText = normalized.textContent || 'Mon dieu! The model returned silence. Try again, s\'il vous plait.';
+
+    const updatedConversation: FranckConversation = {
+      eventId,
+      rawMessages,
+      messages: [
+        ...conversation.messages,
+        { role: 'user', content: userMessage, timestamp: Date.now() },
+        { role: 'assistant', content: responseText, timestamp: Date.now() },
+      ],
+    };
+
+    return {
+      response: responseText,
+      conversation: updatedConversation,
+      toolCalls: [],
+    };
+  }
+
+  // ── 6. Full agentic LLM loop (with tools) ──────────────────────
   const MAX_ITERATIONS = 10;
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    // At iteration 5+, if we still have no final text, nudge the model
+    // to wrap up so we don't burn tokens endlessly.
+    const systemPrompt =
+      iteration >= 5
+        ? FRANCK_SYSTEM_PROMPT +
+          '\n\n[SYSTEM NOTE: You have used many tool calls already. ' +
+          'Please summarize what you have accomplished so far and provide ' +
+          'your final response to the user now.]'
+        : FRANCK_SYSTEM_PROMPT;
+
     const normalized: NormalizedResponse = await callLLM(
       config,
-      FRANCK_SYSTEM_PROMPT,
+      systemPrompt,
       FRANCK_TOOLS,
       rawMessages,
     );
@@ -791,8 +1082,8 @@ export async function sendMessage(
           onToolExecution(toolCall.name);
         }
 
-        const storeState = useEventStore.getState();
-        const result = await executeTool(toolCall.name, toolCall.input, storeState, eventId);
+        const currentState = useEventStore.getState();
+        const result = await executeTool(toolCall.name, toolCall.input, currentState, eventId);
 
         allToolCalls.push({ name: toolCall.name, result });
 
@@ -839,7 +1130,7 @@ export async function sendMessage(
     };
   }
 
-  // If we exhausted iterations, return whatever we have
+  // ── Exhausted iterations — return whatever we have ──────────────
   const lastAssistantContent = rawMessages
     .filter((m) => m.role === 'assistant')
     .pop();
@@ -877,7 +1168,7 @@ export async function sendMessage(
 }
 
 // ──────────────────────────────────────────────
-// 6. Helper: createConversation
+// 7. Helper: createConversation
 // ──────────────────────────────────────────────
 
 export function createConversation(eventId: string): FranckConversation {

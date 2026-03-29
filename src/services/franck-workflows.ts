@@ -5,8 +5,8 @@
  * without LLM calls. Each workflow is a named sequence of tool
  * invocations with known parameters.
  *
- * TODO: This is a minimal stub. Another agent will replace/extend
- * this with the full workflow system.
+ * Includes fuzzy matching with synonym expansion and Levenshtein
+ * distance for typo tolerance.
  */
 
 import { useEventStore } from '@/data/store';
@@ -56,6 +56,95 @@ export interface WorkflowProgress {
 }
 
 // ---------------------------------------------------------------------------
+// Synonym Expansion Map
+// ---------------------------------------------------------------------------
+
+const SYNONYM_MAP: Record<string, string[]> = {
+  guests: ['people', 'attendees', 'invitees'],
+  people: ['guests', 'attendees', 'invitees'],
+  attendees: ['guests', 'people', 'invitees'],
+  invitees: ['guests', 'people', 'attendees'],
+  seat: ['place', 'assign', 'put'],
+  place: ['seat', 'assign', 'put'],
+  assign: ['seat', 'place', 'put'],
+  table: ['seating'],
+  seating: ['table'],
+  check: ['review', 'audit', 'look'],
+  review: ['check', 'audit', 'look'],
+  audit: ['check', 'review', 'look'],
+  look: ['check', 'review', 'audit'],
+  swap: ['switch', 'exchange', 'trade'],
+  switch: ['swap', 'exchange', 'trade'],
+  move: ['transfer', 'relocate', 'put'],
+  redo: ['restart', 'reset', 'repeat'],
+  summary: ['overview', 'brief', 'recap'],
+  overview: ['summary', 'brief', 'recap'],
+  optimize: ['improve', 'enhance', 'refine'],
+  improve: ['optimize', 'enhance', 'refine'],
+  change: ['modify', 'alter', 'rearrange'],
+  arrange: ['organize', 'set up', 'plan'],
+};
+
+// ---------------------------------------------------------------------------
+// Levenshtein Distance (for typo tolerance)
+// ---------------------------------------------------------------------------
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  // Use single-row optimization for memory efficiency
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array<number>(n + 1);
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,       // deletion
+        curr[j - 1] + 1,   // insertion
+        prev[j - 1] + cost, // substitution
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+
+  return prev[n];
+}
+
+/** Check if two words are a fuzzy match (exact, substring, or within Levenshtein distance 2) */
+function fuzzyWordMatch(messageWord: string, triggerWord: string): boolean {
+  if (messageWord === triggerWord) return true;
+  if (messageWord.includes(triggerWord) || triggerWord.includes(messageWord)) return true;
+
+  // Only apply Levenshtein for words of reasonable length (avoid false positives on short words)
+  if (messageWord.length >= 4 && triggerWord.length >= 4) {
+    const dist = levenshtein(messageWord, triggerWord);
+    const maxDist = Math.min(messageWord.length, triggerWord.length) >= 6 ? 2 : 1;
+    if (dist <= maxDist) return true;
+  }
+
+  return false;
+}
+
+/** Expand a set of trigger words to include their synonyms */
+function expandWithSynonyms(words: Set<string>): Set<string> {
+  const expanded = new Set(words);
+  for (const word of words) {
+    const synonyms = SYNONYM_MAP[word];
+    if (synonyms) {
+      for (const syn of synonyms) {
+        expanded.add(syn);
+      }
+    }
+  }
+  return expanded;
+}
+
+// ---------------------------------------------------------------------------
 // Workflow Definitions
 // ---------------------------------------------------------------------------
 
@@ -75,6 +164,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'reseat everyone',
       'clear and reseat',
       'start fresh',
+      'set up the tables from zero',
+      'fresh seating arrangement',
+      'begin seating from nothing',
+      'wipe seating and redo',
+      'blank slate seating',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -124,6 +218,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'place guests',
       'place everyone',
       'seat them',
+      'find seats for everyone',
+      'give everyone a seat',
+      'put guests in seats',
+      'seat all the attendees',
+      'figure out the seating',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -177,6 +276,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'reassign everyone',
       'move everyone around',
       'change it up',
+      'i want different seating',
+      'give me a new arrangement',
+      'shake up the tables',
+      'mix everyone around',
+      'try a different layout',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -227,6 +331,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'optimize',
       'tweak the seating',
       'fine tune',
+      'can you make it better',
+      'polish the arrangement',
+      'make the seating work better',
+      'enhance the arrangement',
+      'tighten up the seating',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -283,6 +392,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'event check',
       'whats the status',
       'give me a status',
+      'are we good to go',
+      'are we ready',
+      'run the checklist',
+      'preflight check',
+      'is my event ready',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -332,6 +446,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'whats the guest list',
       'show me the guests',
       'how many guests',
+      'tell me about the guest list',
+      'run a guest audit',
+      'look at the guests',
+      'check on the guests',
+      'guest list report',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -357,6 +476,190 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       },
     ],
   },
+
+  // -------------------------------------------------------------------------
+  // New Workflows
+  // -------------------------------------------------------------------------
+
+  {
+    id: 'swap-two-guests',
+    name: 'Swap Two Guests',
+    icon: '\uD83D\uDD00',  // shuffle tracks emoji
+    description: 'Swap the seating assignments of two guests',
+    triggerPhrases: [
+      'swap two guests',
+      'swap guests',
+      'swap seats',
+      'swap their seats',
+      'switch two guests',
+      'switch guests',
+      'switch seats',
+      'switch their seats',
+      'exchange seats',
+      'trade seats',
+      'swap them',
+      'switch them',
+      'swap seating',
+      'switch seating',
+      'can you swap',
+      'swap those two',
+      'switch those two',
+    ],
+    buildSteps: (params, _eventId) => [
+      {
+        id: 'sg-1',
+        label: `Search for first guest: ${params.guestA ?? 'guest A'}`,
+        toolName: 'search_guests',
+        toolInput: { query: (params.guestA as string) ?? '' },
+        status: 'pending',
+      },
+      {
+        id: 'sg-2',
+        label: `Search for second guest: ${params.guestB ?? 'guest B'}`,
+        toolName: 'search_guests',
+        toolInput: { query: (params.guestB as string) ?? '' },
+        status: 'pending',
+      },
+      {
+        id: 'sg-3',
+        label: 'Swap their seats',
+        toolName: 'swap_guests',
+        toolInput: {
+          guestA: (params.guestA as string) ?? '',
+          guestB: (params.guestB as string) ?? '',
+        },
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'move-guest-to-table',
+    name: 'Move Guest to Table',
+    icon: '\u27A1\uFE0F',  // right arrow emoji
+    description: 'Move a specific guest to a specific table',
+    triggerPhrases: [
+      'move guest to table',
+      'move to table',
+      'put at table',
+      'put guest at table',
+      'seat at table',
+      'assign to table',
+      'transfer to table',
+      'relocate to table',
+      'move them to table',
+      'place at table',
+      'change their table',
+      'move to a different table',
+      'put them at another table',
+      'can you move',
+      'sit them at table',
+    ],
+    buildSteps: (params, _eventId) => [
+      {
+        id: 'mg-1',
+        label: `Search for guest: ${params.guestName ?? 'guest'}`,
+        toolName: 'search_guests',
+        toolInput: { query: (params.guestName as string) ?? '' },
+        status: 'pending',
+      },
+      {
+        id: 'mg-2',
+        label: `Move to table ${params.tableNumber ?? '?'}`,
+        toolName: 'move_guest_to_table',
+        toolInput: {
+          guestName: (params.guestName as string) ?? '',
+          tableNumber: params.tableNumber ?? 0,
+        },
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'unseat-all-and-reseat',
+    name: 'Unseat All and Reseat',
+    icon: '\uD83D\uDD03',  // clockwise arrows emoji
+    description: 'Clear every seat and start fresh with automatic placement and scoring',
+    triggerPhrases: [
+      'redo seating',
+      'start seating over',
+      'reseat everyone',
+      'unseat everyone',
+      'clear all seats and redo',
+      'nuke seating',
+      'reset the seating',
+      'tear it all down',
+      'start over with seating',
+      'wipe the seating clean',
+      'do the seating again',
+      'from the top',
+      'clear seats and reseat',
+      'take everyone out and redo it',
+      'remove all and reseat',
+    ],
+    buildSteps: (_params, _eventId) => [
+      {
+        id: 'ur-1',
+        label: 'Clear all current seating assignments',
+        toolName: 'clear_all_seating',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'ur-2',
+        label: 'Auto-seat all guests fresh',
+        toolName: 'auto_seat_guests',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'ur-3',
+        label: 'Score the new arrangement',
+        toolName: 'score_seating',
+        toolInput: {},
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'event-summary',
+    name: 'Event Summary',
+    icon: '\uD83D\uDCCA',  // bar chart emoji
+    description: 'Get a quick overview of the event and flag any issues',
+    triggerPhrases: [
+      'summarize',
+      'summary',
+      'overview',
+      'brief me',
+      'what do i need to know',
+      'give me the summary',
+      'event summary',
+      'whats going on',
+      'catch me up',
+      'fill me in',
+      'give me the rundown',
+      'tldr',
+      'quick summary',
+      'high level overview',
+      'the big picture',
+      'bring me up to speed',
+    ],
+    buildSteps: (_params, _eventId) => [
+      {
+        id: 'es-1',
+        label: 'Gather event summary',
+        toolName: 'get_event_summary',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'es-2',
+        label: 'Flag any issues',
+        toolName: 'flag_issues',
+        toolInput: {},
+        status: 'pending',
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -364,9 +667,11 @@ export const WORKFLOWS: WorkflowDefinition[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Match a user message to a workflow using fuzzy keyword matching.
+ * Match a user message to a workflow using fuzzy keyword matching with
+ * synonym expansion and Levenshtein distance for typo tolerance.
+ *
  * Scores each workflow by how many trigger-phrase words appear in the message.
- * Returns the best match if it meets a minimum threshold, or null.
+ * Returns the BEST match by score if it meets the minimum threshold, or null.
  */
 export function matchWorkflow(userMessage: string): WorkflowMatch | null {
   const normalized = userMessage.toLowerCase().trim()
@@ -380,29 +685,38 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
 
   let bestMatch: WorkflowDefinition | null = null;
   let bestScore = 0;
+  let bestExactMatch: WorkflowDefinition | null = null;
+  let bestExactLength = 0;
 
   for (const workflow of WORKFLOWS) {
     // Check for exact phrase inclusion first (highest priority)
+    // If multiple workflows match exactly, prefer the longest matching phrase
     for (const phrase of workflow.triggerPhrases) {
       if (normalized === phrase || normalized.includes(phrase)) {
-        return { workflow, params: {} };
+        if (phrase.length > bestExactLength) {
+          bestExactLength = phrase.length;
+          bestExactMatch = workflow;
+        }
       }
     }
 
-    // Fuzzy matching: score based on keyword overlap
+    // Fuzzy matching: score based on keyword overlap with synonym expansion
     // Collect all unique significant words from trigger phrases
-    const triggerWords = new Set<string>();
+    const rawTriggerWords = new Set<string>();
     for (const phrase of workflow.triggerPhrases) {
       for (const word of phrase.split(' ')) {
-        if (word.length >= 3) triggerWords.add(word); // skip tiny words like "a", "up"
+        if (word.length >= 3) rawTriggerWords.add(word);
       }
     }
 
-    // Count how many trigger words appear in the user message
+    // Expand trigger words with synonyms
+    const triggerWords = expandWithSynonyms(rawTriggerWords);
+
+    // Count how many trigger words appear in the user message (using fuzzy matching)
     const messageWords = normalized.split(' ');
     let hits = 0;
     for (const tw of triggerWords) {
-      if (messageWords.some(mw => mw === tw || mw.includes(tw) || tw.includes(mw))) {
+      if (messageWords.some(mw => fuzzyWordMatch(mw, tw))) {
         hits++;
       }
     }
@@ -410,11 +724,16 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
     // Score = hits / total trigger words (percentage of keywords matched)
     const score = triggerWords.size > 0 ? hits / triggerWords.size : 0;
 
-    // Require at least 2 keyword hits AND at least 30% match
-    if (hits >= 2 && score > bestScore && score >= 0.3) {
+    // Require at least 2 keyword hits AND at least 25% match
+    if (hits >= 2 && score > bestScore && score >= 0.25) {
       bestScore = score;
       bestMatch = workflow;
     }
+  }
+
+  // Exact phrase matches take priority over fuzzy matches
+  if (bestExactMatch) {
+    return { workflow: bestExactMatch, params: {} };
   }
 
   return bestMatch ? { workflow: bestMatch, params: {} } : null;
@@ -480,9 +799,6 @@ export async function runWorkflow(
 // Summary Formatting
 // ---------------------------------------------------------------------------
 
-/**
- * Format a Franck-style summary of a completed workflow.
- */
 /** Extract human-readable highlights from a tool result JSON string */
 function summarizeToolResult(toolName: string, resultStr: string): string {
   try {
@@ -497,21 +813,27 @@ function summarizeToolResult(toolName: string, resultStr: string): string {
       case 'score_seating':
         return `Seating score: **${data.score ?? 'N/A'}**/100`;
       case 'run_refinement_loop':
-        return `Refinement: score ${data.startScore ?? '?'} → ${data.endScore ?? '?'} (${data.swapsApplied ?? 0} swaps, ${data.guestsPlaced ?? 0} guests placed)`;
+        return `Refinement: score ${data.startScore ?? '?'} \u2192 ${data.endScore ?? '?'} (${data.swapsApplied ?? 0} swaps, ${data.guestsPlaced ?? 0} guests placed)`;
       case 'flag_issues':
         return data.issueCount === 0
-          ? 'No issues found — magnifique!'
+          ? 'No issues found \u2014 magnifique!'
           : `Found **${data.issueCount}** issue(s): ${(data.issues ?? []).slice(0, 3).map((i: { title: string }) => i.title).join(', ')}`;
       case 'get_event_summary':
-        return `**${data.name}** — ${data.guestCount ?? 0} guests, ${data.confirmedCount ?? 0} confirmed, ${data.declinedCount ?? 0} declined`;
+        return `**${data.name}** \u2014 ${data.guestCount ?? 0} guests, ${data.confirmedCount ?? 0} confirmed, ${data.declinedCount ?? 0} declined`;
       case 'get_attendance_projection':
         return `Projected attendance: ${data.projection?.expected ?? '?'} (best: ${data.projection?.bestCase ?? '?'}, worst: ${data.projection?.worstCase ?? '?'})`;
       case 'analyze_dietary_needs':
         return `${data.totalWithRestrictions ?? 0} guests with dietary needs, ${data.totalWithAccessibility ?? 0} with accessibility needs`;
       case 'analyze_guest_list':
-        return `${data.totalFiltered ?? 0} guests — confirmation rate: ${data.analytics?.confirmationRate ?? '?'}%`;
+        return `${data.totalFiltered ?? 0} guests \u2014 confirmation rate: ${data.analytics?.confirmationRate ?? '?'}%`;
       case 'get_seating_recommendations':
         return `${data.totalRecommendations ?? 0} recommendations found`;
+      case 'search_guests':
+        return `Found **${data.results?.length ?? 0}** matching guest(s)`;
+      case 'swap_guests':
+        return data.success ? 'Guests swapped successfully \u2014 voil\u00E0!' : `Swap failed: ${data.message ?? 'unknown error'}`;
+      case 'move_guest_to_table':
+        return data.success ? `Guest moved to table \u2014 tr\u00E8s bien!` : `Move failed: ${data.message ?? 'unknown error'}`;
       default:
         // Generic: show a few key fields
         const keys = Object.keys(data).filter(k => k !== 'error');
@@ -522,6 +844,38 @@ function summarizeToolResult(toolName: string, resultStr: string): string {
   }
 }
 
+// Franck's dramatic sign-off lines, randomly selected for variety
+const FRANCK_SUCCESS_OPENERS = [
+  "C'est magnifique! Franck has executed every step with perfection!",
+  "Voil\u00E0! Franck has orchestrated this with the precision of a Parisian souffl\u00E9!",
+  "Formidable! Every step, flawless \u2014 as Franck demands!",
+  "Tr\u00E8s bien! The workflow is complete, and Franck is \u2014 naturally \u2014 satisfied.",
+  "Merveilleux! Franck does not disappoint, and neither did this workflow!",
+];
+
+const FRANCK_FAILURE_OPENERS = [
+  "Mon Dieu! The workflow hit some turbulence \u2014 but Franck persevered!",
+  "Quelle catastrophe partielle! Some steps stumbled, but Franck carried on!",
+  "Sacr\u00E9 bleu! Not every step cooperated \u2014 Franck is not amused.",
+  "H\u00E9las! There were complications, but Franck handled them with grace.",
+];
+
+const FRANCK_CLOSERS = [
+  "The choreography of human connection has been orchestrated. Franck does not do mediocre!",
+  "Another masterpiece from Franck \u2014 the art of the arrangement is never done, but today it is parfait!",
+  "Franck has spoken. The rest is in the hands of destiny \u2014 and the seating chart.",
+  "Remember: every seat tells a story. Franck has made sure they are all bestsellers.",
+  "Fin! If the guests are unhappy, it is not Franck's fault \u2014 it is their lack of joie de vivre!",
+];
+
+function pickRandom(arr: string[]): string {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/**
+ * Format a Franck-style summary of a completed workflow.
+ * Includes dramatic flair, French expressions, and natural language.
+ */
 export function formatWorkflowSummary(
   workflow: WorkflowDefinition,
   result: WorkflowResult,
@@ -529,26 +883,38 @@ export function formatWorkflowSummary(
   const completedSteps = result.steps.filter((s) => s.status === 'completed');
   const failedSteps = result.steps.filter((s) => s.status === 'failed');
 
-  let summary = result.success
-    ? `${workflow.icon} **${workflow.name}** — C'est magnifique! Franck has executed every step with perfection!\n\n`
-    : `${workflow.icon} **${workflow.name}** — Franck completed the workflow, but encountered some turbulence.\n\n`;
+  const opener = result.success
+    ? pickRandom(FRANCK_SUCCESS_OPENERS)
+    : pickRandom(FRANCK_FAILURE_OPENERS);
 
-  for (const step of completedSteps) {
-    const readable = summarizeToolResult(step.toolName, step.result ?? '{}');
-    summary += `**${step.label}:** ${readable}\n\n`;
-  }
+  let summary = `${workflow.icon} **${workflow.name}** \u2014 ${opener}\n\n`;
 
-  if (failedSteps.length > 0) {
-    summary += `\n*Quelle horreur! ${failedSteps.length} step(s) had errors:*\n`;
-    for (const step of failedSteps) {
-      summary += `- ${step.label}: ${step.error}\n`;
+  // Describe completed steps in a more narrative style
+  if (completedSteps.length > 0) {
+    for (let i = 0; i < completedSteps.length; i++) {
+      const step = completedSteps[i];
+      const readable = summarizeToolResult(step.toolName, step.result ?? '{}');
+      const stepNum = i + 1;
+      summary += `**\u00C9tape ${stepNum} \u2014 ${step.label}:** ${readable}\n\n`;
     }
   }
 
-  summary += '\n*The choreography of human connection has been orchestrated. Franck does not do mediocre!*';
+  if (failedSteps.length > 0) {
+    summary += `\n*Quelle horreur! ${failedSteps.length} step(s) encountered des probl\u00E8mes:*\n`;
+    for (const step of failedSteps) {
+      summary += `- **${step.label}:** ${step.error}\n`;
+    }
+    summary += '\n';
+  }
+
+  summary += `\n*${pickRandom(FRANCK_CLOSERS)}*`;
 
   return summary;
 }
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 /**
  * Returns all available workflows for the capabilities panel.
@@ -567,4 +933,18 @@ export function getAvailableWorkflows(): {
     description: w.description,
     triggerPhrases: w.triggerPhrases,
   }));
+}
+
+/**
+ * Returns all trigger phrases across all workflows.
+ * Useful for autocomplete/suggestions in the UI.
+ */
+export function getAllTriggerPhrases(): string[] {
+  const phrases: string[] = [];
+  for (const workflow of WORKFLOWS) {
+    for (const phrase of workflow.triggerPhrases) {
+      phrases.push(phrase);
+    }
+  }
+  return phrases;
 }

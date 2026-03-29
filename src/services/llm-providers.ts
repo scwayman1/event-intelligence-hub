@@ -66,6 +66,46 @@ export interface NormalizedResponse {
 }
 
 // ──────────────────────────────────────────────
+// Model Capabilities
+// ──────────────────────────────────────────────
+
+interface ModelCapabilities {
+  toolUse: boolean;
+}
+
+const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
+  // Models that do NOT support tool use well
+  'stepfun/step-1.5-flash:free': { toolUse: false },
+  'nvidia/llama-3.3-nemotron-super-49b-v1:free': { toolUse: false },
+  'meta-llama/llama-4-maverick': { toolUse: false },
+  'deepseek/deepseek-chat-v3': { toolUse: false },
+  'mistralai/mistral-large-2': { toolUse: false },
+};
+
+const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: false };
+
+/**
+ * Check whether a model supports tool use.
+ * Claude and GPT models are known to support tools well.
+ * Other models default to no tool support unless explicitly listed.
+ */
+export function modelSupportsTools(modelId: string): boolean {
+  // Exact match first
+  if (modelId in MODEL_CAPABILITIES) {
+    return MODEL_CAPABILITIES[modelId].toolUse;
+  }
+  // Claude models always support tools
+  const lower = modelId.toLowerCase();
+  if (lower.includes('claude')) return true;
+  // GPT models always support tools
+  if (lower.includes('gpt')) return true;
+  // Gemini models support tools
+  if (lower.includes('gemini')) return true;
+  // Default: no tool support
+  return DEFAULT_CAPABILITIES.toolUse;
+}
+
+// ──────────────────────────────────────────────
 // Provider Registry
 // ──────────────────────────────────────────────
 
@@ -262,6 +302,55 @@ function anthropicMessagesToOpenAI(
 }
 
 // ──────────────────────────────────────────────
+// Retry & Timeout Helpers
+// ──────────────────────────────────────────────
+
+const API_TIMEOUT_MS = 15_000;
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
+const MAX_RETRIES = 2;
+const BACKOFF_MS = [1000, 2000];
+
+function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = API_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() =>
+    clearTimeout(timer),
+  );
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, init);
+      if (!response.ok && RETRYABLE_STATUS_CODES.has(response.status) && attempt < MAX_RETRIES) {
+        await delay(BACKOFF_MS[attempt]);
+        continue;
+      }
+      return response;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < MAX_RETRIES) {
+        await delay(BACKOFF_MS[attempt]);
+        continue;
+      }
+    }
+  }
+  throw lastError ?? new Error('Request failed after retries');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ──────────────────────────────────────────────
 // API Callers
 // ──────────────────────────────────────────────
 
@@ -271,7 +360,19 @@ async function callAnthropic(
   tools: AnthropicTool[],
   rawMessages: AnthropicRawMessage[],
 ): Promise<NormalizedResponse> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const supportsTools = modelSupportsTools(config.model);
+
+  const body: Record<string, unknown> = {
+    model: config.model,
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: rawMessages,
+  };
+  if (supportsTools && tools.length > 0) {
+    body.tools = tools;
+  }
+
+  const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -279,13 +380,7 @@ async function callAnthropic(
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      tools,
-      messages: rawMessages,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -294,18 +389,26 @@ async function callAnthropic(
   }
 
   const data = await response.json();
+
+  // Validate expected response shape
+  if (!data || !Array.isArray(data.content)) {
+    throw new Error(
+      `Anthropic API returned unexpected response shape: missing "content" array`,
+    );
+  }
+
   const content: AnthropicContentBlock[] = data.content;
-  const stopReason: string = data.stop_reason;
+  const stopReason: string = data.stop_reason ?? 'end_turn';
 
   const textBlocks = content.filter((b) => b.type === 'text');
   const toolUseBlocks = content.filter((b) => b.type === 'tool_use');
 
   return {
-    textContent: textBlocks.map((b) => b.text!).join('\n\n'),
+    textContent: textBlocks.map((b) => b.text ?? '').join('\n\n'),
     toolCalls: toolUseBlocks.map((b) => ({
-      id: b.id!,
-      name: b.name!,
-      input: b.input as Record<string, unknown>,
+      id: b.id ?? '',
+      name: b.name ?? '',
+      input: (b.input as Record<string, unknown>) ?? {},
     })),
     stopReason: stopReason === 'tool_use' ? 'tool_use' : 'end_turn',
     rawAssistantMessage: { role: 'assistant', content },
@@ -319,9 +422,18 @@ async function callOpenRouter(
   rawMessages: AnthropicRawMessage[],
 ): Promise<NormalizedResponse> {
   const openAIMessages = anthropicMessagesToOpenAI(systemPrompt, rawMessages);
-  const openAITools = anthropicToolsToOpenAI(tools);
+  const supportsTools = modelSupportsTools(config.model);
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const body: Record<string, unknown> = {
+    model: config.model,
+    max_tokens: 4096,
+    messages: openAIMessages,
+  };
+  if (supportsTools && tools.length > 0) {
+    body.tools = anthropicToolsToOpenAI(tools);
+  }
+
+  const response = await fetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -329,12 +441,7 @@ async function callOpenRouter(
       'HTTP-Referer': window.location.origin,
       'X-Title': 'Event Intelligence Hub - Franck Agent',
     },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: 4096,
-      tools: openAITools,
-      messages: openAIMessages,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -343,18 +450,42 @@ async function callOpenRouter(
   }
 
   const data = await response.json();
-  const choice = data.choices?.[0];
-  if (!choice) throw new Error('No response from OpenRouter');
+
+  // Validate expected response shape
+  if (!data || !Array.isArray(data.choices) || data.choices.length === 0) {
+    throw new Error('OpenRouter API returned unexpected response shape: missing "choices"');
+  }
+
+  const choice = data.choices[0];
+  if (!choice.message) {
+    throw new Error('OpenRouter API returned unexpected response shape: missing "message"');
+  }
 
   const msg = choice.message;
-  const finishReason = choice.finish_reason;
+  const finishReason = choice.finish_reason ?? 'stop';
 
-  const textContent = msg.content || '';
-  const toolCalls = (msg.tool_calls || []).map((tc: { id: string; function: { name: string; arguments: string } }) => ({
-    id: tc.id,
-    name: tc.function.name,
-    input: JSON.parse(tc.function.arguments) as Record<string, unknown>,
-  }));
+  const textContent: string = typeof msg.content === 'string' ? msg.content : '';
+
+  // Parse tool calls safely — if JSON.parse fails, treat as text response
+  const toolCalls: { id: string; name: string; input: Record<string, unknown> }[] = [];
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls as { id: string; function: { name: string; arguments: string } }[]) {
+      try {
+        const parsed = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        toolCalls.push({
+          id: tc.id,
+          name: tc.function.name,
+          input: parsed,
+        });
+      } catch {
+        // If arguments can't be parsed, skip this tool call and fall through to text response.
+        // Append the raw data to textContent so nothing is silently lost.
+        console.warn(
+          `Failed to parse tool call arguments for "${tc.function.name}", treating as text response`,
+        );
+      }
+    }
+  }
 
   // Convert back to Anthropic content block format for rawMessages storage
   const anthropicBlocks: AnthropicContentBlock[] = [];
@@ -370,13 +501,20 @@ async function callOpenRouter(
     });
   }
 
+  // Always use AnthropicContentBlock[] for rawAssistantMessage.content for consistency.
+  // If there are no blocks at all, produce a single empty text block to keep the type stable.
+  const rawContent: AnthropicContentBlock[] =
+    anthropicBlocks.length > 0
+      ? anthropicBlocks
+      : [{ type: 'text', text: '' }];
+
   return {
     textContent,
     toolCalls,
     stopReason: finishReason === 'tool_calls' || toolCalls.length > 0 ? 'tool_use' : 'end_turn',
     rawAssistantMessage: {
       role: 'assistant',
-      content: anthropicBlocks.length > 0 ? anthropicBlocks : textContent,
+      content: rawContent,
     },
   };
 }

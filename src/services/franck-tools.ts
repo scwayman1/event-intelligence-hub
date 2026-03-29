@@ -63,6 +63,46 @@ function errorResult(message: string): string {
   return json({ error: true, message });
 }
 
+function eventNotFoundError(eventId: string): string {
+  return errorResult(
+    `Event '${eventId}' not found. Make sure you're in an active event.`,
+  );
+}
+
+/** Validate that required string parameters are present and non-empty. */
+function validateRequired(
+  input: ToolInput,
+  ...keys: string[]
+): string | null {
+  for (const key of keys) {
+    const val = input[key];
+    if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+      return `Parameter '${key}' is required but was not provided.`;
+    }
+  }
+  return null;
+}
+
+/** Validate that a value is a finite number. Returns an error string or null. */
+function validateNumber(
+  value: unknown,
+  paramName: string,
+): string | null {
+  if (value === undefined || value === null) return null; // optional
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return `Parameter '${paramName}' must be a valid number, but received: ${JSON.stringify(value)}`;
+  }
+  return null;
+}
+
+/** Build a comma-separated list of valid table numbers from context tables. */
+function validTableNumbers(tables: Array<{ tableNumber?: number | null; name: string }>): string {
+  if (tables.length === 0) return '(no tables exist)';
+  return tables
+    .map((t) => t.tableNumber != null ? `${t.tableNumber} (${t.name})` : t.name)
+    .join(', ');
+}
+
 /** Look up the event and its associated data from the store snapshot. */
 function getEventContext(state: StoreState, eventId: string) {
   const event = state.events.find((e) => e.id === eventId);
@@ -109,13 +149,16 @@ function getEventSummary(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const { event, guests, tables, assignments, versions } = ctx;
   const health = computeEventHealth(event, guests, tables, assignments, versions);
   const guestAnalytics = analyzeGuests(guests, eventId);
 
+  const confirmedCount = guestAnalytics.byStatus.confirmed + guestAnalytics.byStatus.checked_in;
+
   return json({
+    summary: `${event.name}: ${guestAnalytics.total} guests, ${confirmedCount} confirmed, health ${health.overall}/100`,
     eventId: event.id,
     name: event.name,
     type: event.type,
@@ -125,8 +168,7 @@ function getEventSummary(
     venue: event.venue,
     venueAddress: event.venueAddress,
     guestCount: guestAnalytics.total,
-    confirmedCount:
-      guestAnalytics.byStatus.confirmed + guestAnalytics.byStatus.checked_in,
+    confirmedCount,
     declinedCount: guestAnalytics.byStatus.declined,
     pendingCount:
       guestAnalytics.byStatus.invited + guestAnalytics.byStatus.waitlist,
@@ -142,7 +184,7 @@ function analyzeGuestList(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   let filteredGuests = ctx.guests;
 
@@ -162,7 +204,10 @@ function analyzeGuestList(
   const analytics = analyzeGuests(ctx.guests, eventId);
   const segments = getGuestSegments(filteredGuests);
 
+  const filterDesc = [category && `category=${category}`, rsvpStatus && `rsvp=${rsvpStatus}`].filter(Boolean).join(', ') || 'none';
+
   return json({
+    summary: `${filteredGuests.length} guests matched (filters: ${filterDesc}). ${analytics.confirmationRate}% confirmation rate.`,
     totalFiltered: filteredGuests.length,
     filters: {
       category: category ?? null,
@@ -196,11 +241,14 @@ function searchGuests(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const query = (input.query as string | undefined) ?? '';
-  if (!query.trim()) {
-    return errorResult('A search query is required.');
+  const reqErr = validateRequired(input, 'query');
+  if (reqErr) return errorResult(reqErr);
+
+  const query = (input.query as string).trim();
+  if (!query) {
+    return errorResult("Parameter 'query' is required but was not provided.");
   }
 
   const needle = query.toLowerCase();
@@ -219,7 +267,17 @@ function searchGuests(
     return haystack.includes(needle);
   });
 
+  if (matches.length === 0) {
+    return json({
+      summary: `Found 0 guests matching '${query}'. Check the spelling or try a partial name.`,
+      query,
+      resultCount: 0,
+      results: [],
+    });
+  }
+
   return json({
+    summary: `Found ${matches.length} guest${matches.length === 1 ? '' : 's'} matching '${query}'`,
     query,
     resultCount: matches.length,
     results: matches.map((g) => {
@@ -247,10 +305,11 @@ function getGuestDetails(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
-  if (!guestId) return errorResult('guestId is required.');
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+  const guestId = input.guestId as string;
 
   const guest = ctx.guests.find((g) => g.id === guestId);
   if (!guest) {
@@ -273,7 +332,9 @@ function getGuestDetails(
     tableName = table?.name;
   }
 
+  const seatInfo = assignment ? `, seated at ${tableName ?? 'a table'}` : ', not yet seated';
   return json({
+    summary: `${guest.displayName} (${guest.rsvpStatus}, ${guest.category}${seatInfo})`,
     guest: {
       id: guest.id,
       firstName: guest.firstName,
@@ -318,11 +379,11 @@ function autoSeatGuests(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.tables.length === 0) {
     return errorResult(
-      'No tables exist in the active layout version. Add tables before auto-seating.',
+      'No tables exist in the active layout version. Use the add_table tool to create tables first (e.g. add_table with capacity 8).',
     );
   }
 
@@ -377,8 +438,8 @@ function autoSeatGuests(
       };
     }),
     score: proposal.score,
-    summary: proposal.summary,
-    note: `${applied} of ${proposal.assignments.length} guests have been seated. Assignments are now LIVE.`,
+    proposalSummary: proposal.summary,
+    summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.`,
   });
 }
 
@@ -388,7 +449,7 @@ function scoreSeating(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.assignments.length === 0) {
     return errorResult('No seating assignments exist to score.');
@@ -404,6 +465,7 @@ function scoreSeating(
   });
 
   return json({
+    summary: `Seating score: ${score.overall}/100 for ${ctx.assignments.length} assignments`,
     score,
     assignmentCount: ctx.assignments.length,
     versionId: ctx.versionId,
@@ -416,7 +478,7 @@ function getSeatingRecommendationsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const recommendations = getSeatingRecommendations({
     tables: ctx.tables,
@@ -427,11 +489,16 @@ function getSeatingRecommendationsTool(
     versionId: ctx.versionId,
   });
 
+  if (input.limit !== undefined) {
+    const numErr = validateNumber(input.limit, 'limit');
+    if (numErr) return errorResult(numErr);
+  }
   const limit =
     typeof input.limit === 'number' ? input.limit : recommendations.length;
   const limited = recommendations.slice(0, limit);
 
   return json({
+    summary: `${recommendations.length} seating recommendation${recommendations.length === 1 ? '' : 's'} available (showing ${limited.length})`,
     totalRecommendations: recommendations.length,
     showing: limited.length,
     recommendations: limited.map((r) => {
@@ -456,7 +523,7 @@ function getTableInfo(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const seatingAnalytics = analyzeSeating(
     ctx.tables,
@@ -468,6 +535,7 @@ function getTableInfo(
   );
 
   return json({
+    summary: `${seatingAnalytics.totalTables} tables, ${seatingAnalytics.seatedGuests}/${seatingAnalytics.totalCapacity} seats filled (${seatingAnalytics.averageUtilization}% utilization)`,
     totalTables: seatingAnalytics.totalTables,
     totalCapacity: seatingAnalytics.totalCapacity,
     seatedGuests: seatingAnalytics.seatedGuests,
@@ -496,12 +564,13 @@ function generateEmailDraft(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+
+  const guestId = input.guestId as string;
   const templateType = input.templateType as string | undefined;
-
-  if (!guestId) return errorResult('guestId is required.');
 
   const guest = ctx.guests.find((g) => g.id === guestId);
   if (!guest) {
@@ -530,6 +599,7 @@ function generateEmailDraft(
   const rendered = renderTemplate(template, guest, ctx.event, tableName);
 
   return json({
+    summary: `Email draft for ${guest.displayName} using '${template.name}' template`,
     templateUsed: template.name,
     templateType: template.type,
     guestName: guest.displayName,
@@ -545,7 +615,7 @@ function flagIssues(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const { event, guests, tables, assignments, versions, groups, memberships } =
     ctx;
@@ -574,6 +644,9 @@ function flagIssues(
   );
 
   return json({
+    summary: activeAlerts.length === 0
+      ? `No issues found. Health score: ${health.overall}/100`
+      : `${activeAlerts.length} issue${activeAlerts.length === 1 ? '' : 's'} flagged. Health score: ${health.overall}/100`,
     healthScore: health.overall,
     issueCount: activeAlerts.length,
     issues: activeAlerts.map((i) => ({
@@ -595,7 +668,7 @@ function getAttendanceProjection(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.guests.length === 0) {
     return errorResult('No guests found for this event.');
@@ -604,6 +677,7 @@ function getAttendanceProjection(
   const projection = computeAttendanceProjection(ctx.guests);
 
   return json({
+    summary: `Projected attendance: ${projection.expected} (range: ${projection.low}-${projection.high})`,
     eventId,
     projection,
   });
@@ -615,7 +689,7 @@ function analyzeDietaryNeedsTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.guests.length === 0) {
     return errorResult('No guests found for this event.');
@@ -624,6 +698,7 @@ function analyzeDietaryNeedsTool(
   const analysis = analyzeDietaryNeeds(ctx.guests);
 
   return json({
+    summary: `${analysis.totalWithRestrictions ?? 0} guest${(analysis.totalWithRestrictions ?? 0) === 1 ? '' : 's'} with dietary restrictions out of ${ctx.guests.length}`,
     eventId,
     ...analysis,
   });
@@ -639,13 +714,19 @@ function updateGuestTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
-  if (!guestId) return errorResult('guestId is required.');
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+  const guestId = input.guestId as string;
 
   const guest = ctx.guests.find((g) => g.id === guestId);
-  if (!guest) return errorResult(`Guest "${guestId}" not found.`);
+  if (!guest) return errorResult(`Guest '${guestId}' not found in this event.`);
+
+  if (input.partySize !== undefined) {
+    const numErr = validateNumber(input.partySize, 'partySize');
+    if (numErr) return errorResult(numErr);
+  }
 
   const store = useEventStore.getState();
   const updates: Partial<Guest> = {};
@@ -670,10 +751,12 @@ function updateGuestTool(
 
   store.updateGuest(guestId, updates);
 
+  const finalName = updates.displayName ?? guest.displayName;
   return json({
+    summary: `Updated ${finalName}: changed ${Object.keys(updates).join(', ')}`,
     updated: true,
     guestId,
-    guestName: updates.displayName ?? guest.displayName,
+    guestName: finalName,
     fieldsChanged: Object.keys(updates),
   });
 }
@@ -684,7 +767,7 @@ function deleteGuestsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestIds = input.guestIds as string[] | undefined;
   const filter = input.filter as string | undefined;
@@ -719,6 +802,7 @@ function deleteGuestsTool(
   }
 
   return json({
+    summary: `Deleted ${toDelete.length} guest${toDelete.length === 1 ? '' : 's'}`,
     deleted: toDelete.length,
     deletedIds: toDelete.slice(0, 20),
     deletedNames: deletedNames.slice(0, 20),
@@ -732,11 +816,16 @@ function bulkUpdateGuestsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestIds = input.guestIds as string[] | undefined;
   const filter = input.filter as string | undefined;
   const updates: Partial<Guest> = {};
+
+  if (input.partySize !== undefined) {
+    const numErr = validateNumber(input.partySize, 'partySize');
+    if (numErr) return errorResult(numErr);
+  }
 
   if (input.rsvpStatus !== undefined) updates.rsvpStatus = input.rsvpStatus as Guest['rsvpStatus'];
   if (input.category !== undefined) updates.category = input.category as Guest['category'];
@@ -775,6 +864,7 @@ function bulkUpdateGuestsTool(
   }
 
   return json({
+    summary: `Bulk-updated ${targets.length} guest${targets.length === 1 ? '' : 's'}: changed ${Object.keys(updates).join(', ')}`,
     updated: targets.length,
     fieldsChanged: Object.keys(updates),
     newValues: updates,
@@ -787,33 +877,49 @@ function moveGuestToTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+
+  const guestId = input.guestId as string;
   let tableId = input.tableId as string | undefined;
   const tableNumber = input.tableNumber as number | undefined;
 
-  if (!guestId) return errorResult('guestId is required.');
+  if (tableNumber != null) {
+    const numErr = validateNumber(tableNumber, 'tableNumber');
+    if (numErr) return errorResult(numErr);
+  }
 
   // Resolve table by number if tableId not provided
   if (!tableId && tableNumber != null) {
     const tableByNumber = ctx.tables.find((t) => t.tableNumber === tableNumber);
-    if (!tableByNumber) return errorResult(`No table with number ${tableNumber} found. Use get_table_info to see available tables.`);
+    if (!tableByNumber) {
+      return errorResult(
+        `No table with number ${tableNumber}. Valid table numbers: ${validTableNumbers(ctx.tables)}`,
+      );
+    }
     tableId = tableByNumber.id;
   }
 
-  if (!tableId) return errorResult('Either tableId or tableNumber is required.');
+  if (!tableId) return errorResult("Either 'tableId' or 'tableNumber' is required.");
 
   const guest = ctx.guests.find((g) => g.id === guestId);
-  if (!guest) return errorResult(`Guest "${guestId}" not found.`);
+  if (!guest) return errorResult(`Guest '${guestId}' not found in this event.`);
 
   const table = ctx.tables.find((t) => t.id === tableId);
-  if (!table) return errorResult(`Table "${tableId}" not found.`);
+  if (!table) {
+    return errorResult(
+      `Table '${tableId}' not found. Valid tables: ${validTableNumbers(ctx.tables)}`,
+    );
+  }
 
   const store = useEventStore.getState();
   store.moveGuestToTable(guestId, tableId, ctx.versionId);
 
+  const tableLabel = table.tableNumber != null ? `Table ${table.tableNumber}` : table.name;
   return json({
+    summary: `Moved ${guest.displayName} to ${tableLabel}`,
     moved: true,
     guestName: guest.displayName,
     tableNumber: table.tableNumber ?? null,
@@ -827,17 +933,18 @@ function swapGuestsTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId1 = input.guestId1 as string | undefined;
-  const guestId2 = input.guestId2 as string | undefined;
+  const reqErr = validateRequired(input, 'guestId1', 'guestId2');
+  if (reqErr) return errorResult(reqErr);
 
-  if (!guestId1 || !guestId2) return errorResult('Both guestId1 and guestId2 are required.');
+  const guestId1 = input.guestId1 as string;
+  const guestId2 = input.guestId2 as string;
 
   const guest1 = ctx.guests.find((g) => g.id === guestId1);
   const guest2 = ctx.guests.find((g) => g.id === guestId2);
-  if (!guest1) return errorResult(`Guest "${guestId1}" not found.`);
-  if (!guest2) return errorResult(`Guest "${guestId2}" not found.`);
+  if (!guest1) return errorResult(`Guest '${guestId1}' not found in this event.`);
+  if (!guest2) return errorResult(`Guest '${guestId2}' not found in this event.`);
 
   const assignment1 = ctx.assignments.find((a) => a.guestId === guestId1);
   const assignment2 = ctx.assignments.find((a) => a.guestId === guestId2);
@@ -856,6 +963,7 @@ function swapGuestsTool(
   store.moveGuestToTable(guestId2, assignment1.tableId, ctx.versionId);
 
   return json({
+    summary: `Swapped ${guest1.displayName} (now at ${table2?.name ?? 'Unknown'}) and ${guest2.displayName} (now at ${table1?.name ?? 'Unknown'})`,
     swapped: true,
     guest1: { name: guest1.displayName, from: table1?.name ?? 'Unknown', to: table2?.name ?? 'Unknown' },
     guest2: { name: guest2.displayName, from: table2?.name ?? 'Unknown', to: table1?.name ?? 'Unknown' },
@@ -868,21 +976,26 @@ function unseatGuestTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const guestId = input.guestId as string | undefined;
-  if (!guestId) return errorResult('guestId is required.');
+  const reqErr = validateRequired(input, 'guestId');
+  if (reqErr) return errorResult(reqErr);
+  const guestId = input.guestId as string;
+
+  const guest = ctx.guests.find((g) => g.id === guestId);
+  if (!guest) return errorResult(`Guest '${guestId}' not found in this event.`);
 
   const assignment = ctx.assignments.find((a) => a.guestId === guestId);
-  if (!assignment) return errorResult(`Guest "${guestId}" has no seating assignment.`);
+  if (!assignment) return errorResult(`${guest.displayName} has no seating assignment to remove.`);
 
+  const table = ctx.tables.find((t) => t.id === assignment.tableId);
   const store = useEventStore.getState();
   store.removeSeatingAssignment(assignment.id);
 
-  const guest = ctx.guests.find((g) => g.id === guestId);
   return json({
+    summary: `Unseated ${guest.displayName} from ${table?.name ?? 'their table'}`,
     unseated: true,
-    guestName: guest?.displayName ?? guestId,
+    guestName: guest.displayName,
   });
 }
 
@@ -892,7 +1005,7 @@ function clearAllSeatingTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.assignments.length === 0) {
     return errorResult('No seating assignments to clear.');
@@ -905,6 +1018,7 @@ function clearAllSeatingTool(
   }
 
   return json({
+    summary: `Cleared all ${count} seating assignment${count === 1 ? '' : 's'}`,
     cleared: count,
     note: `All ${count} seating assignments for this version have been removed.`,
   });
@@ -916,12 +1030,18 @@ async function runRefinementLoopTool(
   input: ToolInput,
 ): Promise<string> {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.tables.length === 0) {
-    return errorResult('No tables exist in the active layout version. Add tables before running refinement.');
+    return errorResult(
+      'No tables exist in the active layout version. Use the add_table tool to create tables first (e.g. add_table with capacity 8).',
+    );
   }
 
+  if (input.maxIterations !== undefined) {
+    const numErr = validateNumber(input.maxIterations, 'maxIterations');
+    if (numErr) return errorResult(numErr);
+  }
   const maxIterations = typeof input.maxIterations === 'number' ? input.maxIterations : 20;
 
   try {
@@ -952,12 +1072,12 @@ function createEventTool(
   eventId: string,
   input: ToolInput,
 ): string {
-  const name = input.name as string | undefined;
-  const type = (input.type as AppEvent['type']) ?? 'other';
-  const date = input.date as string | undefined;
+  const reqErr = validateRequired(input, 'name', 'date');
+  if (reqErr) return errorResult(reqErr);
 
-  if (!name) return errorResult('name is required.');
-  if (!date) return errorResult('date is required.');
+  const name = input.name as string;
+  const type = (input.type as AppEvent['type']) ?? 'other';
+  const date = input.date as string;
 
   const store = useEventStore.getState();
   const orgId = state.activeOrgId ?? 'org-default';
@@ -997,6 +1117,7 @@ function createEventTool(
   store.addVersion(initialVersion);
 
   return json({
+    summary: `Created event '${newEvent.name}' (${newEvent.type}) on ${newEvent.date}`,
     created: true,
     eventId: newEventId,
     versionId,
@@ -1013,7 +1134,7 @@ function updateEventTool(
   input: ToolInput,
 ): string {
   const event = state.events.find((e) => e.id === eventId);
-  if (!event) return errorResult(`Event "${eventId}" not found.`);
+  if (!event) return eventNotFoundError(eventId);
 
   const store = useEventStore.getState();
   const updates: Partial<AppEvent> = {};
@@ -1035,10 +1156,12 @@ function updateEventTool(
 
   store.updateEvent(eventId, updates);
 
+  const changedFields = Object.keys(updates).filter((k) => k !== 'updatedAt');
   return json({
+    summary: `Updated event: changed ${changedFields.join(', ')}`,
     updated: true,
     eventId,
-    fieldsChanged: Object.keys(updates).filter((k) => k !== 'updatedAt'),
+    fieldsChanged: changedFields,
   });
 }
 
@@ -1053,6 +1176,7 @@ function listEventsTool(
     : state.events;
 
   return json({
+    summary: `${events.length} event${events.length === 1 ? '' : 's'} found`,
     count: events.length,
     events: events.map((e) => ({
       id: e.id,
@@ -1076,11 +1200,13 @@ function addGuestTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const firstName = input.firstName as string | undefined;
-  const lastName = input.lastName as string | undefined;
-  if (!firstName || !lastName) return errorResult('firstName and lastName are required.');
+  const reqErr = validateRequired(input, 'firstName', 'lastName');
+  if (reqErr) return errorResult(reqErr);
+
+  const firstName = input.firstName as string;
+  const lastName = input.lastName as string;
 
   const store = useEventStore.getState();
   const guestId = `guest-${crypto.randomUUID()}`;
@@ -1109,6 +1235,7 @@ function addGuestTool(
   store.addGuest(guest);
 
   return json({
+    summary: `Added guest ${guest.displayName} (${guest.category}, ${guest.rsvpStatus})`,
     added: true,
     guestId,
     displayName: guest.displayName,
@@ -1123,7 +1250,7 @@ function addGuestsBulkTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   const guestsInput = input.guests as Array<Record<string, unknown>> | undefined;
   if (!guestsInput || guestsInput.length === 0) return errorResult('guests array is required and must not be empty.');
@@ -1163,9 +1290,11 @@ function addGuestsBulkTool(
     added.push({ guestId, displayName: guest.displayName });
   }
 
+  const skipped = guestsInput.length - added.length;
   return json({
+    summary: `Added ${added.length} guest${added.length === 1 ? '' : 's'}${skipped > 0 ? `, skipped ${skipped} (missing name)` : ''}`,
     added: added.length,
-    skipped: guestsInput.length - added.length,
+    skipped,
     guests: added,
   });
 }
@@ -1180,7 +1309,12 @@ function addTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  if (input.capacity !== undefined) {
+    const numErr = validateNumber(input.capacity, 'capacity');
+    if (numErr) return errorResult(numErr);
+  }
 
   const store = useEventStore.getState();
   const tableType = (input.type as 'round_table' | 'rect_table') ?? 'round_table';
@@ -1222,6 +1356,7 @@ function addTableTool(
   store.addLayoutObject(layoutObject);
 
   return json({
+    summary: `Added ${tableName} (${tableType}, capacity ${capacity})`,
     added: true,
     tableId: id,
     tableNumber,
@@ -1237,21 +1372,34 @@ function removeTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   let tableId = input.tableId as string | undefined;
   const tableNumber = input.tableNumber as number | undefined;
 
+  if (tableNumber != null) {
+    const numErr = validateNumber(tableNumber, 'tableNumber');
+    if (numErr) return errorResult(numErr);
+  }
+
   if (!tableId && tableNumber != null) {
     const table = ctx.tables.find((t) => t.tableNumber === tableNumber);
-    if (!table) return errorResult(`No table with number ${tableNumber} found.`);
+    if (!table) {
+      return errorResult(
+        `No table with number ${tableNumber}. Valid table numbers: ${validTableNumbers(ctx.tables)}`,
+      );
+    }
     tableId = table.id;
   }
 
-  if (!tableId) return errorResult('Either tableId or tableNumber is required.');
+  if (!tableId) return errorResult("Either 'tableId' or 'tableNumber' is required.");
 
   const table = ctx.tables.find((t) => t.id === tableId);
-  if (!table) return errorResult(`Table "${tableId}" not found.`);
+  if (!table) {
+    return errorResult(
+      `Table '${tableId}' not found. Valid tables: ${validTableNumbers(ctx.tables)}`,
+    );
+  }
 
   const store = useEventStore.getState();
 
@@ -1264,6 +1412,7 @@ function removeTableTool(
   store.removeLayoutObject(tableId);
 
   return json({
+    summary: `Removed ${table.name}${tableAssignments.length > 0 ? ` and unseated ${tableAssignments.length} guest${tableAssignments.length === 1 ? '' : 's'}` : ''}`,
     removed: true,
     tableId,
     tableNumber: table.tableNumber ?? null,
@@ -1278,21 +1427,39 @@ function updateTableTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   let tableId = input.tableId as string | undefined;
   const tableNumber = input.tableNumber as number | undefined;
 
+  if (tableNumber != null) {
+    const numErr = validateNumber(tableNumber, 'tableNumber');
+    if (numErr) return errorResult(numErr);
+  }
+
   if (!tableId && tableNumber != null) {
     const table = ctx.tables.find((t) => t.tableNumber === tableNumber);
-    if (!table) return errorResult(`No table with number ${tableNumber} found.`);
+    if (!table) {
+      return errorResult(
+        `No table with number ${tableNumber}. Valid table numbers: ${validTableNumbers(ctx.tables)}`,
+      );
+    }
     tableId = table.id;
   }
 
-  if (!tableId) return errorResult('Either tableId or tableNumber is required.');
+  if (!tableId) return errorResult("Either 'tableId' or 'tableNumber' is required.");
 
   const table = ctx.tables.find((t) => t.id === tableId);
-  if (!table) return errorResult(`Table "${tableId}" not found.`);
+  if (!table) {
+    return errorResult(
+      `Table '${tableId}' not found. Valid tables: ${validTableNumbers(ctx.tables)}`,
+    );
+  }
+
+  if (input.capacity !== undefined) {
+    const numErr = validateNumber(input.capacity, 'capacity');
+    if (numErr) return errorResult(numErr);
+  }
 
   const store = useEventStore.getState();
   const updates: Partial<LayoutObject> = {};
@@ -1307,6 +1474,7 @@ function updateTableTool(
   store.updateLayoutObject(tableId, updates);
 
   return json({
+    summary: `Updated ${table.name}: changed ${Object.keys(updates).join(', ')}`,
     updated: true,
     tableId,
     tableNumber: table.tableNumber ?? null,
@@ -1324,13 +1492,13 @@ function createRelationshipGroupTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const name = input.name as string | undefined;
-  const type = input.type as RelationshipType | undefined;
+  const reqErr = validateRequired(input, 'name', 'type');
+  if (reqErr) return errorResult(reqErr);
 
-  if (!name) return errorResult('name is required.');
-  if (!type) return errorResult('type is required.');
+  const name = input.name as string;
+  const type = input.type as RelationshipType;
 
   const store = useEventStore.getState();
   const groupId = `rg-${crypto.randomUUID()}`;
@@ -1348,6 +1516,7 @@ function createRelationshipGroupTool(
   store.addRelationshipGroup(group);
 
   return json({
+    summary: `Created relationship group '${name}' (${type})`,
     created: true,
     groupId,
     name,
@@ -1361,15 +1530,14 @@ function addToRelationshipGroupTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const groupId = input.groupId as string | undefined;
-  const guestId = input.guestId as string | undefined;
-  const role = input.role as string | undefined;
+  const reqErr = validateRequired(input, 'groupId', 'guestId', 'role');
+  if (reqErr) return errorResult(reqErr);
 
-  if (!groupId) return errorResult('groupId is required.');
-  if (!guestId) return errorResult('guestId is required.');
-  if (!role) return errorResult('role is required.');
+  const groupId = input.groupId as string;
+  const guestId = input.guestId as string;
+  const role = input.role as string;
 
   const group = ctx.groups.find((g) => g.id === groupId);
   if (!group) return errorResult(`Relationship group "${groupId}" not found.`);
@@ -1396,6 +1564,7 @@ function addToRelationshipGroupTool(
   store.addRelationshipMembership(membership);
 
   return json({
+    summary: `Added ${guest.displayName} to '${group.name}' as ${role}`,
     added: true,
     membershipId,
     groupName: group.name,
@@ -1410,9 +1579,10 @@ function listRelationshipGroupsTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   return json({
+    summary: `${ctx.groups.length} relationship group${ctx.groups.length === 1 ? '' : 's'}`,
     count: ctx.groups.length,
     groups: ctx.groups.map((g) => {
       const members = ctx.memberships.filter((m) => m.groupId === g.id);
@@ -1446,9 +1616,10 @@ function listVersionsTool(
   _input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
   return json({
+    summary: `${ctx.versions.length} version${ctx.versions.length === 1 ? '' : 's'} (active: ${ctx.activeVersion?.name ?? ctx.event.activeVersionId})`,
     activeVersionId: ctx.event.activeVersionId,
     count: ctx.versions.length,
     versions: ctx.versions.map((v) => ({
@@ -1469,10 +1640,12 @@ function createVersionTool(
   input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
-  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+  if (!ctx) return eventNotFoundError(eventId);
 
-  const name = input.name as string | undefined;
-  if (!name) return errorResult('name is required.');
+  const reqErr = validateRequired(input, 'name');
+  if (reqErr) return errorResult(reqErr);
+
+  const name = input.name as string;
 
   const store = useEventStore.getState();
   const versionId = `ver-${crypto.randomUUID()}`;
@@ -1492,6 +1665,7 @@ function createVersionTool(
   store.addVersion(version);
 
   return json({
+    summary: `Created version '${name}' as draft`,
     created: true,
     versionId,
     name,
@@ -1576,5 +1750,99 @@ export async function executeTool(
     const message =
       err instanceof Error ? err.message : 'An unexpected error occurred.';
     return errorResult(`Tool "${name}" failed: ${message}`);
+  }
+}
+
+/**
+ * Takes a tool name and its JSON result string and returns a one-line
+ * human-readable summary. Usable by workflow and chain formatters.
+ */
+export function summarizeToolResult(toolName: string, result: string): string {
+  try {
+    const data = JSON.parse(result);
+
+    // If the result already has a summary field, use it directly.
+    if (typeof data.summary === 'string') {
+      return data.summary;
+    }
+
+    // Error results
+    if (data.error) {
+      return `Error: ${data.message ?? 'unknown error'}`;
+    }
+
+    // Fallback summaries per tool name
+    switch (toolName) {
+      case 'get_event_summary':
+        return `${data.name ?? 'Event'}: ${data.guestCount ?? 0} guests, ${data.confirmedCount ?? 0} confirmed`;
+      case 'analyze_guest_list':
+        return `${data.totalFiltered ?? 0} guests analyzed, ${data.analytics?.confirmationRate ?? 0}% confirmation rate`;
+      case 'search_guests':
+        return `Found ${data.resultCount ?? 0} guest${(data.resultCount ?? 0) === 1 ? '' : 's'} matching '${data.query ?? ''}'`;
+      case 'get_guest_details':
+        return `Details for ${data.guest?.displayName ?? 'unknown guest'}`;
+      case 'auto_seat_guests':
+        return `Seated ${data.applied ?? 0} guests`;
+      case 'score_seating':
+        return `Seating score: ${data.score?.overall ?? '?'}/100`;
+      case 'get_seating_recommendations':
+        return `${data.totalRecommendations ?? 0} recommendations`;
+      case 'get_table_info':
+        return `${data.totalTables ?? 0} tables, ${data.seatedGuests ?? 0} seated`;
+      case 'generate_email_draft':
+        return `Email draft for ${data.guestName ?? 'guest'}`;
+      case 'flag_issues':
+        return `${data.issueCount ?? 0} issues, health ${data.healthScore ?? '?'}/100`;
+      case 'move_guest_to_table':
+        return `Moved ${data.guestName ?? 'guest'} to ${data.tableName ?? 'table'}`;
+      case 'swap_guests':
+        return `Swapped ${data.guest1?.name ?? 'guest1'} and ${data.guest2?.name ?? 'guest2'}`;
+      case 'clear_all_seating':
+        return `Cleared ${data.cleared ?? 0} assignments`;
+      case 'add_table':
+        return `Added ${data.name ?? 'table'} (capacity ${data.capacity ?? '?'})`;
+      case 'remove_table':
+        return `Removed ${data.tableName ?? 'table'}`;
+      case 'add_guest':
+        return `Added ${data.displayName ?? 'guest'}`;
+      case 'add_guests_bulk':
+        return `Added ${data.added ?? 0} guests`;
+      case 'create_event':
+        return `Created event '${data.name ?? ''}'`;
+      case 'update_event':
+        return `Updated event fields: ${(data.fieldsChanged ?? []).join(', ')}`;
+      case 'list_events':
+        return `${data.count ?? 0} events`;
+      case 'update_guest':
+        return `Updated ${data.guestName ?? 'guest'}`;
+      case 'delete_guests':
+        return `Deleted ${data.deleted ?? 0} guests`;
+      case 'bulk_update_guests':
+        return `Bulk-updated ${data.updated ?? 0} guests`;
+      case 'unseat_guest':
+        return `Unseated ${data.guestName ?? 'guest'}`;
+      case 'run_refinement_loop':
+        return `Refinement: ${data.initialScore ?? '?'} -> ${data.finalScore ?? '?'} (${data.iterations ?? 0} iterations)`;
+      case 'create_relationship_group':
+        return `Created group '${data.name ?? ''}'`;
+      case 'add_to_relationship_group':
+        return `Added ${data.guestName ?? 'guest'} to '${data.groupName ?? 'group'}'`;
+      case 'list_relationship_groups':
+        return `${data.count ?? 0} relationship groups`;
+      case 'list_versions':
+        return `${data.count ?? 0} versions`;
+      case 'create_version':
+        return `Created version '${data.name ?? ''}'`;
+      case 'get_attendance_projection':
+        return `Projected attendance: ${data.projection?.expected ?? '?'}`;
+      case 'analyze_dietary_needs':
+        return `${data.totalWithRestrictions ?? 0} guests with dietary restrictions`;
+      case 'update_table':
+        return `Updated table: ${(data.fieldsChanged ?? []).join(', ')}`;
+      default:
+        return `${toolName} completed`;
+    }
+  } catch {
+    return `${toolName} completed (could not parse result)`;
   }
 }
