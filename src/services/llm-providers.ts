@@ -90,6 +90,8 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
       { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
       { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro' },
       { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash' },
+      { id: 'stepfun/step-1.5-flash:free', label: 'Step 1.5 Flash (Free)' },
+      { id: 'nvidia/llama-3.3-nemotron-super-49b-v1:free', label: 'Nemotron Super 49B (Free)' },
       { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
       { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
       { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
@@ -100,19 +102,31 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 };
 
 // ──────────────────────────────────────────────
+// Default Free Model (works out of the box)
+// ──────────────────────────────────────────────
+
+const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
+const FREE_MODEL = 'stepfun/step-1.5-flash:free';
+
+export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
+  ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
+  : null;
+
+// ──────────────────────────────────────────────
 // Config Persistence
 // ──────────────────────────────────────────────
 
 const CONFIG_KEY = 'franck-provider-config';
 const LEGACY_KEY = 'franck-api-key';
 
-export function getProviderConfig(): ProviderConfig | null {
+export function getProviderConfig(): ProviderConfig {
+  // 1. Check for user-saved config
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (raw) return JSON.parse(raw) as ProviderConfig;
   } catch { /* ignore */ }
 
-  // Migrate legacy Anthropic key
+  // 2. Migrate legacy Anthropic key
   const legacyKey = localStorage.getItem(LEGACY_KEY);
   if (legacyKey) {
     const config: ProviderConfig = {
@@ -125,15 +139,31 @@ export function getProviderConfig(): ProviderConfig | null {
     return config;
   }
 
-  return null;
+  // 3. Fall back to built-in free model
+  if (DEFAULT_FREE_CONFIG) return DEFAULT_FREE_CONFIG;
+
+  // 4. No config at all — should not happen in production
+  throw new Error('No LLM provider configured.');
 }
 
 export function saveProviderConfig(config: ProviderConfig): void {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
 
+/** Whether the user has explicitly configured their own key (not using free default) */
+export function hasCustomProviderConfig(): boolean {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (raw) return true;
+  } catch { /* ignore */ }
+  const legacyKey = localStorage.getItem(LEGACY_KEY);
+  if (legacyKey) return true;
+  return false;
+}
+
+/** Whether Franck can operate — either custom config or free default available */
 export function hasProviderConfig(): boolean {
-  return !!getProviderConfig();
+  return hasCustomProviderConfig() || !!DEFAULT_FREE_CONFIG;
 }
 
 // ──────────────────────────────────────────────

@@ -18,13 +18,16 @@ import {
   Loader2,
   KeyRound,
   Trash2,
+  ExternalLink,
 } from 'lucide-react';
 import {
   sendMessage,
   createConversation,
   hasProviderConfig,
+  hasCustomProviderConfig,
   saveProviderConfig,
   getProviderConfig,
+  DEFAULT_FREE_CONFIG,
   PROVIDERS,
 } from '@/services/franck-agent';
 import type { FranckConversation, ProviderType } from '@/services/franck-agent';
@@ -118,13 +121,14 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(
-    () => getProviderConfig()?.provider ?? 'anthropic'
-  );
-  const [selectedModel, setSelectedModel] = useState(
-    () => getProviderConfig()?.model ?? PROVIDERS.anthropic.defaultModel
-  );
+  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(() => {
+    try { return getProviderConfig().provider; } catch { return 'anthropic'; }
+  });
+  const [selectedModel, setSelectedModel] = useState(() => {
+    try { return getProviderConfig().model; } catch { return PROVIDERS.anthropic.defaultModel; }
+  });
   const [keyStored, setKeyStored] = useState(() => hasProviderConfig());
+  const usingFreeDefault = !hasCustomProviderConfig() && !!DEFAULT_FREE_CONFIG;
 
   // Persist messages whenever they change
   useEffect(() => {
@@ -168,7 +172,8 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const handleSend = useCallback(
     async (text?: string) => {
       const content = (text ?? input).trim();
-      if (!content || isLoading || !keyStored) return;
+      const canSend = keyStored || !!DEFAULT_FREE_CONFIG;
+      if (!content || isLoading || !canSend) return;
 
       // Create user message
       const userMsg: ChatMessage = {
@@ -460,11 +465,55 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     Save Configuration
                   </Button>
 
+                  {usingFreeDefault && (
+                    <div className="rounded-md bg-violet-500/10 border border-violet-500/20 px-3 py-2">
+                      <p className="text-[11px] text-violet-400 font-medium">
+                        Currently using free Step 1.5 Flash model
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Upgrade to Claude, GPT-4.1, Gemini &amp; more with one key.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* OpenRouter onboarding */}
                   {selectedProvider === 'openrouter' && (
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">
-                      OpenRouter provides access to 100+ models with a single API key.
-                      Franck's personality works across all providers.
-                    </p>
+                    <div className="space-y-2">
+                      <a
+                        href="https://openrouter.ai/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          'flex items-center justify-center gap-2 w-full rounded-md px-3 py-2 text-xs font-medium',
+                          'bg-gradient-to-r from-emerald-600 to-teal-600 text-white',
+                          'hover:from-emerald-700 hover:to-teal-700 transition-all'
+                        )}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Get a free OpenRouter key
+                      </a>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed text-center">
+                        One key, 100+ models, pay only for what you use.
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedProvider === 'anthropic' && (
+                    <div className="space-y-2">
+                      <a
+                        href="https://console.anthropic.com/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          'flex items-center justify-center gap-2 w-full rounded-md px-3 py-2 text-xs font-medium',
+                          'border border-border bg-muted/40 text-muted-foreground',
+                          'hover:bg-muted/70 transition-colors'
+                        )}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Get an Anthropic API key
+                      </a>
+                    </div>
                   )}
                 </div>
               </PopoverContent>
@@ -513,7 +562,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
               <button
                 key={action}
                 onClick={() => handleSend(action)}
-                disabled={isLoading || !keyStored}
+                disabled={isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
                 className={cn(
                   'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
                   'border border-border/60 bg-muted/40',
@@ -533,7 +582,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
         {/* ── Input Area ──────────────────────────────────────────────── */}
         <div className="px-4 pb-4">
-          {!keyStored && (
+          {!keyStored && !DEFAULT_FREE_CONFIG && (
             <p className="text-xs text-amber-500 mb-2 text-center">
               Configure your LLM provider first (click the gear icon above)
             </p>
@@ -547,7 +596,9 @@ export function FranckChat({ eventId }: FranckChatProps) {
               placeholder={
                 keyStored
                   ? 'Ask Franck anything about your event...'
-                  : 'Configure provider first'
+                  : DEFAULT_FREE_CONFIG
+                    ? 'Ask Franck anything about your event...'
+                    : 'Configure provider first'
               }
               disabled={!keyStored || isLoading}
               rows={1}
@@ -562,7 +613,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             <Button
               size="icon"
               onClick={() => handleSend()}
-              disabled={!input.trim() || isLoading || !keyStored}
+              disabled={!input.trim() || isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
               className={cn(
                 'h-8 w-8 shrink-0 rounded-lg',
                 'bg-gradient-to-r from-violet-600 to-fuchsia-600',
