@@ -7,6 +7,16 @@
 
 import { executeTool } from './franck-tools';
 import { useEventStore } from '@/data/store';
+import {
+  callLLM,
+  getProviderConfig,
+  saveProviderConfig,
+  hasProviderConfig,
+  PROVIDERS,
+  type ProviderConfig,
+  type ProviderType,
+  type NormalizedResponse,
+} from './llm-providers';
 
 // ──────────────────────────────────────────────
 // 1. System Prompt
@@ -338,60 +348,19 @@ interface ToolResultBlock {
   content: string;
 }
 
-interface AnthropicResponse {
-  content: ContentBlock[];
-  stop_reason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
-}
-
 // ──────────────────────────────────────────────
-// 4. API Provider (BYOK — Direct Browser Access)
+// 4. API Provider (Multi-provider BYOK)
 // ──────────────────────────────────────────────
 
-const API_KEY_STORAGE_KEY = 'franck-api-key';
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-
-export function getApiKey(): string | null {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
-}
-
-export function setApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
-}
-
-export function hasApiKey(): boolean {
-  return !!getApiKey();
-}
-
-async function callAnthropic(rawMessages: RawMessage[]): Promise<AnthropicResponse> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('No Anthropic API key configured. Please set your API key first.');
-  }
-
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      system: FRANCK_SYSTEM_PROMPT,
-      tools: FRANCK_TOOLS,
-      messages: rawMessages,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Anthropic API error (${response.status}): ${errorBody}`);
-  }
-
-  return response.json() as Promise<AnthropicResponse>;
-}
+// Re-export provider utilities for FranckChat consumption
+export {
+  getProviderConfig,
+  saveProviderConfig,
+  hasProviderConfig,
+  PROVIDERS,
+  type ProviderConfig,
+  type ProviderType,
+};
 
 // ──────────────────────────────────────────────
 // 5. Core Function: sendMessage
@@ -407,6 +376,11 @@ export async function sendMessage(
   conversation: FranckConversation;
   toolCalls: { name: string; result: string }[];
 }> {
+  const config = getProviderConfig();
+  if (!config) {
+    throw new Error('No LLM provider configured. Please set your API key first.');
+  }
+
   // Deep-clone conversation so we don't mutate the caller's object
   const rawMessages: RawMessage[] = [...conversation.rawMessages];
   const allToolCalls: { name: string; result: string }[] = [];
@@ -417,32 +391,33 @@ export async function sendMessage(
   const MAX_ITERATIONS = 10;
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    const apiResponse = await callAnthropic(rawMessages);
+    const normalized: NormalizedResponse = await callLLM(
+      config,
+      FRANCK_SYSTEM_PROMPT,
+      FRANCK_TOOLS,
+      rawMessages,
+    );
 
-    // Append the full assistant response to raw history
-    rawMessages.push({ role: 'assistant', content: apiResponse.content });
+    // Append the raw assistant response to history
+    rawMessages.push(normalized.rawAssistantMessage);
 
     // If the model wants to use tools, execute them and loop
-    if (apiResponse.stop_reason === 'tool_use') {
-      const toolUseBlocks = apiResponse.content.filter(
-        (block): block is ToolUseBlock => block.type === 'tool_use',
-      );
-
+    if (normalized.stopReason === 'tool_use' && normalized.toolCalls.length > 0) {
       const toolResultBlocks: ToolResultBlock[] = [];
 
-      for (const toolBlock of toolUseBlocks) {
+      for (const toolCall of normalized.toolCalls) {
         if (onToolExecution) {
-          onToolExecution(toolBlock.name);
+          onToolExecution(toolCall.name);
         }
 
         const storeState = useEventStore.getState();
-        const result = await executeTool(toolBlock.name, toolBlock.input, storeState, eventId);
+        const result = await executeTool(toolCall.name, toolCall.input, storeState, eventId);
 
-        allToolCalls.push({ name: toolBlock.name, result });
+        allToolCalls.push({ name: toolCall.name, result });
 
         toolResultBlocks.push({
           type: 'tool_result',
-          tool_use_id: toolBlock.id,
+          tool_use_id: toolCall.id,
           content: result,
         });
       }
@@ -455,10 +430,7 @@ export async function sendMessage(
     }
 
     // No more tool calls — extract the final text and return
-    const textBlocks = apiResponse.content.filter(
-      (block): block is TextBlock => block.type === 'text',
-    );
-    const responseText = textBlocks.map((b) => b.text).join('\n\n');
+    const responseText = normalized.textContent;
 
     const updatedConversation: FranckConversation = {
       eventId,
