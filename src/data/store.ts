@@ -192,7 +192,23 @@ export const useEventStore = create<EventStore>()(
     return { success: true };
   },
 
-  signOut: () => set({ userProfile: null }),
+  signOut: () => set({
+    userProfile: null,
+    organizations: [],
+    activeOrgId: null,
+    events: [],
+    guests: [],
+    versions: [],
+    layoutObjects: [],
+    seatingAssignments: [],
+    seatingRules: [],
+    relationshipGroups: [],
+    relationshipMemberships: [],
+    collaborators: [],
+    teamInvites: [],
+    orgMembers: [],
+    hasCompletedOnboarding: false,
+  }),
 
   // ── Collaborators ──
   addCollaborator: (collab) => {

@@ -1,14 +1,15 @@
-import { createContext, useContext, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useEventStore } from '@/data/store';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 
-const AuthContext = createContext<ReturnType<typeof useAuth> | null>(null);
+const AuthContext = createContext<ReturnType<typeof useAuth> & { syncing: boolean } | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const { syncAll } = useSupabaseSync();
   const syncedUserRef = useRef<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Sync Supabase auth state to Zustand store so existing components still work
   useEffect(() => {
@@ -22,10 +23,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         createdAt: auth.user.created_at,
       });
 
-      // Sync data from Supabase once per user session
+      // Sync data from Supabase once per user session — AWAIT it
       if (syncedUserRef.current !== auth.user.id) {
         syncedUserRef.current = auth.user.id;
-        syncAll(auth.user.id);
+        setSyncing(true);
+        syncAll(auth.user.id).finally(() => setSyncing(false));
       }
     } else if (!auth.loading) {
       // User signed out — clear Zustand profile
@@ -34,7 +36,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [auth.user, auth.loading, syncAll]);
 
-  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+  const value = { ...auth, syncing };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuthContext() {
