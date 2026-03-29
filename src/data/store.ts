@@ -14,7 +14,7 @@ function dbSync(fn: () => Promise<void>) {
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
 // ──────────────────────────────────────────────
-const STORE_VERSION = 9;
+const STORE_VERSION = 10;
 
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
@@ -361,14 +361,32 @@ export const useEventStore = create<EventStore>()(
       );
       if (tables.length === 0) return s;
 
-      // Sort by spatial position: row-major order (top→bottom, left→right)
-      // Group into rows using Y-position buckets (within 60px = same row)
-      const ROW_THRESHOLD = 60;
-      const sorted = [...tables].sort((a, b) => {
-        const rowDiff = a.y - b.y;
-        if (Math.abs(rowDiff) > ROW_THRESHOLD) return rowDiff;
-        return a.x - b.x; // same row → left to right
-      });
+      // --- Cluster tables into rows by Y-position ---
+      // Sort all tables by Y first
+      const byY = [...tables].sort((a, b) => a.y - b.y);
+
+      // Cluster into rows: tables within ROW_THRESHOLD of the row's
+      // average Y belong to the same row
+      const ROW_THRESHOLD = 50; // half a table height — generous enough for manual placement
+      const rows: typeof tables[] = [];
+      for (const t of byY) {
+        // Try to add to the last row
+        if (rows.length > 0) {
+          const lastRow = rows[rows.length - 1];
+          const rowAvgY = lastRow.reduce((sum, r) => sum + r.y, 0) / lastRow.length;
+          if (Math.abs(t.y - rowAvgY) <= ROW_THRESHOLD) {
+            lastRow.push(t);
+            continue;
+          }
+        }
+        // Start a new row
+        rows.push([t]);
+      }
+
+      // Sort each row left-to-right by X, then flatten
+      const sorted = rows.flatMap((row) =>
+        row.sort((a, b) => a.x - b.x),
+      );
 
       // Build ID → new number map
       const numberMap = new Map<string, number>();
@@ -670,9 +688,8 @@ export const useEventStore = create<EventStore>()(
         }
 
         // v6→v7+: auto-assign tableNumber by spatial position
-        if (version < 9 && migrated.layoutObjects) {
-          // Group tables by versionId, sort by position, assign sequential numbers
-          const ROW_THRESHOLD = 60;
+        if (version < 10 && migrated.layoutObjects) {
+          const ROW_THRESHOLD = 50;
           const versionIds = new Set(
             migrated.layoutObjects
               .filter((o) => o.type === 'round_table' || o.type === 'rect_table')
@@ -680,13 +697,25 @@ export const useEventStore = create<EventStore>()(
           );
           for (const vid of versionIds) {
             const tables = migrated.layoutObjects
-              .filter((o) => o.versionId === vid && (o.type === 'round_table' || o.type === 'rect_table'))
-              .sort((a, b) => {
-                const rowDiff = a.y - b.y;
-                if (Math.abs(rowDiff) > ROW_THRESHOLD) return rowDiff;
-                return a.x - b.x;
-              });
-            tables.forEach((t, i) => {
+              .filter((o) => o.versionId === vid && (o.type === 'round_table' || o.type === 'rect_table'));
+
+            // Cluster into rows by Y, then sort each row by X
+            const byY = [...tables].sort((a, b) => a.y - b.y);
+            const rows: typeof tables[] = [];
+            for (const t of byY) {
+              if (rows.length > 0) {
+                const lastRow = rows[rows.length - 1];
+                const rowAvgY = lastRow.reduce((sum, r) => sum + r.y, 0) / lastRow.length;
+                if (Math.abs(t.y - rowAvgY) <= ROW_THRESHOLD) {
+                  lastRow.push(t);
+                  continue;
+                }
+              }
+              rows.push([t]);
+            }
+            const sorted = rows.flatMap((row) => row.sort((a, b) => a.x - b.x));
+
+            sorted.forEach((t, i) => {
               const idx = migrated.layoutObjects.indexOf(t);
               if (idx >= 0) {
                 migrated.layoutObjects[idx] = { ...t, tableNumber: i + 1, name: `Table ${i + 1}` };
