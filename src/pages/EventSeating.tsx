@@ -586,7 +586,7 @@ export default function EventSeating() {
                       {table ? (
                         <span className="flex items-center gap-1.5 shrink-0 text-xs font-medium text-emerald-400">
                           <MapPin className="w-3 h-3" />
-                          {table.name}
+                          {table.tableNumber != null ? `#${table.tableNumber} · ` : ''}{table.name}
                           {assignment?.seatNumber ? ` · Seat ${assignment.seatNumber}` : ''}
                         </span>
                       ) : (

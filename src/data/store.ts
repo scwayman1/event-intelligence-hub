@@ -14,7 +14,7 @@ function dbSync(fn: () => Promise<void>) {
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
 // ──────────────────────────────────────────────
-const STORE_VERSION = 6;
+const STORE_VERSION = 7;
 
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
@@ -527,6 +527,17 @@ export const useEventStore = create<EventStore>()(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (migrated as any)[key] = saved[key];
           }
+        }
+
+        // v6→v7: auto-assign tableNumber to existing tables that lack one
+        if (version < 7 && migrated.layoutObjects) {
+          let nextNumber = 1;
+          migrated.layoutObjects = migrated.layoutObjects.map((obj) => {
+            if ((obj.type === 'round_table' || obj.type === 'rect_table') && obj.tableNumber == null) {
+              return { ...obj, tableNumber: nextNumber++, name: `Table ${nextNumber - 1}` };
+            }
+            return obj;
+          });
         }
 
         return migrated;

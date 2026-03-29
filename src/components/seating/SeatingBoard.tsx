@@ -284,7 +284,21 @@ function TableCard({
     } : undefined}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-foreground truncate">{table.name}</h3>
+        <div className="flex items-center gap-2 min-w-0">
+          {table.tableNumber != null && (
+            <span
+              className="shrink-0 inline-flex items-center justify-center rounded-full text-[10px] font-bold text-white"
+              style={{
+                width: 20,
+                height: 20,
+                background: 'linear-gradient(135deg, hsl(152 68% 42%), hsl(152 55% 36%))',
+              }}
+            >
+              {table.tableNumber}
+            </span>
+          )}
+          <h3 className="text-sm font-semibold text-foreground truncate">{table.name}</h3>
+        </div>
         <span
           className={cn(
             'text-[11px] font-mono px-2 py-0.5 rounded-full border',

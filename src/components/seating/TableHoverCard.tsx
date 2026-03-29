@@ -185,9 +185,23 @@ export function TableHoverCard({
         <div className="relative overflow-y-auto max-h-[420px] p-4 space-y-3">
           {/* ── Header ───────────────────────────────────────────── */}
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground tracking-tight">
-              {table.name}
-            </h3>
+            <div className="flex items-center gap-2">
+              {table.tableNumber != null && (
+                <span
+                  className="inline-flex items-center justify-center rounded-full text-[10px] font-bold text-white shrink-0"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    background: 'linear-gradient(135deg, hsl(152 68% 42%), hsl(152 55% 36%))',
+                  }}
+                >
+                  {table.tableNumber}
+                </span>
+              )}
+              <h3 className="text-sm font-bold text-foreground tracking-tight">
+                {table.name}
+              </h3>
+            </div>
             <div className="flex items-center gap-1.5">
               <div className="flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
                 <Users className="w-3.5 h-3.5" />
