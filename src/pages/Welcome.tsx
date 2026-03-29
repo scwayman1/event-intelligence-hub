@@ -21,6 +21,7 @@ export default function Welcome() {
   const addOrganization = useEventStore((s) => s.addOrganization);
   const setActiveOrg = useEventStore((s) => s.setActiveOrg);
   const loadSampleData = useEventStore((s) => s.loadSampleData);
+  const isDev = import.meta.env.DEV;
 
   const [step, setStep] = useState<'choose' | 'create-org'>('choose');
   const [orgName, setOrgName] = useState('');
@@ -80,21 +81,23 @@ export default function Welcome() {
               </div>
             </button>
 
-            <button
-              onClick={handleLoadSample}
-              className="w-full glass-panel p-5 text-left hover:border-primary/40 transition-all group"
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
-                  <Package className="w-5 h-5 text-accent" />
+            {isDev && (
+              <button
+                onClick={handleLoadSample}
+                className="w-full glass-panel p-5 text-left hover:border-primary/40 transition-all group"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
+                    <Package className="w-5 h-5 text-accent" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-foreground">Explore with sample data</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">Load two demo schools with events, guests, and seating rules to see the platform in action.</p>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors mt-0.5" />
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground">Explore with sample data</h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">Load two demo schools with events, guests, and seating rules to see the platform in action.</p>
-                </div>
-                <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors mt-0.5" />
-              </div>
-            </button>
+              </button>
+            )}
 
             <p className="text-center text-xs text-muted-foreground pt-2">
               <Sparkles className="w-3 h-3 inline mr-1" />

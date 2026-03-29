@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useEventStore } from '@/data/store';
 
 export default function SignIn() {
   const navigate = useNavigate();
   const { signIn, signInWithGoogle } = useAuthContext();
+  const pendingInviteCode = useEventStore((s) => s.pendingInviteCode);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +34,11 @@ export default function SignIn() {
     if (authError) {
       setError(authError.message);
     } else {
-      navigate('/');
+      if (pendingInviteCode) {
+        navigate(`/join/${pendingInviteCode}`, { replace: true });
+      } else {
+        navigate('/');
+      }
     }
   }
 

@@ -12,6 +12,7 @@ import { CreateOrgDialog } from './CreateOrgDialog';
 
 const globalNav = [
   { label: 'Events', icon: Calendar, path: '/' },
+  { label: 'Team', icon: Users, path: '/team' },
   { label: 'Messages', icon: MessageSquare, path: '/messaging' },
 ];
 

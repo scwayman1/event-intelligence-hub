@@ -223,3 +223,30 @@ export interface RelationshipMembership {
   guestId: string;
   role: string; // freeform but with suggestions per type
 }
+
+// ──────────────────────────────────────────────
+// Team Invites (no-email invite link system)
+// ──────────────────────────────────────────────
+
+export type InviteRole = 'coordinator' | 'co-host' | 'viewer';
+
+export interface TeamInvite {
+  id: string;
+  orgId: string;
+  inviteCode: string;
+  role: InviteRole;
+  createdBy: string; // userId
+  createdAt: string;
+  expiresAt: string;
+  usedBy?: string; // userId who accepted
+  usedAt?: string;
+}
+
+export interface OrgMember {
+  id: string;
+  orgId: string;
+  userId: string;
+  role: InviteRole | 'owner';
+  joinedAt: string;
+  inviteId?: string; // the invite that brought them in
+}

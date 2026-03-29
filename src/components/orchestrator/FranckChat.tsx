@@ -19,6 +19,7 @@ import {
   KeyRound,
   Trash2,
   ExternalLink,
+  Zap,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -31,6 +32,11 @@ import {
   PROVIDERS,
 } from '@/services/franck-agent';
 import type { FranckConversation, ProviderType } from '@/services/franck-agent';
+import {
+  runRefinementLoop,
+  formatRefinementSummary,
+  type RefinementProgress,
+} from '@/services/franck-autopilot';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +135,10 @@ export function FranckChat({ eventId }: FranckChatProps) {
   });
   const [keyStored, setKeyStored] = useState(() => hasProviderConfig());
   const usingFreeDefault = !hasCustomProviderConfig() && !!DEFAULT_FREE_CONFIG;
+
+  // Auto-Pilot refinement state
+  const [isRefining, setIsRefining] = useState(false);
+  const [refinementProgress, setRefinementProgress] = useState<RefinementProgress | null>(null);
 
   // Persist messages whenever they change
   useEffect(() => {
@@ -295,6 +305,52 @@ export function FranckChat({ eventId }: FranckChatProps) {
     localStorage.removeItem(`${STORAGE_PREFIX}-conv-${eventId}`);
   };
 
+  // ── Auto-Pilot refinement handler ───────────────────────────────────
+  const handleAutoPilot = useCallback(async () => {
+    if (isRefining || isLoading) return;
+
+    setIsRefining(true);
+    setRefinementProgress(null);
+
+    // Add a user-style message to show the action was triggered
+    const triggerMsg: ChatMessage = {
+      id: `user-autopilot-${Date.now()}`,
+      role: 'user',
+      content: 'Refine my seating arrangement (Auto-Pilot)',
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, triggerMsg]);
+
+    try {
+      const result = await runRefinementLoop(eventId, 20, (progress) => {
+        setRefinementProgress(progress);
+      });
+
+      const summary = formatRefinementSummary(result);
+      const resultMsg: ChatMessage = {
+        id: `assistant-autopilot-${Date.now()}`,
+        role: 'assistant',
+        content: summary,
+        timestamp: Date.now(),
+        toolsUsed: ['run_refinement_loop'],
+      };
+      setMessages((prev) => [...prev, resultMsg]);
+    } catch (err) {
+      console.error('Auto-Pilot error:', err);
+      const errorMsg: ChatMessage = {
+        id: `error-autopilot-${Date.now()}`,
+        role: 'assistant',
+        content:
+          'Quelle catastrophe! The Auto-Pilot encountered an error. Make sure guests are seated and tables exist, then try again.',
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsRefining(false);
+      setRefinementProgress(null);
+    }
+  }, [isRefining, isLoading, eventId]);
+
   // ── Render helpers ─────────────────────────────────────────────────────
 
   const renderMessage = (msg: ChatMessage) => {
@@ -387,6 +443,24 @@ export function FranckChat({ eventId }: FranckChatProps) {
           </div>
 
           <div className="flex items-center gap-1">
+            {/* Auto-Pilot button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-8 gap-1.5 text-xs font-medium',
+                isRefining
+                  ? 'text-violet-400 animate-pulse'
+                  : 'text-muted-foreground hover:text-violet-400',
+              )}
+              onClick={handleAutoPilot}
+              disabled={isRefining || isLoading}
+              title="Auto-Pilot: algorithmically refine seating"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              {isRefining ? 'Refining...' : 'Auto-Pilot'}
+            </Button>
+
             {/* Clear chat */}
             <Button
               variant="ghost"
@@ -564,6 +638,40 @@ export function FranckChat({ eventId }: FranckChatProps) {
                       {LOADING_MESSAGES[loadingMsgIndex]}
                     </span>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Auto-Pilot refinement progress */}
+            {isRefining && (
+              <div className="flex gap-2 mb-4 justify-start">
+                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
+                  F
+                </Badge>
+                <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-3.5 w-3.5 text-violet-400 animate-pulse" />
+                    <span className="font-medium text-foreground">Auto-Pilot Active</span>
+                  </div>
+                  {refinementProgress && (
+                    <>
+                      <div className="text-xs">
+                        Iteration {refinementProgress.iteration}/{refinementProgress.maxIterations}
+                        {' '}&middot;{' '}Score: {refinementProgress.currentScore}/100
+                      </div>
+                      {refinementProgress.lastSwap && (
+                        <div className="text-[11px] text-muted-foreground">
+                          Last swap: {refinementProgress.lastSwap}
+                        </div>
+                      )}
+                      <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                        <div
+                          className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${(refinementProgress.iteration / refinementProgress.maxIterations) * 100}%` }}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

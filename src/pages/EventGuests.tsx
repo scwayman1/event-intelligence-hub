@@ -335,7 +335,20 @@ export default function EventGuests() {
                 })}
               </tbody>
             </table>
-            {eventGuests.length === 0 && (
+            {eventGuests.length === 0 && allEventGuests.length === 0 && (
+              <div className="p-8 text-center space-y-3">
+                <Users className="w-8 h-8 text-muted-foreground mx-auto" />
+                <h3 className="font-semibold text-foreground">No guests yet</h3>
+                <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                  Add your first guest or import a CSV to start building your guest list.
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowCsvImport(true)}><Upload className="w-3.5 h-3.5" />Import CSV</Button>
+                  <Button size="sm" className="gap-2" onClick={() => setShowAddGuest(true)}><Plus className="w-3.5 h-3.5" />Add Guest</Button>
+                </div>
+              </div>
+            )}
+            {eventGuests.length === 0 && allEventGuests.length > 0 && (
               <div className="p-8 text-center text-muted-foreground text-sm">No guests match the current filters</div>
             )}
           </div>

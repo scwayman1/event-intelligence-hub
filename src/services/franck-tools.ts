@@ -30,6 +30,11 @@ import {
   getSeatingRecommendations,
 } from '@/services/smart-seating';
 
+import {
+  runRefinementLoop,
+  formatRefinementSummary,
+} from '@/services/franck-autopilot';
+
 import type { Guest, GuestCategory, RSVPStatus } from '@/types/events';
 
 // ---------------------------------------------------------------------------
@@ -905,13 +910,46 @@ function clearAllSeatingTool(
   });
 }
 
+async function runRefinementLoopTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): Promise<string> {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  if (ctx.tables.length === 0) {
+    return errorResult('No tables exist in the active layout version. Add tables before running refinement.');
+  }
+
+  const maxIterations = typeof input.maxIterations === 'number' ? input.maxIterations : 20;
+
+  try {
+    const result = await runRefinementLoop(eventId, maxIterations);
+    return json({
+      success: true,
+      summary: formatRefinementSummary(result),
+      initialScore: result.initialScore.overall,
+      finalScore: result.finalScore.overall,
+      delta: result.delta,
+      iterations: result.iterations,
+      swapsApplied: result.swapsApplied.length,
+      unseatedPlaced: result.unseatedPlaced.length,
+      plateauReached: result.plateauReached,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+    return errorResult(`Refinement loop failed: ${message}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tool dispatcher
 // ---------------------------------------------------------------------------
 
 const TOOL_MAP: Record<
   string,
-  (state: StoreState, eventId: string, input: ToolInput) => string
+  (state: StoreState, eventId: string, input: ToolInput) => string | Promise<string>
 > = {
   get_event_summary: getEventSummary,
   analyze_guest_list: analyzeGuestList,
@@ -932,6 +970,7 @@ const TOOL_MAP: Record<
   swap_guests: swapGuestsTool,
   unseat_guest: unseatGuestTool,
   clear_all_seating: clearAllSeatingTool,
+  run_refinement_loop: runRefinementLoopTool,
 };
 
 /**
@@ -943,12 +982,12 @@ const TOOL_MAP: Record<
  * @param eventId    - The active event ID
  * @returns A JSON string with the tool result
  */
-export function executeTool(
+export async function executeTool(
   name: string,
   input: ToolInput,
   storeState: StoreState,
   eventId: string,
-): string {
+): Promise<string> {
   const handler = TOOL_MAP[name];
   if (!handler) {
     return errorResult(
@@ -956,7 +995,7 @@ export function executeTool(
     );
   }
   try {
-    return handler(storeState, eventId, input);
+    return await handler(storeState, eventId, input);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : 'An unexpected error occurred.';

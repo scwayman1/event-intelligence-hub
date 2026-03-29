@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { PasswordStrength } from '@/components/PasswordStrength';
 import { isPasswordValid } from '@/lib/password-validation';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useEventStore } from '@/data/store';
 
 const ROLE_OPTIONS = [
   'Event Planner',
@@ -21,6 +22,7 @@ const ROLE_OPTIONS = [
 export default function SignUp() {
   const navigate = useNavigate();
   const { signUp, signInWithGoogle } = useAuthContext();
+  const pendingInviteCode = useEventStore((s) => s.pendingInviteCode);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -64,7 +66,12 @@ export default function SignUp() {
     if (authError) {
       setError(authError.message);
     } else {
-      navigate('/welcome');
+      // If there's a pending invite, redirect to the join page
+      if (pendingInviteCode) {
+        navigate(`/join/${pendingInviteCode}`, { replace: true });
+      } else {
+        navigate('/welcome');
+      }
     }
   }
 
@@ -86,7 +93,9 @@ export default function SignUp() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight">Create your account</h1>
-            <p className="text-sm text-muted-foreground mt-1">Get started with Grad Roots EventMap</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {pendingInviteCode ? 'Create an account to accept your team invite' : 'Get started with Grad Roots EventMap'}
+            </p>
           </div>
         </div>
 
