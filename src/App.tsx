@@ -21,6 +21,8 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Profile from "@/pages/Profile";
 import MessagingHub from "@/pages/MessagingHub";
+import JoinInvite from "@/pages/JoinInvite";
+import TeamManagement from "@/pages/TeamManagement";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useEventStore } from "@/data/store";
@@ -81,6 +83,9 @@ const AppRoutes = () => (
     <Route path="/forgot-password" element={<RedirectIfSignedIn><ForgotPassword /></RedirectIfSignedIn>} />
     <Route path="/reset-password" element={<ResetPassword />} />
 
+    {/* Invite join — accessible to anyone; handles auth redirect internally */}
+    <Route path="/join/:inviteCode" element={<JoinInvite />} />
+
     {/* Onboarding — requires auth but not onboarding complete */}
     <Route path="/welcome" element={<RequireAuth><RedirectIfOnboarded><Welcome /></RedirectIfOnboarded></RequireAuth>} />
 
@@ -88,6 +93,7 @@ const AppRoutes = () => (
     <Route element={<RequireAuth><RequireOnboarding><AppLayout /></RequireOnboarding></RequireAuth>}>
       <Route path="/" element={<ErrorBoundary><EventsHome /></ErrorBoundary>} />
       <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
+      <Route path="/team" element={<ErrorBoundary><TeamManagement /></ErrorBoundary>} />
       <Route path="/events/:eventId" element={<ErrorBoundary><EventDashboard /></ErrorBoundary>} />
       <Route path="/events/:eventId/layout" element={<ErrorBoundary><EventLayout /></ErrorBoundary>} />
       <Route path="/events/:eventId/guests" element={<ErrorBoundary><EventGuests /></ErrorBoundary>} />

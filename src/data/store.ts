@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership } from '@/types/events';
+import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership, TeamInvite, OrgMember, InviteRole } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 import { seedDonors, seedRecipients, seedAllGuests, seedRelationshipGroups, seedRelationshipMemberships } from './scholarship-seed-data';
 import { MESSAGING_DEFAULTS, createMessagingActions, type MessagingState, type MessagingActions } from './messaging-store';
@@ -14,7 +14,7 @@ function dbSync(fn: () => Promise<void>) {
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
 // ──────────────────────────────────────────────
-const STORE_VERSION = 7;
+const STORE_VERSION = 8;
 
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
@@ -44,6 +44,9 @@ const PERSISTED_DEFAULTS = {
   seatingRules: [] as SeatingRule[],
   relationshipGroups: [] as RelationshipGroup[],
   relationshipMemberships: [] as RelationshipMembership[],
+  teamInvites: [] as TeamInvite[],
+  orgMembers: [] as OrgMember[],
+  pendingInviteCode: null as string | null,
   ...MESSAGING_DEFAULTS,
 };
 
@@ -65,6 +68,20 @@ interface EventStore extends PersistedState, MessagingActions {
   setActiveOrg: (orgId: string) => void;
   addOrganization: (org: Organization) => void;
   updateOrganization: (id: string, updates: Partial<Organization>) => void;
+
+  // Team Invite actions
+  createTeamInvite: (orgId: string, role: InviteRole) => TeamInvite;
+  revokeTeamInvite: (inviteId: string) => void;
+  getOrgInvites: (orgId: string) => TeamInvite[];
+  findInviteByCode: (code: string) => TeamInvite | undefined;
+  redeemInvite: (inviteCode: string) => { success: boolean; error?: string; orgId?: string };
+  setPendingInviteCode: (code: string | null) => void;
+
+  // Org Member actions
+  addOrgMember: (member: OrgMember) => void;
+  removeOrgMember: (memberId: string) => void;
+  getOrgMembers: (orgId: string) => OrgMember[];
+  isUserOrgMember: (orgId: string, userId: string) => boolean;
 
   // Org-scoped selectors
   getActiveOrg: () => Organization | undefined;
@@ -189,8 +206,19 @@ export const useEventStore = create<EventStore>()(
   // ── Organization actions ──
   setActiveOrg: (orgId) => set({ activeOrgId: orgId }),
   addOrganization: (org) => {
-    set((s) => ({ organizations: [...s.organizations, org], hasCompletedOnboarding: true }));
     const userId = get().userProfile?.id;
+    const ownerMember: OrgMember | null = userId ? {
+      id: `member-${crypto.randomUUID().slice(0, 8)}`,
+      orgId: org.id,
+      userId,
+      role: 'owner',
+      joinedAt: new Date().toISOString(),
+    } : null;
+    set((s) => ({
+      organizations: [...s.organizations, org],
+      hasCompletedOnboarding: true,
+      orgMembers: ownerMember ? [...s.orgMembers, ownerMember] : s.orgMembers,
+    }));
     if (userId) dbSync(() => db.createOrgWithMember(org, userId));
   },
   updateOrganization: (id, updates) => {
@@ -200,6 +228,76 @@ export const useEventStore = create<EventStore>()(
     const fullOrg = get().organizations.find((o) => o.id === id);
     if (fullOrg) dbSync(() => db.upsertOrganization(fullOrg));
   },
+
+  // ── Team Invites ──
+  createTeamInvite: (orgId, role) => {
+    const state = get();
+    const invite: TeamInvite = {
+      id: `invite-${crypto.randomUUID().slice(0, 8)}`,
+      orgId,
+      inviteCode: crypto.randomUUID(),
+      role,
+      createdBy: state.userProfile?.id ?? 'unknown',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+    };
+    set((s) => ({ teamInvites: [...s.teamInvites, invite] }));
+    return invite;
+  },
+  revokeTeamInvite: (inviteId) => {
+    set((s) => ({ teamInvites: s.teamInvites.filter((i) => i.id !== inviteId) }));
+  },
+  getOrgInvites: (orgId) => get().teamInvites.filter((i) => i.orgId === orgId),
+  findInviteByCode: (code) => get().teamInvites.find((i) => i.inviteCode === code),
+  redeemInvite: (inviteCode) => {
+    const state = get();
+    const user = state.userProfile;
+    if (!user) return { success: false, error: 'You must be signed in to accept an invite.' };
+
+    const invite = state.teamInvites.find((i) => i.inviteCode === inviteCode);
+    if (!invite) return { success: false, error: 'This invite link is invalid or has been revoked.' };
+    if (invite.usedBy) return { success: false, error: 'This invite has already been used.' };
+    if (new Date(invite.expiresAt) < new Date()) return { success: false, error: 'This invite has expired.' };
+
+    // Check if already a member
+    const alreadyMember = state.orgMembers.some((m) => m.orgId === invite.orgId && m.userId === user.id);
+    if (alreadyMember) return { success: false, error: 'You are already a member of this organization.' };
+
+    // Mark invite as used
+    const updatedInvites = state.teamInvites.map((i) =>
+      i.id === invite.id ? { ...i, usedBy: user.id, usedAt: new Date().toISOString() } : i
+    );
+
+    // Add org member
+    const newMember: OrgMember = {
+      id: `member-${crypto.randomUUID().slice(0, 8)}`,
+      orgId: invite.orgId,
+      userId: user.id,
+      role: invite.role,
+      joinedAt: new Date().toISOString(),
+      inviteId: invite.id,
+    };
+
+    set({
+      teamInvites: updatedInvites,
+      orgMembers: [...state.orgMembers, newMember],
+      activeOrgId: invite.orgId,
+      pendingInviteCode: null,
+    });
+
+    return { success: true, orgId: invite.orgId };
+  },
+  setPendingInviteCode: (code) => set({ pendingInviteCode: code }),
+
+  // ── Org Members ──
+  addOrgMember: (member) => {
+    set((s) => ({ orgMembers: [...s.orgMembers, member] }));
+  },
+  removeOrgMember: (memberId) => {
+    set((s) => ({ orgMembers: s.orgMembers.filter((m) => m.id !== memberId) }));
+  },
+  getOrgMembers: (orgId) => get().orgMembers.filter((m) => m.orgId === orgId),
+  isUserOrgMember: (orgId, userId) => get().orgMembers.some((m) => m.orgId === orgId && m.userId === userId),
 
   // ── Org-scoped selectors ──
   getActiveOrg: () => get().organizations.find((o) => o.id === get().activeOrgId),
