@@ -9,6 +9,7 @@ import type {
   SeatingAssignment,
 } from '@/types/events';
 import { RELATIONSHIP_TYPE_COLORS } from '@/types/events';
+import { TableHoverCard } from './TableHoverCard';
 
 interface SeatingBoardProps {
   tables: LayoutObject[];
@@ -540,19 +541,33 @@ export function SeatingBoard({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-      {tables.map((table) => (
-        <TableCard
-          key={table.id}
-          table={table}
-          assignments={assignments}
-          guests={guests}
-          relationshipGroups={relationshipGroups}
-          relationshipMemberships={relationshipMemberships}
-          autoAssignedIds={autoAssignedIds}
-          onDropGuest={onDropGuest}
-          onUnseatGuest={onUnseatGuest}
-        />
-      ))}
+      {tables.map((table) => {
+        const tableAssignments = assignments.filter((a) => a.tableId === table.id);
+        const tableGuests = tableAssignments
+          .map((a) => guests.find((g) => g.id === a.guestId))
+          .filter(Boolean) as Guest[];
+
+        return (
+          <TableHoverCard
+            key={table.id}
+            table={table}
+            guests={tableGuests}
+            relationshipGroups={relationshipGroups}
+            relationshipMemberships={relationshipMemberships}
+          >
+            <TableCard
+              table={table}
+              assignments={assignments}
+              guests={guests}
+              relationshipGroups={relationshipGroups}
+              relationshipMemberships={relationshipMemberships}
+              autoAssignedIds={autoAssignedIds}
+              onDropGuest={onDropGuest}
+              onUnseatGuest={onUnseatGuest}
+            />
+          </TableHoverCard>
+        );
+      })}
     </div>
   );
 }
