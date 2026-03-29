@@ -8,6 +8,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
+import { toast } from 'sonner';
   import {
   Sparkles,
   X,
@@ -81,8 +82,8 @@ const LOADING_MESSAGES = [
 ];
 
 const QUICK_ACTIONS = [
-  "How's my event looking?",
-  'Auto-seat all guests',
+  'event readiness check',
+  'auto seat',
   "Who hasn't RSVP'd?",
   'Any issues?',
   'Draft reminder emails',
@@ -174,6 +175,9 @@ export function FranckChat({ eventId }: FranckChatProps) {
       return DEFAULT_FREE_CONFIG ? 'Step 1.5 Flash (Free)' : 'Not configured';
     }
   })();
+
+  // Model change feedback state
+  const [modelJustChanged, setModelJustChanged] = useState(false);
 
   // Auto-Pilot refinement state
   const [isRefining, setIsRefining] = useState(false);
@@ -284,10 +288,15 @@ export function FranckChat({ eventId }: FranckChatProps) {
         setWorkflowProgress(null);
         setChainProgress(null);
 
+        // If the response is empty and no tools were called, provide a fallback
+        const responseContent = (!result.response || !result.response.trim()) && result.toolCalls.length === 0
+          ? "Pardonnez-moi! Franck couldn't quite understand that request. Try one of these workflow actions that work instantly:\n\n- **\"event readiness check\"** — full event status report\n- **\"auto seat\"** — seat all unassigned guests\n- **\"guest list audit\"** — review the guest list\n- **\"quick optimization\"** — optimize current seating\n\nOr ask a specific question about your event!"
+          : result.response;
+
         const assistantMsg: ChatMessage = {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
-          content: result.response,
+          content: responseContent,
           timestamp: Date.now(),
           toolsUsed: result.toolCalls.length > 0
             ? result.toolCalls.map((tc) => tc.name)
@@ -298,11 +307,19 @@ export function FranckChat({ eventId }: FranckChatProps) {
         setMessages((prev) => [...prev, assistantMsg]);
       } catch (err) {
         console.error('Franck error:', err);
+        const errMessage = err instanceof Error ? err.message : String(err);
+        let displayMessage: string;
+        if (errMessage.includes('No LLM provider configured') || errMessage.includes('no provider')) {
+          displayMessage = 'Mon dieu! Franck needs an API key to answer freeform questions. Please add one in the settings panel, or try a workflow action like "event readiness check" or "auto seat" which work without a key.';
+        } else if (errMessage.includes('API') || errMessage.includes('401') || errMessage.includes('403') || errMessage.includes('rate')) {
+          displayMessage = `Quelle horreur! The API returned an error: ${errMessage}`;
+        } else {
+          displayMessage = `Mon dieu! Something went wrong: ${errMessage}. Try a workflow action like "event readiness check" or "auto seat" — those don't require an API call.`;
+        }
         const errorMsg: ChatMessage = {
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content:
-            'Mon dieu! Something went wrong. Please check your API key and try again.',
+          content: displayMessage,
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, errorMsg]);
@@ -346,18 +363,49 @@ export function FranckChat({ eventId }: FranckChatProps) {
     setSelectedProvider(provider);
     setSelectedModel(PROVIDERS[provider].defaultModel);
     // If we already have a config saved, update provider/model but keep existing key only if same provider
-    const existing = getProviderConfig();
-    if (existing && existing.provider === provider) {
-      saveProviderConfig({ ...existing, model: PROVIDERS[provider].defaultModel });
-    }
+    try {
+      const existing = getProviderConfig();
+      if (existing && existing.provider === provider) {
+        saveProviderConfig({ ...existing, model: PROVIDERS[provider].defaultModel });
+      }
+    } catch { /* no config yet */ }
   };
 
   const handleModelChange = (model: string) => {
-    setSelectedModel(model);
-    const existing = getProviderConfig();
-    if (existing && existing.provider === selectedProvider) {
-      saveProviderConfig({ ...existing, model });
+    const modelDef = PROVIDERS[selectedProvider].models.find((m) => m.id === model);
+    const isFree = modelDef?.label.toLowerCase().includes('free') ?? false;
+
+    // If user doesn't have an API key and model isn't free, warn them
+    if (!isFree && !hasCustomProviderConfig() && !DEFAULT_FREE_CONFIG) {
+      toast.error('API key required', {
+        description: `Add a ${PROVIDERS[selectedProvider].label} API key to use ${modelDef?.label ?? model}.`,
+      });
+      return;
     }
+
+    setSelectedModel(model);
+
+    // Save the config — either update existing or create new with free key
+    try {
+      const existing = getProviderConfig();
+      if (existing) {
+        saveProviderConfig({ ...existing, provider: selectedProvider, model });
+      }
+    } catch {
+      // No config yet — if it's a free model with DEFAULT_FREE_CONFIG, save that
+      if (DEFAULT_FREE_CONFIG) {
+        saveProviderConfig({ ...DEFAULT_FREE_CONFIG, model });
+      }
+    }
+    setKeyStored(hasProviderConfig());
+
+    // Flash feedback
+    setModelJustChanged(true);
+    setTimeout(() => setModelJustChanged(false), 2000);
+    toast.success('Model locked in', {
+      description: `Franck is now using ${modelDef?.label ?? model}`,
+      duration: 2500,
+    });
   };
 
   // ── Clear chat history ─────────────────────────────────────────────────
@@ -515,9 +563,22 @@ export function FranckChat({ eventId }: FranckChatProps) {
               <h2 className="text-sm font-semibold leading-none">
                 Franck Eggelhoffer 🎩
               </h2>
-              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                <Lock className="h-2.5 w-2.5 text-emerald-500/70" />
-                <span className="text-emerald-500/90 font-medium">{activeModelLabel}</span>
+              <p className={cn(
+                'text-xs mt-0.5 flex items-center gap-1.5 transition-all duration-300',
+                modelJustChanged
+                  ? 'text-emerald-400'
+                  : 'text-muted-foreground',
+              )}>
+                <Lock className={cn(
+                  'h-2.5 w-2.5 transition-colors duration-300',
+                  modelJustChanged ? 'text-emerald-400' : 'text-emerald-500/70',
+                )} />
+                <span className={cn(
+                  'font-medium transition-colors duration-300',
+                  modelJustChanged ? 'text-emerald-300' : 'text-emerald-500/90',
+                )}>
+                  {modelJustChanged ? 'Locked! ' : ''}{activeModelLabel}
+                </span>
               </p>
             </div>
           </div>
@@ -565,14 +626,29 @@ export function FranckChat({ eventId }: FranckChatProps) {
               >
                 <div className="space-y-4">
                   {/* Active model indicator */}
-                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 flex items-center gap-2.5">
-                    <Lock className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  <div className={cn(
+                    'rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all duration-300',
+                    modelJustChanged
+                      ? 'bg-emerald-500/20 border border-emerald-400/40'
+                      : 'bg-emerald-500/10 border border-emerald-500/20',
+                  )}>
+                    <Lock className={cn(
+                      'h-3.5 w-3.5 shrink-0 transition-colors duration-300',
+                      modelJustChanged ? 'text-emerald-400' : 'text-emerald-500',
+                    )} />
                     <div className="min-w-0">
-                      <p className="text-[11px] text-emerald-400 font-semibold truncate">
-                        Active: {activeModelLabel}
+                      <p className={cn(
+                        'text-[11px] font-semibold truncate transition-colors duration-300',
+                        modelJustChanged ? 'text-emerald-300' : 'text-emerald-400',
+                      )}>
+                        {modelJustChanged ? 'Locked!' : 'Active:'} {activeModelLabel}
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {usingFreeDefault ? 'Free tier · upgrade with your own API key' : 'Locked and ready'}
+                        {modelJustChanged
+                          ? 'Model updated successfully'
+                          : usingFreeDefault
+                            ? 'Free tier · upgrade with your own API key'
+                            : 'Locked and ready'}
                       </p>
                     </div>
                   </div>
@@ -598,28 +674,31 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     </div>
                   </div>
 
-                  {/* Model selector — radio-style list */}
+                  {/* Model selector — radio-style list with lock feedback */}
                   <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Model</label>
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                      Model <span className="normal-case font-normal">(click to lock in)</span>
+                    </label>
                     <div className="rounded-lg border border-border/50 overflow-hidden divide-y divide-border/30 max-h-[200px] overflow-y-auto">
                       {PROVIDERS[selectedProvider].models.map((m) => {
                         const isActive = selectedModel === m.id;
                         const isFree = m.label.toLowerCase().includes('free');
+                        const needsKey = !isFree && !hasCustomProviderConfig();
                         return (
                           <button
                             key={m.id}
                             onClick={() => handleModelChange(m.id)}
                             className={cn(
-                              'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
+                              'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all duration-200',
                               isActive
-                                ? 'bg-violet-500/15'
-                                : 'hover:bg-muted/40',
+                                ? 'bg-violet-500/15 border-l-2 border-l-violet-500'
+                                : 'hover:bg-muted/40 border-l-2 border-l-transparent',
                             )}
                           >
                             <div className={cn(
-                              'shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
+                              'shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-200',
                               isActive
-                                ? 'border-violet-500 bg-violet-500'
+                                ? 'border-emerald-500 bg-emerald-500 scale-110'
                                 : 'border-muted-foreground/40'
                             )}>
                               {isActive && <Check className="h-2.5 w-2.5 text-white" />}
@@ -635,8 +714,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
                                 Free
                               </span>
                             )}
+                            {needsKey && !isFree && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500/80 uppercase tracking-wide">
+                                Key
+                              </span>
+                            )}
                             {isActive && (
-                              <Lock className="h-3 w-3 text-violet-400 shrink-0" />
+                              <Lock className="h-3 w-3 text-emerald-400 shrink-0" />
                             )}
                           </button>
                         );
