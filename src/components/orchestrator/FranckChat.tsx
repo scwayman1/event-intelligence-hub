@@ -582,13 +582,20 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
           <div
             className={cn(
-              'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
+              'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
               isUser
-                ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-br-md'
-                : 'bg-muted/60 text-foreground rounded-bl-md'
+                ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-br-md whitespace-pre-wrap'
+                : 'bg-muted/60 text-foreground rounded-bl-md franck-markdown'
             )}
           >
-            {msg.content}
+            {isUser ? (
+              msg.content
+            ) : (
+              <div
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                style={{ whiteSpace: 'pre-wrap' }}
+              />
+            )}
           </div>
 
           {/* Tool usage indicator */}
@@ -597,10 +604,40 @@ export function FranckChat({ eventId }: FranckChatProps) {
               {'🔧'} Used: {msg.toolsUsed.join(', ')}
             </p>
           )}
+
+          {/* Retry button on error messages */}
+          {!isUser && msg.id.startsWith('error-') && (
+            <button
+              onClick={handleRetry}
+              disabled={isLoading}
+              className="flex items-center gap-1 mt-1.5 ml-1 text-[11px] font-medium text-amber-500 hover:text-amber-400 transition-colors disabled:opacity-40"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Retry
+            </button>
+          )}
         </div>
       </div>
     );
   };
+
+  // ── Determine if we should show contextual suggestions ────────────────
+  const lastMsg = messages[messages.length - 1];
+  const showContextualSuggestions =
+    !isLoading &&
+    lastMsg?.role === 'assistant' &&
+    !lastMsg.id.startsWith('error-') &&
+    lastMsg.id !== 'welcome' &&
+    !lastMsg.toolsUsed?.length &&
+    !lastMsg.workflowName &&
+    !lastMsg.chainName;
+
+  // Pick 2-3 suggestions that differ from the last user message
+  const contextSuggestions = showContextualSuggestions
+    ? CONTEXTUAL_SUGGESTIONS
+        .filter((s) => s.trigger !== lastUserMessageRef.current)
+        .slice(0, 3)
+    : [];
 
   // ─── FAB ────────────────────────────────────────────────────────────────
 
@@ -629,7 +666,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
       {/* ── Chat Panel ──────────────────────────────────────────────────── */}
       <div
         className={cn(
-          'fixed inset-y-0 right-0 z-50 w-[420px] max-w-full',
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] max-w-full',
           'flex flex-col',
           'bg-background/80 backdrop-blur-xl border-l border-border/50',
           'shadow-2xl shadow-black/20',
@@ -905,6 +942,28 @@ export function FranckChat({ eventId }: FranckChatProps) {
           <div ref={scrollRef} className="space-y-1">
             {messages.map(renderMessage)}
 
+            {/* Contextual follow-up suggestions */}
+            {contextSuggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4 ml-9">
+                {contextSuggestions.map((s) => (
+                  <button
+                    key={s.trigger}
+                    onClick={() => handleSend(s.trigger)}
+                    disabled={isLoading}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-[11px] font-medium',
+                      'border border-fuchsia-500/30 bg-fuchsia-500/5',
+                      'text-fuchsia-400 hover:text-fuchsia-300',
+                      'hover:bg-fuchsia-500/15 transition-colors',
+                      'disabled:opacity-40 disabled:cursor-not-allowed',
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Loading indicator */}
             {isLoading && (
               <div className="flex gap-2 mb-4 justify-start">
@@ -918,6 +977,11 @@ export function FranckChat({ eventId }: FranckChatProps) {
                       {LOADING_MESSAGES[loadingMsgIndex]}
                     </span>
                   </div>
+                  {loadingTooLong && (
+                    <p className="text-[11px] text-amber-500/80 mt-1.5 italic">
+                      This is taking longer than usual...
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -937,7 +1001,10 @@ export function FranckChat({ eventId }: FranckChatProps) {
                   </div>
                   <div className="space-y-1">
                     {workflowProgress.steps.map((step, idx) => (
-                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                      <div key={step.id} className={cn(
+                        'flex items-center gap-2 text-xs',
+                        step.status === 'running' && 'bg-blue-500/10 -mx-1.5 px-1.5 py-0.5 rounded-md',
+                      )}>
                         {step.status === 'pending' && (
                           <Circle className="h-3 w-3 text-muted-foreground/50" />
                         )}
@@ -953,10 +1020,11 @@ export function FranckChat({ eventId }: FranckChatProps) {
                         <span className={cn(
                           step.status === 'completed' && 'text-emerald-500',
                           step.status === 'failed' && 'text-red-500',
-                          step.status === 'running' && 'text-blue-400 font-medium',
+                          step.status === 'running' && 'text-blue-400 font-semibold',
                           step.status === 'pending' && 'text-muted-foreground/50',
                         )}>
                           {step.label}
+                          {step.status === 'running' && ' — in progress'}
                         </span>
                       </div>
                     ))}
@@ -986,7 +1054,10 @@ export function FranckChat({ eventId }: FranckChatProps) {
                   </div>
                   <div className="space-y-1">
                     {chainProgress.steps.map((step) => (
-                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                      <div key={step.id} className={cn(
+                        'flex items-center gap-2 text-xs',
+                        step.status === 'running' && 'bg-blue-500/10 -mx-1.5 px-1.5 py-0.5 rounded-md',
+                      )}>
                         {step.status === 'pending' && (
                           <Circle className="h-3 w-3 text-muted-foreground/50" />
                         )}
@@ -1002,10 +1073,11 @@ export function FranckChat({ eventId }: FranckChatProps) {
                         <span className={cn(
                           step.status === 'completed' && 'text-emerald-500',
                           step.status === 'failed' && 'text-red-500',
-                          step.status === 'running' && 'text-blue-400 font-medium',
+                          step.status === 'running' && 'text-blue-400 font-semibold',
                           step.status === 'pending' && 'text-muted-foreground/50',
                         )}>
                           {step.description}
+                          {step.status === 'running' && ' — in progress'}
                         </span>
                       </div>
                     ))}
