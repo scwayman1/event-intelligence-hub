@@ -35,7 +35,7 @@ import {
   formatRefinementSummary,
 } from '@/services/franck-autopilot';
 
-import type { Guest, GuestCategory, RSVPStatus } from '@/types/events';
+import type { Guest, GuestCategory, RSVPStatus, AppEvent, EventVersion, LayoutObject, RelationshipGroup, RelationshipMembership, RelationshipType } from '@/types/events';
 
 // ---------------------------------------------------------------------------
 // Store state snapshot type
