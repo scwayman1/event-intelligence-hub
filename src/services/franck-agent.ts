@@ -635,20 +635,107 @@ export {
   type ProviderType,
 };
 
+// Re-export workflow/chain types for FranckChat consumption
+export { type WorkflowProgress } from './franck-workflows';
+export { type ChainProgress, type ChainStep, type ChainStepStatus } from './franck-chain';
+export { getAvailableWorkflows } from './franck-workflows';
+export { getChainCapabilities } from './franck-chain';
+export { type WorkflowStepStatus } from './franck-workflows';
+
 // ──────────────────────────────────────────────
 // 5. Core Function: sendMessage
 // ──────────────────────────────────────────────
+
+export interface SendMessageResult {
+  response: string;
+  conversation: FranckConversation;
+  toolCalls: { name: string; result: string }[];
+  /** Set when a workflow handled this message */
+  workflowName?: string;
+  /** Set when a chain handled this message */
+  chainName?: string;
+}
 
 export async function sendMessage(
   conversation: FranckConversation,
   userMessage: string,
   eventId: string,
   onToolExecution?: (toolName: string) => void,
-): Promise<{
-  response: string;
-  conversation: FranckConversation;
-  toolCalls: { name: string; result: string }[];
-}> {
+  onWorkflowProgress?: (progress: WorkflowProgress) => void,
+  onChainProgress?: (progress: ChainProgress) => void,
+): Promise<SendMessageResult> {
+  // ── 1. Try workflow matching first (fastest, most reliable) ──
+  const workflowMatch = matchWorkflow(userMessage);
+  if (workflowMatch) {
+    const result = await runWorkflow(
+      workflowMatch.workflow,
+      workflowMatch.params,
+      eventId,
+      onWorkflowProgress,
+    );
+    const summary = formatWorkflowSummary(workflowMatch.workflow, result);
+
+    const updatedConversation: FranckConversation = {
+      eventId,
+      rawMessages: [
+        ...conversation.rawMessages,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: summary },
+      ],
+      messages: [
+        ...conversation.messages,
+        { role: 'user', content: userMessage, timestamp: Date.now() },
+        {
+          role: 'assistant',
+          content: summary,
+          toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
+          workflowName: workflowMatch.workflow.name,
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    return {
+      response: summary,
+      conversation: updatedConversation,
+      toolCalls: result.toolCalls,
+      workflowName: workflowMatch.workflow.name,
+    };
+  }
+
+  // ── 2. Try chain execution for recognized patterns ──
+  const storeState = useEventStore.getState();
+  const chainResult = await tryChainExecution(userMessage, eventId, storeState, onChainProgress);
+  if (chainResult.handled) {
+    const updatedConversation: FranckConversation = {
+      eventId,
+      rawMessages: [
+        ...conversation.rawMessages,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: chainResult.summary },
+      ],
+      messages: [
+        ...conversation.messages,
+        { role: 'user', content: userMessage, timestamp: Date.now() },
+        {
+          role: 'assistant',
+          content: chainResult.summary,
+          toolCalls: chainResult.toolCalls.length > 0 ? chainResult.toolCalls : undefined,
+          chainName: chainResult.steps[0]?.description ?? 'Chain',
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    return {
+      response: chainResult.summary,
+      conversation: updatedConversation,
+      toolCalls: chainResult.toolCalls,
+      chainName: chainResult.steps[0]?.description ?? 'Chain',
+    };
+  }
+
+  // ── 3. Fall back to LLM for complex/conversational requests ──
   const config = getProviderConfig();
 
   // Deep-clone conversation so we don't mutate the caller's object
