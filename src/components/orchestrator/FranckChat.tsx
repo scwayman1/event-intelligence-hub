@@ -22,10 +22,12 @@ import {
 import {
   sendMessage,
   createConversation,
-  hasApiKey,
-  setApiKey,
+  hasProviderConfig,
+  saveProviderConfig,
+  getProviderConfig,
+  PROVIDERS,
 } from '@/services/franck-agent';
-import type { FranckConversation } from '@/services/franck-agent';
+import type { FranckConversation, ProviderType } from '@/services/franck-agent';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -116,7 +118,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [keyStored, setKeyStored] = useState(() => hasApiKey());
+  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(
+    () => getProviderConfig()?.provider ?? 'anthropic'
+  );
+  const [selectedModel, setSelectedModel] = useState(
+    () => getProviderConfig()?.model ?? PROVIDERS.anthropic.defaultModel
+  );
+  const [keyStored, setKeyStored] = useState(() => hasProviderConfig());
 
   // Persist messages whenever they change
   useEffect(() => {
@@ -228,12 +236,34 @@ export function FranckChat({ eventId }: FranckChatProps) {
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   };
 
-  // ── Save API key ───────────────────────────────────────────────────────
+  // ── Save provider config ────────────────────────────────────────────────
   const handleSaveKey = () => {
     if (apiKeyInput.trim()) {
-      setApiKey(apiKeyInput.trim());
+      saveProviderConfig({
+        provider: selectedProvider,
+        apiKey: apiKeyInput.trim(),
+        model: selectedModel,
+      });
       setKeyStored(true);
       setApiKeyInput('');
+    }
+  };
+
+  const handleProviderChange = (provider: ProviderType) => {
+    setSelectedProvider(provider);
+    setSelectedModel(PROVIDERS[provider].defaultModel);
+    // If we already have a config saved, update provider/model but keep existing key only if same provider
+    const existing = getProviderConfig();
+    if (existing && existing.provider === provider) {
+      saveProviderConfig({ ...existing, model: PROVIDERS[provider].defaultModel });
+    }
+  };
+
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model);
+    const existing = getProviderConfig();
+    if (existing && existing.provider === selectedProvider) {
+      saveProviderConfig({ ...existing, model });
     }
   };
 
@@ -359,33 +389,83 @@ export function FranckChat({ eventId }: FranckChatProps) {
                 align="end"
                 className="w-80"
               >
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <KeyRound className="h-4 w-4 text-muted-foreground" />
-                    <h4 className="text-sm font-medium">Anthropic API Key</h4>
-                    {keyStored && (
-                      <span className="ml-auto text-emerald-500 text-xs font-medium flex items-center gap-1">
-                        ✓ Saved
-                      </span>
-                    )}
+                <div className="space-y-4">
+                  {/* Provider selector */}
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Provider</label>
+                    <div className="flex gap-1.5">
+                      {(Object.keys(PROVIDERS) as ProviderType[]).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => handleProviderChange(p)}
+                          className={cn(
+                            'flex-1 rounded-md px-3 py-1.5 text-xs font-medium border transition-colors',
+                            selectedProvider === p
+                              ? 'bg-violet-600 text-white border-violet-600'
+                              : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted/70'
+                          )}
+                        >
+                          {PROVIDERS[p].label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder={
-                      keyStored ? 'Key is saved (enter new to replace)' : 'sk-ant-...'
-                    }
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
+
+                  {/* Model selector */}
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Model</label>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => handleModelChange(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {PROVIDERS[selectedProvider].models.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* API Key */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
+                      <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                      {keyStored && getProviderConfig()?.provider === selectedProvider && (
+                        <span className="ml-auto text-emerald-500 text-[10px] font-medium">
+                          ✓ Saved
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder={
+                        keyStored && getProviderConfig()?.provider === selectedProvider
+                          ? 'Key saved (enter new to replace)'
+                          : PROVIDERS[selectedProvider].keyPlaceholder
+                      }
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
                   <Button
                     size="sm"
                     onClick={handleSaveKey}
                     disabled={!apiKeyInput.trim()}
                     className="w-full"
                   >
-                    Save Key
+                    Save Configuration
                   </Button>
+
+                  {selectedProvider === 'openrouter' && (
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      OpenRouter provides access to 100+ models with a single API key.
+                      Franck's personality works across all providers.
+                    </p>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
@@ -455,7 +535,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
         <div className="px-4 pb-4">
           {!keyStored && (
             <p className="text-xs text-amber-500 mb-2 text-center">
-              Set API key first (click the gear icon above)
+              Configure your LLM provider first (click the gear icon above)
             </p>
           )}
           <div className="flex items-end gap-2 rounded-xl border border-border/60 bg-muted/30 p-2">
@@ -467,7 +547,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
               placeholder={
                 keyStored
                   ? 'Ask Franck anything about your event...'
-                  : 'Set API key first'
+                  : 'Configure provider first'
               }
               disabled={!keyStored || isLoading}
               rows={1}
