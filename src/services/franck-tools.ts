@@ -611,6 +611,236 @@ function analyzeDietaryNeedsTool(
 }
 
 // ---------------------------------------------------------------------------
+// WRITE tools — these mutate the store
+// ---------------------------------------------------------------------------
+
+function updateGuestTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestId = input.guestId as string | undefined;
+  if (!guestId) return errorResult('guestId is required.');
+
+  const guest = ctx.guests.find((g) => g.id === guestId);
+  if (!guest) return errorResult(`Guest "${guestId}" not found.`);
+
+  const store = useEventStore.getState();
+  const updates: Partial<Guest> = {};
+
+  if (input.rsvpStatus !== undefined) updates.rsvpStatus = input.rsvpStatus as Guest['rsvpStatus'];
+  if (input.category !== undefined) updates.category = input.category as Guest['category'];
+  if (input.partySize !== undefined) updates.partySize = input.partySize as number;
+  if (input.dietaryRestrictions !== undefined) updates.dietaryRestrictions = input.dietaryRestrictions as string;
+  if (input.accessibilityNeeds !== undefined) updates.accessibilityNeeds = input.accessibilityNeeds as string;
+  if (input.notes !== undefined) updates.notes = input.notes as string;
+  if (input.tablePreference !== undefined) updates.tablePreference = input.tablePreference as string;
+  if (input.seatingPreference !== undefined) updates.seatingPreference = input.seatingPreference as string;
+  if (input.firstName !== undefined) updates.firstName = input.firstName as string;
+  if (input.lastName !== undefined) updates.lastName = input.lastName as string;
+  if (input.email !== undefined) updates.email = input.email as string;
+  if (input.phone !== undefined) updates.phone = input.phone as string;
+  if (input.organization !== undefined) updates.organization = input.organization as string;
+
+  if (updates.firstName || updates.lastName) {
+    updates.displayName = `${updates.firstName ?? guest.firstName} ${updates.lastName ?? guest.lastName}`;
+  }
+
+  store.updateGuest(guestId, updates);
+
+  return json({
+    updated: true,
+    guestId,
+    guestName: updates.displayName ?? guest.displayName,
+    fieldsChanged: Object.keys(updates),
+  });
+}
+
+function deleteGuestsTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestIds = input.guestIds as string[] | undefined;
+  const filter = input.filter as string | undefined;
+
+  const store = useEventStore.getState();
+  let toDelete: string[] = [];
+
+  if (guestIds && guestIds.length > 0) {
+    // Delete specific guests by ID
+    const validIds = guestIds.filter((id) => ctx.guests.some((g) => g.id === id));
+    toDelete = validIds;
+  } else if (filter) {
+    // Delete by filter criteria
+    const filterLower = filter.toLowerCase();
+    if (filterLower === 'csv_imports' || filterLower === 'csv imports' || filterLower === 'duplicates') {
+      toDelete = ctx.guests.filter((g) => g.id.startsWith('csv-import-')).map((g) => g.id);
+    } else if (filterLower.startsWith('id_prefix:')) {
+      const prefix = filterLower.replace('id_prefix:', '').trim();
+      toDelete = ctx.guests.filter((g) => g.id.startsWith(prefix)).map((g) => g.id);
+    }
+  }
+
+  if (toDelete.length === 0) {
+    return errorResult('No matching guests found to delete. Use guestIds array or filter ("csv_imports", "id_prefix:xxx").');
+  }
+
+  const deletedNames: string[] = [];
+  for (const id of toDelete) {
+    const guest = ctx.guests.find((g) => g.id === id);
+    if (guest) deletedNames.push(guest.displayName);
+    store.removeGuest(id);
+  }
+
+  return json({
+    deleted: toDelete.length,
+    deletedIds: toDelete.slice(0, 20),
+    deletedNames: deletedNames.slice(0, 20),
+    note: toDelete.length > 20 ? `Showing first 20 of ${toDelete.length} deleted.` : undefined,
+  });
+}
+
+function bulkUpdateGuestsTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestIds = input.guestIds as string[] | undefined;
+  const filter = input.filter as string | undefined;
+  const updates: Partial<Guest> = {};
+
+  if (input.rsvpStatus !== undefined) updates.rsvpStatus = input.rsvpStatus as Guest['rsvpStatus'];
+  if (input.category !== undefined) updates.category = input.category as Guest['category'];
+  if (input.partySize !== undefined) updates.partySize = input.partySize as number;
+
+  if (Object.keys(updates).length === 0) {
+    return errorResult('No update fields provided. Provide rsvpStatus, category, or partySize.');
+  }
+
+  const store = useEventStore.getState();
+  let targets: string[] = [];
+
+  if (guestIds && guestIds.length > 0) {
+    targets = guestIds.filter((id) => ctx.guests.some((g) => g.id === id));
+  } else if (filter) {
+    const filterLower = filter.toLowerCase();
+    if (filterLower === 'all') {
+      targets = ctx.guests.map((g) => g.id);
+    } else if (filterLower === 'csv_imports') {
+      targets = ctx.guests.filter((g) => g.id.startsWith('csv-import-')).map((g) => g.id);
+    } else if (filterLower.startsWith('category:')) {
+      const cat = filterLower.replace('category:', '').trim();
+      targets = ctx.guests.filter((g) => g.category === cat).map((g) => g.id);
+    } else if (filterLower.startsWith('rsvp:')) {
+      const rsvp = filterLower.replace('rsvp:', '').trim();
+      targets = ctx.guests.filter((g) => g.rsvpStatus === rsvp).map((g) => g.id);
+    }
+  }
+
+  if (targets.length === 0) {
+    return errorResult('No matching guests. Use guestIds, or filter: "all", "csv_imports", "category:donor", "rsvp:invited".');
+  }
+
+  for (const id of targets) {
+    store.updateGuest(id, updates);
+  }
+
+  return json({
+    updated: targets.length,
+    fieldsChanged: Object.keys(updates),
+    newValues: updates,
+  });
+}
+
+function moveGuestToTableTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestId = input.guestId as string | undefined;
+  const tableId = input.tableId as string | undefined;
+
+  if (!guestId) return errorResult('guestId is required.');
+  if (!tableId) return errorResult('tableId is required.');
+
+  const guest = ctx.guests.find((g) => g.id === guestId);
+  if (!guest) return errorResult(`Guest "${guestId}" not found.`);
+
+  const table = ctx.tables.find((t) => t.id === tableId);
+  if (!table) return errorResult(`Table "${tableId}" not found.`);
+
+  const store = useEventStore.getState();
+  store.moveGuestToTable(guestId, tableId, ctx.versionId);
+
+  return json({
+    moved: true,
+    guestName: guest.displayName,
+    tableName: table.name,
+  });
+}
+
+function unseatGuestTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestId = input.guestId as string | undefined;
+  if (!guestId) return errorResult('guestId is required.');
+
+  const assignment = ctx.assignments.find((a) => a.guestId === guestId);
+  if (!assignment) return errorResult(`Guest "${guestId}" has no seating assignment.`);
+
+  const store = useEventStore.getState();
+  store.removeSeatingAssignment(assignment.id);
+
+  const guest = ctx.guests.find((g) => g.id === guestId);
+  return json({
+    unseated: true,
+    guestName: guest?.displayName ?? guestId,
+  });
+}
+
+function clearAllSeatingTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  if (ctx.assignments.length === 0) {
+    return errorResult('No seating assignments to clear.');
+  }
+
+  const store = useEventStore.getState();
+  const count = ctx.assignments.length;
+  for (const a of ctx.assignments) {
+    store.removeSeatingAssignment(a.id);
+  }
+
+  return json({
+    cleared: count,
+    note: `All ${count} seating assignments for this version have been removed.`,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tool dispatcher
 // ---------------------------------------------------------------------------
 
@@ -630,6 +860,12 @@ const TOOL_MAP: Record<
   flag_issues: flagIssues,
   get_attendance_projection: getAttendanceProjection,
   analyze_dietary_needs: analyzeDietaryNeedsTool,
+  update_guest: updateGuestTool,
+  delete_guests: deleteGuestsTool,
+  bulk_update_guests: bulkUpdateGuestsTool,
+  move_guest_to_table: moveGuestToTableTool,
+  unseat_guest: unseatGuestTool,
+  clear_all_seating: clearAllSeatingTool,
 };
 
 /**

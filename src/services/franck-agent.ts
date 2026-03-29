@@ -193,6 +193,96 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
       required: [],
     },
   },
+  // ── WRITE TOOLS ──────────────────────────────────────────────────
+  {
+    name: 'update_guest',
+    description:
+      'Update a specific guest\'s details. Can change RSVP status, category, name, email, phone, organization, dietary restrictions, accessibility needs, notes, party size, and seating preferences.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guestId: { type: 'string', description: 'The guest ID to update' },
+        rsvpStatus: { type: 'string', enum: ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'], description: 'New RSVP status' },
+        category: { type: 'string', description: 'New category' },
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        organization: { type: 'string' },
+        partySize: { type: 'number' },
+        dietaryRestrictions: { type: 'string' },
+        accessibilityNeeds: { type: 'string' },
+        notes: { type: 'string' },
+        tablePreference: { type: 'string' },
+        seatingPreference: { type: 'string' },
+      },
+      required: ['guestId'],
+    },
+  },
+  {
+    name: 'delete_guests',
+    description:
+      'Delete one or more guests. Provide specific guestIds OR a filter. Filters: "csv_imports" (delete all CSV-imported duplicates), "id_prefix:xxx" (delete guests whose ID starts with xxx).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guestIds: { type: 'array', items: { type: 'string' }, description: 'Specific guest IDs to delete' },
+        filter: { type: 'string', description: 'Filter: "csv_imports", "id_prefix:xxx"' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'bulk_update_guests',
+    description:
+      'Update multiple guests at once. Provide guestIds OR a filter, plus the fields to change. Filters: "all", "csv_imports", "category:donor", "rsvp:invited", etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guestIds: { type: 'array', items: { type: 'string' }, description: 'Specific guest IDs to update' },
+        filter: { type: 'string', description: 'Filter: "all", "csv_imports", "category:donor", "rsvp:invited"' },
+        rsvpStatus: { type: 'string', enum: ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'] },
+        category: { type: 'string' },
+        partySize: { type: 'number' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'move_guest_to_table',
+    description:
+      'Move a specific guest to a specific table. Applies the assignment immediately.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guestId: { type: 'string', description: 'Guest ID to move' },
+        tableId: { type: 'string', description: 'Target table ID' },
+      },
+      required: ['guestId', 'tableId'],
+    },
+  },
+  {
+    name: 'unseat_guest',
+    description:
+      'Remove a guest from their current table assignment, making them unseated.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guestId: { type: 'string', description: 'Guest ID to unseat' },
+      },
+      required: ['guestId'],
+    },
+  },
+  {
+    name: 'clear_all_seating',
+    description:
+      'Remove ALL seating assignments for the current event version. Use this to start fresh with a clean seating arrangement.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ──────────────────────────────────────────────
