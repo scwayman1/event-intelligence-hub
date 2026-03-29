@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
-import {
+  import {
   Sparkles,
   X,
   Send,
@@ -26,6 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   BookOpen,
+  Lock,
+  Check,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -160,6 +162,18 @@ export function FranckChat({ eventId }: FranckChatProps) {
   });
   const [keyStored, setKeyStored] = useState(() => hasProviderConfig());
   const usingFreeDefault = !hasCustomProviderConfig() && !!DEFAULT_FREE_CONFIG;
+
+  // Derive the actively locked model label for the header
+  const activeModelLabel = (() => {
+    try {
+      const config = getProviderConfig();
+      const provider = PROVIDERS[config.provider];
+      const model = provider.models.find((m) => m.id === config.model);
+      return model?.label ?? config.model.split('/').pop() ?? 'Unknown';
+    } catch {
+      return DEFAULT_FREE_CONFIG ? 'Step 1.5 Flash (Free)' : 'Not configured';
+    }
+  })();
 
   // Auto-Pilot refinement state
   const [isRefining, setIsRefining] = useState(false);
@@ -501,8 +515,9 @@ export function FranckChat({ eventId }: FranckChatProps) {
               <h2 className="text-sm font-semibold leading-none">
                 Franck Eggelhoffer 🎩
               </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Your Event Planning Genius
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                <Lock className="h-2.5 w-2.5 text-emerald-500/70" />
+                <span className="text-emerald-500/90 font-medium">{activeModelLabel}</span>
               </p>
             </div>
           </div>
@@ -546,22 +561,35 @@ export function FranckChat({ eventId }: FranckChatProps) {
               </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="w-80"
+                className="w-[340px]"
               >
                 <div className="space-y-4">
-                  {/* Provider selector */}
+                  {/* Active model indicator */}
+                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 flex items-center gap-2.5">
+                    <Lock className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-emerald-400 font-semibold truncate">
+                        Active: {activeModelLabel}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {usingFreeDefault ? 'Free tier · upgrade with your own API key' : 'Locked and ready'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Provider tabs */}
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Provider</label>
-                    <div className="flex gap-1.5">
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Provider</label>
+                    <div className="flex gap-1 p-0.5 rounded-lg bg-muted/30 border border-border/50">
                       {(Object.keys(PROVIDERS) as ProviderType[]).map((p) => (
                         <button
                           key={p}
                           onClick={() => handleProviderChange(p)}
                           className={cn(
-                            'flex-1 rounded-md px-3 py-1.5 text-xs font-medium border transition-colors',
+                            'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150',
                             selectedProvider === p
-                              ? 'bg-violet-600 text-white border-violet-600'
-                              : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted/70'
+                              ? 'bg-violet-600 text-white shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                           )}
                         >
                           {PROVIDERS[p].label}
@@ -570,30 +598,60 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     </div>
                   </div>
 
-                  {/* Model selector */}
+                  {/* Model selector — radio-style list */}
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Model</label>
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => handleModelChange(e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {PROVIDERS[selectedProvider].models.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Model</label>
+                    <div className="rounded-lg border border-border/50 overflow-hidden divide-y divide-border/30 max-h-[200px] overflow-y-auto">
+                      {PROVIDERS[selectedProvider].models.map((m) => {
+                        const isActive = selectedModel === m.id;
+                        const isFree = m.label.toLowerCase().includes('free');
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => handleModelChange(m.id)}
+                            className={cn(
+                              'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
+                              isActive
+                                ? 'bg-violet-500/15'
+                                : 'hover:bg-muted/40',
+                            )}
+                          >
+                            <div className={cn(
+                              'shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
+                              isActive
+                                ? 'border-violet-500 bg-violet-500'
+                                : 'border-muted-foreground/40'
+                            )}>
+                              {isActive && <Check className="h-2.5 w-2.5 text-white" />}
+                            </div>
+                            <span className={cn(
+                              'text-xs font-medium flex-1',
+                              isActive ? 'text-foreground' : 'text-muted-foreground'
+                            )}>
+                              {m.label}
+                            </span>
+                            {isFree && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 uppercase tracking-wide">
+                                Free
+                              </span>
+                            )}
+                            {isActive && (
+                              <Lock className="h-3 w-3 text-violet-400 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* API Key */}
                   <div>
                     <div className="flex items-center gap-2 mb-1.5">
                       <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
-                      <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">API Key</label>
                       {keyStored && getProviderConfig()?.provider === selectedProvider && (
-                        <span className="ml-auto text-emerald-500 text-[10px] font-medium">
-                          ✓ Saved
+                        <span className="ml-auto flex items-center gap-1 text-emerald-500 text-[10px] font-medium">
+                          <Check className="h-3 w-3" /> Saved
                         </span>
                       )}
                     </div>
@@ -618,17 +676,6 @@ export function FranckChat({ eventId }: FranckChatProps) {
                   >
                     Save Configuration
                   </Button>
-
-                  {usingFreeDefault && (
-                    <div className="rounded-md bg-violet-500/10 border border-violet-500/20 px-3 py-2">
-                      <p className="text-[11px] text-violet-400 font-medium">
-                        Currently using free Step 1.5 Flash model
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Upgrade to Claude, GPT-4.1, Gemini &amp; more with one key.
-                      </p>
-                    </div>
-                  )}
 
                   {/* OpenRouter onboarding */}
                   {selectedProvider === 'openrouter' && (
