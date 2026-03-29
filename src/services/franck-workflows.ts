@@ -107,6 +107,7 @@ export const WORKFLOWS: WorkflowDefinition[] = [
     description: 'Automatically seat all unassigned guests at available tables',
     triggerPhrases: [
       'auto seat',
+      'auto-seat',
       'seat everyone',
       'seat the guests',
       'seat all guests',
@@ -120,6 +121,9 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'put people at tables',
       'assign tables',
       'assign everyone',
+      'place guests',
+      'place everyone',
+      'seat them',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -271,6 +275,14 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'event overview',
       'how are we looking',
       'status report',
+      "how's the event",
+      'hows the event',
+      'how is the event looking',
+      'hows my event looking',
+      'how is my event',
+      'event check',
+      'whats the status',
+      'give me a status',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -316,6 +328,10 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'guest overview',
       'who is coming',
       'guest report',
+      'who is invited',
+      'whats the guest list',
+      'show me the guests',
+      'how many guests',
     ],
     buildSteps: (_params, _eventId) => [
       {

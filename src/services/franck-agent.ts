@@ -736,7 +736,31 @@ export async function sendMessage(
   }
 
   // ── 3. Fall back to LLM for complex/conversational requests ──
-  const config = getProviderConfig();
+  let config: ProviderConfig;
+  try {
+    config = getProviderConfig();
+  } catch (err) {
+    // No LLM provider configured — return a helpful message instead of crashing
+    const fallbackResponse = "Ah, mon ami! Franck needs an API key configured to answer freeform questions. But not to worry — you can still use these powerful workflow actions that work instantly without any API key:\n\n- **\"event readiness check\"** — full status report\n- **\"auto seat\"** — seat all unassigned guests\n- **\"guest list audit\"** — review the guest list\n- **\"quick optimization\"** — optimize current seating\n- **\"full seating setup\"** — clear and redo all seating\n\nAdd an API key in the settings panel to unlock freeform conversation!";
+    const updatedConversation: FranckConversation = {
+      eventId,
+      rawMessages: [
+        ...conversation.rawMessages,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: fallbackResponse },
+      ],
+      messages: [
+        ...conversation.messages,
+        { role: 'user', content: userMessage, timestamp: Date.now() },
+        { role: 'assistant', content: fallbackResponse, timestamp: Date.now() },
+      ],
+    };
+    return {
+      response: fallbackResponse,
+      conversation: updatedConversation,
+      toolCalls: [],
+    };
+  }
 
   // Deep-clone conversation so we don't mutate the caller's object
   const rawMessages: RawMessage[] = [...conversation.rawMessages];
