@@ -324,6 +324,21 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
       required: [],
     },
   },
+  {
+    name: 'run_refinement_loop',
+    description:
+      'Run Franck\'s Auto-Pilot refinement loop. Algorithmically optimizes the current seating arrangement by scoring, identifying improvement opportunities (swaps and placements), applying the best ones, and iterating until the score plateaus. Returns a detailed summary of improvements made. Use when the user asks to "optimize", "refine", "improve", or "auto-pilot" the seating.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        maxIterations: {
+          type: 'number',
+          description: 'Maximum number of optimization iterations (default: 20). Higher = more thorough but slower.',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ──────────────────────────────────────────────
