@@ -14,7 +14,7 @@ function dbSync(fn: () => Promise<void>) {
 // ──────────────────────────────────────────────
 // Store version — bump this when adding persisted fields
 // ──────────────────────────────────────────────
-const STORE_VERSION = 8;
+const STORE_VERSION = 9;
 
 // Simple hash for demo purposes — NOT cryptographically secure
 function simpleHash(str: string): string {
@@ -101,6 +101,8 @@ interface EventStore extends PersistedState, MessagingActions {
   addLayoutObject: (obj: LayoutObject) => void;
   updateLayoutObject: (id: string, updates: Partial<LayoutObject>) => void;
   removeLayoutObject: (id: string) => void;
+  /** Re-number all tables in a version sequentially by spatial position (top-left → bottom-right) */
+  renumberTablesByPosition: (versionId: string) => void;
 
   // Version actions
   addVersion: (version: EventVersion) => void;
@@ -350,6 +352,46 @@ export const useEventStore = create<EventStore>()(
   removeLayoutObject: (id) => {
     set((s) => ({ layoutObjects: s.layoutObjects.filter((o) => o.id !== id) }));
     dbSync(() => db.deleteLayoutObject(id));
+  },
+  renumberTablesByPosition: (versionId) => {
+    set((s) => {
+      // Get only tables for this version
+      const tables = s.layoutObjects.filter(
+        (o) => o.versionId === versionId && (o.type === 'round_table' || o.type === 'rect_table'),
+      );
+      if (tables.length === 0) return s;
+
+      // Sort by spatial position: row-major order (top→bottom, left→right)
+      // Group into rows using Y-position buckets (within 60px = same row)
+      const ROW_THRESHOLD = 60;
+      const sorted = [...tables].sort((a, b) => {
+        const rowDiff = a.y - b.y;
+        if (Math.abs(rowDiff) > ROW_THRESHOLD) return rowDiff;
+        return a.x - b.x; // same row → left to right
+      });
+
+      // Build ID → new number map
+      const numberMap = new Map<string, number>();
+      sorted.forEach((t, i) => numberMap.set(t.id, i + 1));
+
+      // Apply new numbers + names
+      const updated = s.layoutObjects.map((o) => {
+        const newNum = numberMap.get(o.id);
+        if (newNum != null) {
+          return { ...o, tableNumber: newNum, name: `Table ${newNum}` };
+        }
+        return o;
+      });
+
+      // Sync to DB
+      for (const o of updated) {
+        if (numberMap.has(o.id)) {
+          dbSync(() => db.upsertLayoutObject(o));
+        }
+      }
+
+      return { layoutObjects: updated };
+    });
   },
 
   addVersion: (version) => {
@@ -627,15 +669,30 @@ export const useEventStore = create<EventStore>()(
           }
         }
 
-        // v6→v7: auto-assign tableNumber to existing tables that lack one
-        if (version < 7 && migrated.layoutObjects) {
-          let nextNumber = 1;
-          migrated.layoutObjects = migrated.layoutObjects.map((obj) => {
-            if ((obj.type === 'round_table' || obj.type === 'rect_table') && obj.tableNumber == null) {
-              return { ...obj, tableNumber: nextNumber++, name: `Table ${nextNumber - 1}` };
-            }
-            return obj;
-          });
+        // v6→v7+: auto-assign tableNumber by spatial position
+        if (version < 9 && migrated.layoutObjects) {
+          // Group tables by versionId, sort by position, assign sequential numbers
+          const ROW_THRESHOLD = 60;
+          const versionIds = new Set(
+            migrated.layoutObjects
+              .filter((o) => o.type === 'round_table' || o.type === 'rect_table')
+              .map((o) => o.versionId),
+          );
+          for (const vid of versionIds) {
+            const tables = migrated.layoutObjects
+              .filter((o) => o.versionId === vid && (o.type === 'round_table' || o.type === 'rect_table'))
+              .sort((a, b) => {
+                const rowDiff = a.y - b.y;
+                if (Math.abs(rowDiff) > ROW_THRESHOLD) return rowDiff;
+                return a.x - b.x;
+              });
+            tables.forEach((t, i) => {
+              const idx = migrated.layoutObjects.indexOf(t);
+              if (idx >= 0) {
+                migrated.layoutObjects[idx] = { ...t, tableNumber: i + 1, name: `Table ${i + 1}` };
+              }
+            });
+          }
         }
 
         return migrated;
