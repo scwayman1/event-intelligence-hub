@@ -19,6 +19,16 @@ import {
   type ProviderType,
   type NormalizedResponse,
 } from './llm-providers';
+import {
+  matchWorkflow,
+  runWorkflow,
+  formatWorkflowSummary,
+  type WorkflowProgress,
+} from './franck-workflows';
+import {
+  tryChainExecution,
+  type ChainProgress,
+} from './franck-chain';
 
 // ──────────────────────────────────────────────
 // 1. System Prompt
@@ -571,6 +581,10 @@ export interface FranckMessage {
   content: string;
   toolCalls?: { name: string; result: string }[];
   timestamp: number;
+  /** If set, this message was produced by a workflow (not an LLM call) */
+  workflowName?: string;
+  /** If set, this message was produced by a chain execution */
+  chainName?: string;
 }
 
 export interface FranckConversation {

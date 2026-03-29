@@ -944,6 +944,565 @@ async function runRefinementLoopTool(
 }
 
 // ---------------------------------------------------------------------------
+// EVENT MANAGEMENT tools
+// ---------------------------------------------------------------------------
+
+function createEventTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const name = input.name as string | undefined;
+  const type = (input.type as AppEvent['type']) ?? 'other';
+  const date = input.date as string | undefined;
+
+  if (!name) return errorResult('name is required.');
+  if (!date) return errorResult('date is required.');
+
+  const store = useEventStore.getState();
+  const orgId = state.activeOrgId ?? 'org-default';
+  const newEventId = `evt-${crypto.randomUUID()}`;
+  const versionId = `ver-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const newEvent: AppEvent = {
+    id: newEventId,
+    orgId,
+    name,
+    type,
+    status: 'planning',
+    date,
+    time: (input.time as string) ?? '',
+    venue: (input.venue as string) ?? '',
+    venueAddress: (input.venueAddress as string) ?? '',
+    estimatedAttendance: (input.estimatedAttendance as number) ?? 0,
+    notes: (input.notes as string) ?? '',
+    activeVersionId: versionId,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const initialVersion: EventVersion = {
+    id: versionId,
+    eventId: newEventId,
+    name: 'Version 1',
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: 'franck-agent',
+    notes: 'Initial version created by Franck.',
+  };
+
+  store.addEvent(newEvent);
+  store.addVersion(initialVersion);
+
+  return json({
+    created: true,
+    eventId: newEventId,
+    versionId,
+    name: newEvent.name,
+    type: newEvent.type,
+    date: newEvent.date,
+    venue: newEvent.venue,
+  });
+}
+
+function updateEventTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const event = state.events.find((e) => e.id === eventId);
+  if (!event) return errorResult(`Event "${eventId}" not found.`);
+
+  const store = useEventStore.getState();
+  const updates: Partial<AppEvent> = {};
+
+  if (input.name !== undefined) updates.name = input.name as string;
+  if (input.type !== undefined) updates.type = input.type as AppEvent['type'];
+  if (input.status !== undefined) updates.status = input.status as AppEvent['status'];
+  if (input.date !== undefined) updates.date = input.date as string;
+  if (input.time !== undefined) updates.time = input.time as string;
+  if (input.venue !== undefined) updates.venue = input.venue as string;
+  if (input.venueAddress !== undefined) updates.venueAddress = input.venueAddress as string;
+  if (input.estimatedAttendance !== undefined) updates.estimatedAttendance = input.estimatedAttendance as number;
+  if (input.notes !== undefined) updates.notes = input.notes as string;
+  updates.updatedAt = new Date().toISOString();
+
+  if (Object.keys(updates).length <= 1) {
+    return errorResult('No update fields provided.');
+  }
+
+  store.updateEvent(eventId, updates);
+
+  return json({
+    updated: true,
+    eventId,
+    fieldsChanged: Object.keys(updates).filter((k) => k !== 'updatedAt'),
+  });
+}
+
+function listEventsTool(
+  state: StoreState,
+  _eventId: string,
+  _input: ToolInput,
+): string {
+  const orgId = state.activeOrgId;
+  const events = orgId
+    ? state.events.filter((e) => e.orgId === orgId)
+    : state.events;
+
+  return json({
+    count: events.length,
+    events: events.map((e) => ({
+      id: e.id,
+      name: e.name,
+      type: e.type,
+      status: e.status,
+      date: e.date,
+      venue: e.venue,
+      guestCount: state.guests.filter((g) => g.eventId === e.id).length,
+    })),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// GUEST ADD tools
+// ---------------------------------------------------------------------------
+
+function addGuestTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const firstName = input.firstName as string | undefined;
+  const lastName = input.lastName as string | undefined;
+  if (!firstName || !lastName) return errorResult('firstName and lastName are required.');
+
+  const store = useEventStore.getState();
+  const guestId = `guest-${crypto.randomUUID()}`;
+
+  const guest: Guest = {
+    id: guestId,
+    orgId: ctx.event.orgId,
+    eventId,
+    firstName,
+    lastName,
+    displayName: `${firstName} ${lastName}`,
+    email: (input.email as string) ?? '',
+    phone: (input.phone as string) ?? '',
+    organization: (input.organization as string) ?? '',
+    category: (input.category as GuestCategory) ?? 'other',
+    rsvpStatus: (input.rsvpStatus as RSVPStatus) ?? 'invited',
+    partySize: (input.partySize as number) ?? 1,
+    dietaryRestrictions: (input.dietaryRestrictions as string) ?? '',
+    accessibilityNeeds: (input.accessibilityNeeds as string) ?? '',
+    notes: (input.notes as string) ?? '',
+    relationshipTags: [],
+    tablePreference: '',
+    seatingPreference: '',
+  };
+
+  store.addGuest(guest);
+
+  return json({
+    added: true,
+    guestId,
+    displayName: guest.displayName,
+    category: guest.category,
+    rsvpStatus: guest.rsvpStatus,
+  });
+}
+
+function addGuestsBulkTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestsInput = input.guests as Array<Record<string, unknown>> | undefined;
+  if (!guestsInput || guestsInput.length === 0) return errorResult('guests array is required and must not be empty.');
+
+  const store = useEventStore.getState();
+  const added: Array<{ guestId: string; displayName: string }> = [];
+
+  for (const g of guestsInput) {
+    const firstName = g.firstName as string | undefined;
+    const lastName = g.lastName as string | undefined;
+    if (!firstName || !lastName) continue;
+
+    const guestId = `guest-${crypto.randomUUID()}`;
+
+    const guest: Guest = {
+      id: guestId,
+      orgId: ctx.event.orgId,
+      eventId,
+      firstName,
+      lastName,
+      displayName: `${firstName} ${lastName}`,
+      email: (g.email as string) ?? '',
+      phone: (g.phone as string) ?? '',
+      organization: (g.organization as string) ?? '',
+      category: (g.category as GuestCategory) ?? 'other',
+      rsvpStatus: (g.rsvpStatus as RSVPStatus) ?? 'invited',
+      partySize: (g.partySize as number) ?? 1,
+      dietaryRestrictions: (g.dietaryRestrictions as string) ?? '',
+      accessibilityNeeds: (g.accessibilityNeeds as string) ?? '',
+      notes: (g.notes as string) ?? '',
+      relationshipTags: [],
+      tablePreference: '',
+      seatingPreference: '',
+    };
+
+    store.addGuest(guest);
+    added.push({ guestId, displayName: guest.displayName });
+  }
+
+  return json({
+    added: added.length,
+    skipped: guestsInput.length - added.length,
+    guests: added,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// LAYOUT / TABLE tools
+// ---------------------------------------------------------------------------
+
+function addTableTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const store = useEventStore.getState();
+  const tableType = (input.type as 'round_table' | 'rect_table') ?? 'round_table';
+  const capacity = (input.capacity as number) ?? 8;
+  const id = `lo-${crypto.randomUUID()}`;
+
+  // Auto-assign table number (same logic as EventLayout.tsx)
+  const existingNumbers = ctx.tables
+    .map((o) => o.tableNumber ?? 0);
+  const tableNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+
+  const tableName = (input.name as string) ?? `Table ${tableNumber}`;
+
+  const isRound = tableType === 'round_table';
+  const width = isRound ? 80 : 120;
+  const height = isRound ? 80 : 40;
+
+  // Position new tables in a grid pattern
+  const column = ctx.tables.length % 4;
+  const row = Math.floor(ctx.tables.length / 4);
+
+  const layoutObject: LayoutObject = {
+    id,
+    versionId: ctx.versionId,
+    type: tableType,
+    name: tableName,
+    tableNumber,
+    x: 60 + column * 140,
+    y: 60 + row * 110,
+    width,
+    height,
+    rotation: 0,
+    capacity,
+    notes: '',
+    category: 'seating',
+    locked: false,
+    visible: true,
+    zIndex: 100 + ctx.tables.length,
+  };
+
+  store.addLayoutObject(layoutObject);
+
+  return json({
+    added: true,
+    tableId: id,
+    tableNumber,
+    name: tableName,
+    type: tableType,
+    capacity,
+  });
+}
+
+function removeTableTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  let tableId = input.tableId as string | undefined;
+  const tableNumber = input.tableNumber as number | undefined;
+
+  if (!tableId && tableNumber != null) {
+    const table = ctx.tables.find((t) => t.tableNumber === tableNumber);
+    if (!table) return errorResult(`No table with number ${tableNumber} found.`);
+    tableId = table.id;
+  }
+
+  if (!tableId) return errorResult('Either tableId or tableNumber is required.');
+
+  const table = ctx.tables.find((t) => t.id === tableId);
+  if (!table) return errorResult(`Table "${tableId}" not found.`);
+
+  const store = useEventStore.getState();
+
+  // Unseat all guests at this table
+  const tableAssignments = ctx.assignments.filter((a) => a.tableId === tableId);
+  for (const a of tableAssignments) {
+    store.removeSeatingAssignment(a.id);
+  }
+
+  store.removeLayoutObject(tableId);
+
+  return json({
+    removed: true,
+    tableId,
+    tableNumber: table.tableNumber ?? null,
+    tableName: table.name,
+    guestsUnseated: tableAssignments.length,
+  });
+}
+
+function updateTableTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  let tableId = input.tableId as string | undefined;
+  const tableNumber = input.tableNumber as number | undefined;
+
+  if (!tableId && tableNumber != null) {
+    const table = ctx.tables.find((t) => t.tableNumber === tableNumber);
+    if (!table) return errorResult(`No table with number ${tableNumber} found.`);
+    tableId = table.id;
+  }
+
+  if (!tableId) return errorResult('Either tableId or tableNumber is required.');
+
+  const table = ctx.tables.find((t) => t.id === tableId);
+  if (!table) return errorResult(`Table "${tableId}" not found.`);
+
+  const store = useEventStore.getState();
+  const updates: Partial<LayoutObject> = {};
+
+  if (input.name !== undefined) updates.name = input.name as string;
+  if (input.capacity !== undefined) updates.capacity = input.capacity as number;
+
+  if (Object.keys(updates).length === 0) {
+    return errorResult('No update fields provided. Provide name or capacity.');
+  }
+
+  store.updateLayoutObject(tableId, updates);
+
+  return json({
+    updated: true,
+    tableId,
+    tableNumber: table.tableNumber ?? null,
+    fieldsChanged: Object.keys(updates),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// RELATIONSHIP tools
+// ---------------------------------------------------------------------------
+
+function createRelationshipGroupTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const name = input.name as string | undefined;
+  const type = input.type as RelationshipType | undefined;
+
+  if (!name) return errorResult('name is required.');
+  if (!type) return errorResult('type is required.');
+
+  const store = useEventStore.getState();
+  const groupId = `rg-${crypto.randomUUID()}`;
+
+  const group: RelationshipGroup = {
+    id: groupId,
+    eventId,
+    orgId: ctx.event.orgId,
+    name,
+    type,
+    notes: (input.notes as string) ?? undefined,
+    createdAt: new Date().toISOString(),
+  };
+
+  store.addRelationshipGroup(group);
+
+  return json({
+    created: true,
+    groupId,
+    name,
+    type,
+  });
+}
+
+function addToRelationshipGroupTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const groupId = input.groupId as string | undefined;
+  const guestId = input.guestId as string | undefined;
+  const role = input.role as string | undefined;
+
+  if (!groupId) return errorResult('groupId is required.');
+  if (!guestId) return errorResult('guestId is required.');
+  if (!role) return errorResult('role is required.');
+
+  const group = ctx.groups.find((g) => g.id === groupId);
+  if (!group) return errorResult(`Relationship group "${groupId}" not found.`);
+
+  const guest = ctx.guests.find((g) => g.id === guestId);
+  if (!guest) return errorResult(`Guest "${guestId}" not found.`);
+
+  // Check if already a member
+  const existing = ctx.memberships.find(
+    (m) => m.groupId === groupId && m.guestId === guestId,
+  );
+  if (existing) return errorResult(`Guest "${guest.displayName}" is already in group "${group.name}".`);
+
+  const store = useEventStore.getState();
+  const membershipId = `rm-${crypto.randomUUID()}`;
+
+  const membership: RelationshipMembership = {
+    id: membershipId,
+    groupId,
+    guestId,
+    role,
+  };
+
+  store.addRelationshipMembership(membership);
+
+  return json({
+    added: true,
+    membershipId,
+    groupName: group.name,
+    guestName: guest.displayName,
+    role,
+  });
+}
+
+function listRelationshipGroupsTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  return json({
+    count: ctx.groups.length,
+    groups: ctx.groups.map((g) => {
+      const members = ctx.memberships.filter((m) => m.groupId === g.id);
+      return {
+        id: g.id,
+        name: g.name,
+        type: g.type,
+        notes: g.notes ?? null,
+        memberCount: members.length,
+        members: members.map((m) => {
+          const guest = ctx.guests.find((gu) => gu.id === m.guestId);
+          return {
+            membershipId: m.id,
+            guestId: m.guestId,
+            guestName: guest?.displayName ?? 'Unknown',
+            role: m.role,
+          };
+        }),
+      };
+    }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// VERSION tools
+// ---------------------------------------------------------------------------
+
+function listVersionsTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  return json({
+    activeVersionId: ctx.event.activeVersionId,
+    count: ctx.versions.length,
+    versions: ctx.versions.map((v) => ({
+      id: v.id,
+      name: v.name,
+      status: v.status,
+      createdAt: v.createdAt,
+      createdBy: v.createdBy,
+      notes: v.notes,
+      isActive: v.id === ctx.event.activeVersionId,
+    })),
+  });
+}
+
+function createVersionTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const name = input.name as string | undefined;
+  if (!name) return errorResult('name is required.');
+
+  const store = useEventStore.getState();
+  const versionId = `ver-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const version: EventVersion = {
+    id: versionId,
+    eventId,
+    name,
+    status: 'draft',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: 'franck-agent',
+    notes: (input.notes as string) ?? '',
+  };
+
+  store.addVersion(version);
+
+  return json({
+    created: true,
+    versionId,
+    name,
+    eventId,
+    note: 'New version created as draft. Switch the active version in the UI to use it.',
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tool dispatcher
 // ---------------------------------------------------------------------------
 
@@ -951,6 +1510,25 @@ const TOOL_MAP: Record<
   string,
   (state: StoreState, eventId: string, input: ToolInput) => string | Promise<string>
 > = {
+  // Event management
+  create_event: createEventTool,
+  update_event: updateEventTool,
+  list_events: listEventsTool,
+  // Guest add
+  add_guest: addGuestTool,
+  add_guests_bulk: addGuestsBulkTool,
+  // Layout / table management
+  add_table: addTableTool,
+  remove_table: removeTableTool,
+  update_table: updateTableTool,
+  // Relationship management
+  create_relationship_group: createRelationshipGroupTool,
+  add_to_relationship_group: addToRelationshipGroupTool,
+  list_relationship_groups: listRelationshipGroupsTool,
+  // Version management
+  list_versions: listVersionsTool,
+  create_version: createVersionTool,
+  // Existing tools
   get_event_summary: getEventSummary,
   analyze_guest_list: analyzeGuestList,
   search_guests: searchGuests,
