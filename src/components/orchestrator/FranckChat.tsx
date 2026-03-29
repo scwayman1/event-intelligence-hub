@@ -29,6 +29,12 @@ import { toast } from 'sonner';
   BookOpen,
   Lock,
   Check,
+  RotateCcw,
+  ClipboardList,
+  Users,
+  MessageSquare,
+  AlertCircle,
+  Mail,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -82,11 +88,11 @@ const LOADING_MESSAGES = [
 ];
 
 const QUICK_ACTIONS = [
-  'event readiness check',
-  'auto seat',
-  "Who hasn't RSVP'd?",
-  'Any issues?',
-  'Draft reminder emails',
+  { label: 'Event Status', trigger: 'event readiness check', Icon: ClipboardList },
+  { label: 'Auto-Seat Guests', trigger: 'auto seat', Icon: Users },
+  { label: "Missing RSVPs", trigger: "Who hasn't RSVP'd?", Icon: MessageSquare },
+  { label: 'Find Issues', trigger: 'Any issues?', Icon: AlertCircle },
+  { label: 'Draft Reminders', trigger: 'Draft reminder emails', Icon: Mail },
 ];
 
 /** Workflow-triggering quick actions shown alongside regular ones */
@@ -96,6 +102,40 @@ const WORKFLOW_ACTIONS = [
   { label: 'Readiness Check', trigger: 'event readiness check', icon: '\u2705' },
   { label: 'Guest List Audit', trigger: 'guest list audit', icon: '\uD83D\uDCCB' },
 ];
+
+/** Suggested follow-up actions shown after freeform LLM responses */
+const CONTEXTUAL_SUGGESTIONS = [
+  { label: 'Check event readiness', trigger: 'event readiness check' },
+  { label: 'Review guest list', trigger: 'guest list audit' },
+  { label: 'Auto-seat everyone', trigger: 'auto seat' },
+  { label: 'Optimize seating', trigger: 'quick optimization' },
+  { label: 'Find potential issues', trigger: 'Any issues?' },
+];
+
+/**
+ * Simple markdown renderer for bold, italic, headers, and bullet points.
+ * Content comes from our own system so dangerouslySetInnerHTML is acceptable.
+ */
+function renderMarkdown(text: string): string {
+  let html = text
+    // Escape HTML entities first
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Headers: ### header -> <strong style>header</strong>
+    .replace(/^### (.+)$/gm, '<strong style="font-size:1.05em;display:block;margin:0.6em 0 0.25em">$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong style="font-size:1.1em;display:block;margin:0.6em 0 0.25em">$1</strong>')
+    .replace(/^# (.+)$/gm, '<strong style="font-size:1.15em;display:block;margin:0.6em 0 0.25em">$1</strong>')
+    // Bold: **text** -> <strong>text</strong>
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic: *text* -> <em>text</em>
+    .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>')
+    // Bullet points: - item -> styled list item
+    .replace(/^- (.+)$/gm, '<span style="display:flex;gap:0.4em;margin:0.15em 0"><span style="opacity:0.5">&#x2022;</span><span>$1</span></span>')
+    // Numbered lists: 1. item -> styled
+    .replace(/^(\d+)\. (.+)$/gm, '<span style="display:flex;gap:0.4em;margin:0.15em 0"><span style="opacity:0.5">$1.</span><span>$2</span></span>');
+  return html;
+}
 
 const WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
@@ -201,6 +241,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
       saveConversation(eventId, conversation);
     }
   }, [eventId, conversation]);
+
+  // Loading timer state — show "taking longer" message after 10s
+  const [loadingTooLong, setLoadingTooLong] = useState(false);
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track last user message for retry
+  const lastUserMessageRef = useRef<string>('');
 
   // Refs
   const scrollRef = useRef<HTMLDivElement>(null);
