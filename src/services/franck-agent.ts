@@ -38,6 +38,13 @@ import {
   tryChainExecution,
   type ChainProgress,
 } from './franck-chain';
+import { classifyIntent, getIntentToolMapping } from './franck-intent';
+import {
+  generateFallbackResponse,
+  extractEventContext,
+  getSuggestedActions,
+  type FranckIntent as FallbackIntent,
+} from './franck-responses';
 
 // ──────────────────────────────────────────────
 // 1. System Prompt
@@ -938,38 +945,56 @@ export async function sendMessage(
   })();
 
   if (!config) {
-    // No LLM provider configured — build a helpful offline message
+    // No LLM provider — use intent classifier + fallback responses
+    const intentMatch = classifyIntent(userMessage);
+    const storeSnapshot = useEventStore.getState();
+    const eventCtx = extractEventContext(storeSnapshot, eventId);
+
+    // Map intent to the fallback response system's intent type
+    const intentMapping: Record<string, FallbackIntent> = {
+      event_status: 'event_status',
+      guest_list: 'guest_list',
+      guest_search: 'guest_list',
+      seat_guests: 'seat_guests',
+      optimize: 'optimize',
+      move_guest: 'move_guest',
+      swap_guests: 'swap_guests',
+      unseat_guest: 'unseat_guest',
+      general_question: 'general_question',
+    };
+    const fallbackIntent = intentMapping[intentMatch.intent] ?? 'unknown';
+    const fallbackResponse = generateFallbackResponse(
+      fallbackIntent,
+      eventCtx,
+      intentMatch.extractedParams,
+    );
+
     const suggestion = suggestClosestWorkflow(userMessage);
     const suggestionLine = suggestion
-      ? `\n\nFranck noticed you may want: **"${suggestion}"** — try saying that exactly!\n`
+      ? `\n\nFranck noticed you may want: **"${suggestion}"** — try saying that exactly!`
       : '';
-    const fallbackResponse =
-      "Ah, mon ami! Franck needs an API key configured to answer freeform questions. " +
-      "But not to worry — you can still use these powerful workflow actions that work " +
-      "instantly without any API key:\n\n" +
-      '- **"event readiness check"** — full status report\n' +
-      '- **"auto seat"** — seat all unassigned guests\n' +
-      '- **"guest list audit"** — review the guest list\n' +
-      '- **"quick optimization"** — optimize current seating\n' +
-      '- **"full seating setup"** — clear and redo all seating' +
-      suggestionLine +
-      "\n\nAdd an API key in the settings panel to unlock freeform conversation!";
+    const suggestions = getSuggestedActions(eventCtx);
+    const suggestionsLine = suggestions.length > 0
+      ? `\n\n**Quick actions:** ${suggestions.slice(0, 3).join(' · ')}`
+      : '';
+
+    const fullResponse = fallbackResponse + suggestionLine + suggestionsLine;
 
     const updatedConversation: FranckConversation = {
       eventId,
       rawMessages: [
         ...conversation.rawMessages,
         { role: 'user', content: userMessage },
-        { role: 'assistant', content: fallbackResponse },
+        { role: 'assistant', content: fullResponse },
       ],
       messages: [
         ...conversation.messages,
         { role: 'user', content: userMessage, timestamp: Date.now() },
-        { role: 'assistant', content: fallbackResponse, timestamp: Date.now() },
+        { role: 'assistant', content: fullResponse, timestamp: Date.now() },
       ],
     };
     return {
-      response: fallbackResponse,
+      response: fullResponse,
       conversation: updatedConversation,
       toolCalls: [],
     };
