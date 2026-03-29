@@ -290,12 +290,42 @@ export function FranckChat({ eventId }: FranckChatProps) {
     };
   }, [isLoading]);
 
+  // ── Loading "too long" timer ────────────────────────────────────────────
+  useEffect(() => {
+    if (isLoading) {
+      setLoadingTooLong(false);
+      loadingTimerRef.current = setTimeout(() => {
+        setLoadingTooLong(true);
+      }, 10_000);
+    } else {
+      setLoadingTooLong(false);
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    }
+    return () => {
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    };
+  }, [isLoading]);
+
+  // ── Escape key to close panel ──────────────────────────────────────────
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen]);
+
   // ── Send handler ────────────────────────────────────────────────────────
   const handleSend = useCallback(
     async (text?: string) => {
       const content = (text ?? input).trim();
       const canSend = keyStored || !!DEFAULT_FREE_CONFIG;
       if (!content || isLoading || !canSend) return;
+
+      // Track for retry
+      lastUserMessageRef.current = content;
 
       // Create user message
       const userMsg: ChatMessage = {
@@ -376,6 +406,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
     },
     [input, isLoading, keyStored, conversation, eventId]
   );
+
+  // ── Retry handler — re-sends the last user message ─────────────────────
+  const handleRetry = useCallback(() => {
+    if (lastUserMessageRef.current && !isLoading) {
+      handleSend(lastUserMessageRef.current);
+    }
+  }, [handleSend, isLoading]);
 
   // ── Key handler for textarea ────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
