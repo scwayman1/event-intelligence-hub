@@ -30,7 +30,7 @@ import {
   getSeatingRecommendations,
 } from '@/services/smart-seating';
 
-import type { GuestCategory, RSVPStatus } from '@/types/events';
+import type { Guest, GuestCategory, RSVPStatus } from '@/types/events';
 
 // ---------------------------------------------------------------------------
 // Store state snapshot type
@@ -67,7 +67,10 @@ function getEventContext(state: StoreState, eventId: string) {
   const versions = state.versions.filter((v) => v.eventId === eventId);
   const activeVersion = versions.find((v) => v.id === event.activeVersionId);
   const versionId = activeVersion?.id ?? event.activeVersionId;
-  const tables = state.layoutObjects.filter((o) => o.versionId === versionId);
+  const allObjects = state.layoutObjects.filter((o) => o.versionId === versionId);
+  const tables = allObjects.filter(
+    (o) => o.type === 'round_table' || o.type === 'rect_table',
+  );
   const assignments = state.seatingAssignments.filter(
     (a) => a.versionId === versionId,
   );
@@ -214,15 +217,22 @@ function searchGuests(
   return json({
     query,
     resultCount: matches.length,
-    results: matches.map((g) => ({
-      id: g.id,
-      displayName: g.displayName,
-      email: g.email,
-      organization: g.organization,
-      category: g.category,
-      rsvpStatus: g.rsvpStatus,
-      partySize: g.partySize,
-    })),
+    results: matches.map((g) => {
+      const assignment = ctx.assignments.find((a) => a.guestId === g.id);
+      const table = assignment ? ctx.tables.find((t) => t.id === assignment.tableId) : null;
+      return {
+        id: g.id,
+        displayName: g.displayName,
+        email: g.email,
+        organization: g.organization,
+        category: g.category,
+        rsvpStatus: g.rsvpStatus,
+        partySize: g.partySize,
+        seating: table
+          ? { tableId: table.id, tableNumber: table.tableNumber ?? null, tableName: table.name }
+          : null,
+      };
+    }),
   });
 }
 
@@ -282,6 +292,7 @@ function getGuestDetails(
     seating: assignment
       ? {
           tableId: assignment.tableId,
+          tableNumber: ctx.tables.find((t) => t.id === assignment.tableId)?.tableNumber ?? null,
           tableName: tableName ?? 'Unknown',
           seatNumber: assignment.seatNumber ?? null,
         }
@@ -354,6 +365,7 @@ function autoSeatGuests(
         guestId: a.guestId,
         guestName: guest?.displayName ?? 'Unknown',
         tableId: a.tableId,
+        tableNumber: table?.tableNumber ?? null,
         tableName: table?.name ?? 'Unknown',
         seatNumber: a.seatNumber,
         reason: a.reason,
@@ -424,6 +436,7 @@ function getSeatingRecommendationsTool(
         guestId: r.guestId,
         guestName: guest?.displayName ?? 'Unknown',
         tableId: r.tableId,
+        tableNumber: table?.tableNumber ?? null,
         tableName: table?.name ?? 'Unknown',
         reason: r.reason,
         priority: r.priority,
@@ -460,6 +473,7 @@ function getTableInfo(
     overCapacityTables: seatingAnalytics.overCapacityTables,
     tables: seatingAnalytics.tableUtilization.map((t) => ({
       tableId: t.table.id,
+      tableNumber: t.table.tableNumber ?? null,
       tableName: t.table.name,
       type: t.table.type,
       capacity: t.capacity,
@@ -771,10 +785,19 @@ function moveGuestToTableTool(
   if (!ctx) return errorResult(`Event "${eventId}" not found.`);
 
   const guestId = input.guestId as string | undefined;
-  const tableId = input.tableId as string | undefined;
+  let tableId = input.tableId as string | undefined;
+  const tableNumber = input.tableNumber as number | undefined;
 
   if (!guestId) return errorResult('guestId is required.');
-  if (!tableId) return errorResult('tableId is required.');
+
+  // Resolve table by number if tableId not provided
+  if (!tableId && tableNumber != null) {
+    const tableByNumber = ctx.tables.find((t) => t.tableNumber === tableNumber);
+    if (!tableByNumber) return errorResult(`No table with number ${tableNumber} found. Use get_table_info to see available tables.`);
+    tableId = tableByNumber.id;
+  }
+
+  if (!tableId) return errorResult('Either tableId or tableNumber is required.');
 
   const guest = ctx.guests.find((g) => g.id === guestId);
   if (!guest) return errorResult(`Guest "${guestId}" not found.`);
@@ -788,7 +811,49 @@ function moveGuestToTableTool(
   return json({
     moved: true,
     guestName: guest.displayName,
+    tableNumber: table.tableNumber ?? null,
     tableName: table.name,
+  });
+}
+
+function swapGuestsTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return errorResult(`Event "${eventId}" not found.`);
+
+  const guestId1 = input.guestId1 as string | undefined;
+  const guestId2 = input.guestId2 as string | undefined;
+
+  if (!guestId1 || !guestId2) return errorResult('Both guestId1 and guestId2 are required.');
+
+  const guest1 = ctx.guests.find((g) => g.id === guestId1);
+  const guest2 = ctx.guests.find((g) => g.id === guestId2);
+  if (!guest1) return errorResult(`Guest "${guestId1}" not found.`);
+  if (!guest2) return errorResult(`Guest "${guestId2}" not found.`);
+
+  const assignment1 = ctx.assignments.find((a) => a.guestId === guestId1);
+  const assignment2 = ctx.assignments.find((a) => a.guestId === guestId2);
+  if (!assignment1) return errorResult(`${guest1.displayName} is not currently seated.`);
+  if (!assignment2) return errorResult(`${guest2.displayName} is not currently seated.`);
+
+  const table1 = ctx.tables.find((t) => t.id === assignment1.tableId);
+  const table2 = ctx.tables.find((t) => t.id === assignment2.tableId);
+
+  const store = useEventStore.getState();
+
+  // Remove both assignments, then recreate them swapped
+  store.removeSeatingAssignment(assignment1.id);
+  store.removeSeatingAssignment(assignment2.id);
+  store.moveGuestToTable(guestId1, assignment2.tableId, ctx.versionId);
+  store.moveGuestToTable(guestId2, assignment1.tableId, ctx.versionId);
+
+  return json({
+    swapped: true,
+    guest1: { name: guest1.displayName, from: table1?.name ?? 'Unknown', to: table2?.name ?? 'Unknown' },
+    guest2: { name: guest2.displayName, from: table2?.name ?? 'Unknown', to: table1?.name ?? 'Unknown' },
   });
 }
 
@@ -864,6 +929,7 @@ const TOOL_MAP: Record<
   delete_guests: deleteGuestsTool,
   bulk_update_guests: bulkUpdateGuestsTool,
   move_guest_to_table: moveGuestToTableTool,
+  swap_guests: swapGuestsTool,
   unseat_guest: unseatGuestTool,
   clear_all_seating: clearAllSeatingTool,
 };
