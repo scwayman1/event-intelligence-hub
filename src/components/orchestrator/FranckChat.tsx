@@ -149,10 +149,25 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
   // ── Auto-scroll on new messages ─────────────────────────────────────────
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // ScrollArea renders a [data-radix-scroll-area-viewport] that is the
+    // actual scrollable element. scrollRef sits inside it, so we walk up.
+    const viewport = scrollRef.current?.closest('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, [messages, isLoading]);
+
+  // ── Scroll to bottom when chat opens ────────────────────────────────────
+  useEffect(() => {
+    if (isOpen) {
+      requestAnimationFrame(() => {
+        const viewport = scrollRef.current?.closest('[data-radix-scroll-area-viewport]');
+        if (viewport) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      });
+    }
+  }, [isOpen]);
 
   // ── Rotate loading messages ─────────────────────────────────────────────
   useEffect(() => {
