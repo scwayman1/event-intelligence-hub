@@ -1,9 +1,10 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
   AlertTriangle,
   Check,
+  MapPin,
   Plus,
   Search,
   Settings2,
@@ -74,6 +75,55 @@ export default function EventSeating() {
   const [showRules, setShowRules] = useState(false);
   const [showCreateRule, setShowCreateRule] = useState(false);
   const [autoAssignedIds, setAutoAssignedIds] = useState<Set<string>>(new Set());
+
+  // ── Seat finder search ───────────────────────────────────────────────────
+  const [seatSearch, setSeatSearch] = useState('');
+  const [seatSearchFocused, setSeatSearchFocused] = useState(false);
+  const seatSearchRef = useRef<HTMLInputElement>(null);
+
+  // Find guests matching the seat search (both seated and unseated)
+  const seatSearchResults = useMemo(() => {
+    const q = seatSearch.trim().toLowerCase();
+    if (!q) return [];
+    return analytics.eventGuests
+      .filter((g) =>
+        `${g.firstName} ${g.lastName} ${g.displayName} ${g.organization ?? ''} ${g.email ?? ''}`
+          .toLowerCase()
+          .includes(q),
+      )
+      .slice(0, 8);
+  }, [seatSearch, analytics.eventGuests]);
+
+  // Which table IDs to highlight (from seat search selection)
+  const [highlightedGuestId, setHighlightedGuestId] = useState<string | null>(null);
+  const highlightedTableId = useMemo(() => {
+    if (!highlightedGuestId) return null;
+    const assignment = assignments.find((a) => a.guestId === highlightedGuestId);
+    return assignment?.tableId ?? null;
+  }, [highlightedGuestId, assignments]);
+
+  // Auto-clear highlight after 4 seconds
+  useEffect(() => {
+    if (!highlightedGuestId) return;
+    const timer = setTimeout(() => setHighlightedGuestId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [highlightedGuestId]);
+
+  const handleSeatSearchSelect = useCallback((guestId: string) => {
+    setHighlightedGuestId(guestId);
+    setSeatSearch('');
+    setSeatSearchFocused(false);
+    seatSearchRef.current?.blur();
+
+    // Scroll the highlighted table into view
+    const assignment = assignments.find((a) => a.guestId === guestId);
+    if (assignment) {
+      setTimeout(() => {
+        const el = document.querySelector(`[data-table-id="${assignment.tableId}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    }
+  }, [assignments]);
 
   // Evaluate tag-based rules
   const ruleEvaluations = useMemo(
@@ -466,6 +516,92 @@ export default function EventSeating() {
           </div>
         )}
 
+        {/* ── Seat finder ──────────────────────────────────────────────── */}
+        <div className="relative">
+          <div className="relative max-w-md">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              ref={seatSearchRef}
+              placeholder="Find a guest's seat..."
+              value={seatSearch}
+              onChange={(e) => setSeatSearch(e.target.value)}
+              onFocus={() => setSeatSearchFocused(true)}
+              onBlur={() => setTimeout(() => setSeatSearchFocused(false), 200)}
+              className="pl-9 h-9 text-sm bg-muted/30 border-border/60 focus:border-primary/50"
+            />
+            {seatSearch && (
+              <button
+                onClick={() => { setSeatSearch(''); setHighlightedGuestId(null); }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Search results dropdown */}
+          {seatSearchFocused && seatSearch.trim() && (
+            <div
+              className={cn(
+                'absolute z-50 mt-1.5 w-full max-w-md rounded-xl overflow-hidden',
+                'border border-white/[0.12]',
+                'shadow-[0_8px_40px_rgba(0,0,0,0.25),0_2px_12px_rgba(0,0,0,0.15)]',
+              )}
+              style={{
+                backdropFilter: 'blur(24px) saturate(1.8)',
+                WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)',
+              }}
+            >
+              {seatSearchResults.length === 0 ? (
+                <div className="px-4 py-3 text-xs text-muted-foreground text-center">
+                  No guests found
+                </div>
+              ) : (
+                seatSearchResults.map((guest) => {
+                  const assignment = assignments.find((a) => a.guestId === guest.id);
+                  const table = assignment
+                    ? tables.find((t) => t.id === assignment.tableId)
+                    : null;
+
+                  return (
+                    <button
+                      key={guest.id}
+                      onMouseDown={(e) => { e.preventDefault(); handleSeatSearchSelect(guest.id); }}
+                      className={cn(
+                        'w-full px-4 py-2.5 flex items-center justify-between gap-3 text-left',
+                        'hover:bg-white/[0.08] transition-colors',
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {guest.displayName}
+                        </p>
+                        {guest.organization && (
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {guest.organization}
+                          </p>
+                        )}
+                      </div>
+                      {table ? (
+                        <span className="flex items-center gap-1.5 shrink-0 text-xs font-medium text-emerald-400">
+                          <MapPin className="w-3 h-3" />
+                          {table.name}
+                          {assignment?.seatNumber ? ` · Seat ${assignment.seatNumber}` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/60 shrink-0 italic">
+                          Not seated
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Visual seating board */}
         <SeatingBoard
           tables={tables}
@@ -475,6 +611,8 @@ export default function EventSeating() {
           relationshipMemberships={relationshipMemberships}
           versionId={versionId}
           autoAssignedIds={autoAssignedIds}
+          highlightedTableId={highlightedTableId}
+          highlightedGuestId={highlightedGuestId}
           onDropGuest={handleDropGuest}
           onUnseatGuest={handleUnseatGuest}
         />

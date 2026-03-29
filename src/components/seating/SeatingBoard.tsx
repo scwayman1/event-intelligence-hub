@@ -19,6 +19,8 @@ interface SeatingBoardProps {
   relationshipMemberships: RelationshipMembership[];
   versionId: string;
   autoAssignedIds: Set<string>;
+  highlightedTableId?: string | null;
+  highlightedGuestId?: string | null;
   onDropGuest: (guestId: string, tableId: string, seatNumber: number) => void;
   onUnseatGuest: (guestId: string) => void;
 }
@@ -62,6 +64,7 @@ interface SeatSlotProps {
   tableId: string;
   guest: Guest | undefined;
   isAutoAssigned: boolean;
+  isHighlighted: boolean;
   relationshipGroups: RelationshipGroup[];
   relationshipMemberships: RelationshipMembership[];
   onDrop: (guestId: string, tableId: string, seatNumber: number) => void;
@@ -73,6 +76,7 @@ function SeatSlot({
   tableId,
   guest,
   isAutoAssigned,
+  isHighlighted,
   relationshipGroups,
   relationshipMemberships,
   onDrop,
@@ -135,6 +139,7 @@ function SeatSlot({
               ),
           isAutoAssigned && !guest && 'border-green-500 animate-pulse',
           isAutoAssigned && guest && 'border-green-500 animate-pulse',
+          isHighlighted && 'ring-3 ring-emerald-400 ring-offset-2 ring-offset-background scale-110 shadow-[0_0_16px_rgba(52,211,153,0.4)]',
         )}
         style={
           guest && groupColor
@@ -192,6 +197,7 @@ interface TableCardProps {
   relationshipGroups: RelationshipGroup[];
   relationshipMemberships: RelationshipMembership[];
   autoAssignedIds: Set<string>;
+  highlightedGuestId?: string | null;
   onDropGuest: (guestId: string, tableId: string, seatNumber: number) => void;
   onUnseatGuest: (guestId: string) => void;
 }
@@ -203,6 +209,7 @@ function TableCard({
   relationshipGroups,
   relationshipMemberships,
   autoAssignedIds,
+  highlightedGuestId,
   onDropGuest,
   onUnseatGuest,
 }: TableCardProps) {
@@ -299,6 +306,7 @@ function TableCard({
           capacity={capacity}
           seatMap={seatMap}
           autoAssignedIds={autoAssignedIds}
+          highlightedGuestId={highlightedGuestId}
           relationshipGroups={relationshipGroups}
           relationshipMemberships={relationshipMemberships}
           onDrop={onDropGuest}
@@ -313,6 +321,7 @@ function TableCard({
           capacity={capacity}
           seatMap={seatMap}
           autoAssignedIds={autoAssignedIds}
+          highlightedGuestId={highlightedGuestId}
           relationshipGroups={relationshipGroups}
           relationshipMemberships={relationshipMemberships}
           onDrop={onDropGuest}
@@ -333,6 +342,7 @@ interface SeatArrangementProps {
   capacity: number;
   seatMap: Map<number, Guest>;
   autoAssignedIds: Set<string>;
+  highlightedGuestId?: string | null;
   relationshipGroups: RelationshipGroup[];
   relationshipMemberships: RelationshipMembership[];
   onDrop: (guestId: string, tableId: string, seatNumber: number) => void;
@@ -347,6 +357,7 @@ function RoundTableSeats({
   capacity,
   seatMap,
   autoAssignedIds,
+  highlightedGuestId,
   relationshipGroups,
   relationshipMemberships,
   onDrop,
@@ -426,6 +437,7 @@ function RoundTableSeats({
               tableId={tableId}
               guest={guest}
               isAutoAssigned={isAutoAssigned}
+              isHighlighted={!!guest && guest.id === highlightedGuestId}
               relationshipGroups={relationshipGroups}
               relationshipMemberships={relationshipMemberships}
               onDrop={onDrop}
@@ -445,6 +457,7 @@ function RectTableSeats({
   capacity,
   seatMap,
   autoAssignedIds,
+  highlightedGuestId,
   relationshipGroups,
   relationshipMemberships,
   onDrop,
@@ -470,6 +483,7 @@ function RectTableSeats({
             tableId={tableId}
             guest={guest}
             isAutoAssigned={isAutoAssigned}
+            isHighlighted={!!guest && guest.id === highlightedGuestId}
             relationshipGroups={relationshipGroups}
             relationshipMemberships={relationshipMemberships}
             onDrop={onDrop}
@@ -527,6 +541,8 @@ export function SeatingBoard({
   relationshipGroups,
   relationshipMemberships,
   autoAssignedIds,
+  highlightedTableId,
+  highlightedGuestId,
   onDropGuest,
   onUnseatGuest,
 }: SeatingBoardProps) {
@@ -546,26 +562,36 @@ export function SeatingBoard({
         const tableGuests = tableAssignments
           .map((a) => guests.find((g) => g.id === a.guestId))
           .filter(Boolean) as Guest[];
+        const isHighlighted = highlightedTableId === table.id;
 
         return (
-          <TableHoverCard
+          <div
             key={table.id}
-            table={table}
-            guests={tableGuests}
-            relationshipGroups={relationshipGroups}
-            relationshipMemberships={relationshipMemberships}
+            data-table-id={table.id}
+            className={cn(
+              'rounded-xl transition-all duration-500',
+              isHighlighted && 'ring-2 ring-emerald-400/70 ring-offset-2 ring-offset-background shadow-[0_0_30px_rgba(52,211,153,0.2)]',
+            )}
           >
-            <TableCard
+            <TableHoverCard
               table={table}
-              assignments={assignments}
-              guests={guests}
+              guests={tableGuests}
               relationshipGroups={relationshipGroups}
               relationshipMemberships={relationshipMemberships}
-              autoAssignedIds={autoAssignedIds}
-              onDropGuest={onDropGuest}
-              onUnseatGuest={onUnseatGuest}
-            />
-          </TableHoverCard>
+            >
+              <TableCard
+                table={table}
+                assignments={assignments}
+                guests={guests}
+                relationshipGroups={relationshipGroups}
+                relationshipMemberships={relationshipMemberships}
+                autoAssignedIds={autoAssignedIds}
+                highlightedGuestId={highlightedGuestId}
+                onDropGuest={onDropGuest}
+                onUnseatGuest={onUnseatGuest}
+              />
+            </TableHoverCard>
+          </div>
         );
       })}
     </div>
