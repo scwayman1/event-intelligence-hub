@@ -75,10 +75,11 @@ interface ModelCapabilities {
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // Free models with reliable tool/function calling support
-  'google/gemini-2.5-flash-preview:free': { toolUse: true },
-  'deepseek/deepseek-chat-v3-0324:free': { toolUse: true },
+  'deepseek/deepseek-chat-v3.1:free': { toolUse: true },
+  'google/gemini-2.5-flash:free': { toolUse: true },
   'meta-llama/llama-4-maverick:free': { toolUse: true },
   'qwen/qwen3-235b-a22b:free': { toolUse: true },
+  'qwen/qwen3-coder:free': { toolUse: true },
   // Models with limited/no tool use
   'nvidia/llama-3.3-nemotron-super-49b-v1:free': { toolUse: false },
   'mistralai/mistral-large-2': { toolUse: false },
@@ -126,19 +127,19 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'openrouter',
     label: 'OpenRouter',
     keyPlaceholder: 'sk-or-v1-...',
-    defaultModel: 'deepseek/deepseek-chat-v3-0324:free',
+    defaultModel: 'deepseek/deepseek-chat-v3.1:free',
     models: [
       // Free models (work out of the box, all support tool calling)
-      { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'DeepSeek V3 (Free)' },
+      { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 (Free)' },
+      { id: 'google/gemini-2.5-flash:free', label: 'Gemini 2.5 Flash (Free)' },
       { id: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (Free)' },
       { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen 3 235B (Free)' },
-      { id: 'google/gemini-2.5-flash-preview:free', label: 'Gemini 2.5 Flash (Free)' },
       // Paid models (require your own OpenRouter key — pennies per conversation)
-      { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash (Recommended)' },
-      { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+      { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
+      { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
       { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
-      { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro' },
       { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
+      { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
       { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
     ],
   },
@@ -149,10 +150,10 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 // ──────────────────────────────────────────────
 
 const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
-const FREE_MODEL = 'deepseek/deepseek-chat-v3-0324:free';
+const FREE_MODEL = 'deepseek/deepseek-chat-v3.1:free';
 
 /** Best paid model for org-level use — fast, cheap, great tool calling */
-export const RECOMMENDED_PAID_MODEL = 'google/gemini-2.5-flash-preview';
+export const RECOMMENDED_PAID_MODEL = 'google/gemini-2.5-flash';
 
 export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
   ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
