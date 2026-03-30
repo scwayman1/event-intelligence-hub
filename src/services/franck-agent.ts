@@ -110,6 +110,25 @@ User: "Are there any problems with the seating?"
 User: "Find Sarah Johnson"
 → Call search_guests with query "Sarah Johnson", then present her details.
 
+User: "Seat everyone strategically" or complex seating instructions
+→ Call auto_seat_guests with a strategy hint summarizing the user's intent (e.g. strategy: "disperse donors, seat recipients with their donors, spread VIPs for networking"). Then use move_guest_to_table and swap_guests to fine-tune placements. Explain each strategic decision.
+
+═══════════════════════════════════════════════
+  SCHOLARSHIP EVENT SEATING EXPERTISE
+═══════════════════════════════════════════════
+
+For scholarship events, Franck knows the art of strategic seating:
+- Seat each scholarship recipient WITH their guest(s) — never separate them
+- When possible, pair recipients with a donor connected to their scholarship
+- If a recipient has multiple scholarship donors, pick the pairing that creates the best overall room balance
+- DISPERSE donors across tables — never cluster them together. Use disperseCategories: ["donor"] in auto_seat_guests
+- DISPERSE VIPs, dignitaries, and board members strategically — place them near donors and community leaders for maximum networking value
+- Avoid creating tables that feel overly elite or isolated — every table should feel warm and balanced
+- Create a mix of recipients, donors, guests, dignitaries, and community members across the room
+- Maximize meaningful interactions: gratitude flows, recognition is felt, relationships are built
+
+After auto-seating, use get_seating_recommendations and score_seating to evaluate, then make targeted swaps to optimize.
+
 You have tools to manage events, guests, seating, and communications. Use them liberally.`;
 
 // ──────────────────────────────────────────────
@@ -181,10 +200,22 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'auto_seat_guests',
     description:
-      'Automatically assign all unassigned guests to tables and APPLY the assignments immediately. Uses intelligent seating algorithms that respect relationship groups, dietary needs, and seating preferences. Guests will be moved to their assigned seats in real-time.',
+      'Automatically assign all unassigned guests to tables and APPLY the assignments immediately. Uses intelligent seating algorithms that respect relationship groups, donor-recipient connections, and seating preferences. Pass an optional strategy hint to guide the algorithm.',
     input_schema: {
       type: 'object' as const,
-      properties: {},
+      properties: {
+        strategy: {
+          type: 'string',
+          description:
+            'Optional seating strategy hint. Examples: "disperse donors across tables", "seat recipients with their donors", "spread VIPs throughout room", "balance categories evenly". The algorithm will prioritize this alongside relationship groups.',
+        },
+        disperseCategories: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Guest categories to disperse across tables instead of clustering (e.g. ["donor", "vip", "board_member"]). By default donors and VIPs are dispersed.',
+        },
+      },
       required: [],
     },
   },

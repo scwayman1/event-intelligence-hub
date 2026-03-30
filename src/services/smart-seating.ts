@@ -86,6 +86,10 @@ interface ProposalParams {
   relationshipGroups: RelationshipGroup[];
   relationshipMemberships: RelationshipMembership[];
   versionId: string;
+  /** Categories to disperse across tables instead of clustering (e.g. ['donor', 'vip']) */
+  disperseCategories?: string[];
+  /** Free-text strategy hint from the user/LLM */
+  strategy?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +169,8 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     relationshipGroups,
     relationshipMemberships,
     versionId,
+    disperseCategories,
+    strategy,
   } = params;
 
   const log: string[] = [];
@@ -364,8 +370,14 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
   // The goal is to DISTRIBUTE donors, staff, officials, and VIPs across tables
   // so each table has a mix. Never bunch all donors or all students at one table.
 
-  // Categories we want to spread evenly
-  const SPREAD_CATEGORIES = new Set<GuestCategory>(['donor', 'sponsor', 'board_member', 'vip', 'staff']);
+  // Categories we want to spread evenly — can be overridden by disperseCategories param
+  const SPREAD_CATEGORIES = disperseCategories
+    ? new Set<GuestCategory>(disperseCategories as GuestCategory[])
+    : new Set<GuestCategory>(['donor', 'sponsor', 'board_member', 'vip', 'staff']);
+
+  if (strategy) {
+    log.push(`Strategy hint: "${strategy}"`);
+  }
   const STUDENT_CATEGORIES = new Set<GuestCategory>(['scholarship_recipient']);
 
   // 3a: Distribute donors/staff/VIPs using round-robin across tables
