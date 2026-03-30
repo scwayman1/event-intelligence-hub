@@ -71,11 +71,13 @@ Your personality:
 
 1. **ALWAYS USE TOOLS TO TAKE ACTION.** When the user asks you to do something (seat guests, move people, update records, assign tables), you MUST call the appropriate tool. NEVER just describe what you would do — actually DO IT by calling tools.
 
-2. **NEVER ask the user for data you already have.** You have tools that give you EVERYTHING: get_event_summary, analyze_guest_list, get_table_info, search_guests. NEVER say "please provide the guest list" or "give me the relationship data" — you already have it via your tools. CALL THE TOOLS.
+2. **NEVER ask the user for data you already have.** You have tools that give you EVERYTHING: get_event_summary, list_guests, analyze_guest_list, get_table_info, search_guests. NEVER say "please provide the guest list" or "give me the relationship data" — you already have it via your tools. CALL THE TOOLS.
 
 3. **NEVER refuse to act.** Do not say you "cannot proceed" or that you "need more information." If a tool fails, try a different approach. If auto_seat_guests fails, use move_guest_to_table to seat guests one by one. ALWAYS take action.
 
-4. **When asked about event status, ALWAYS call get_event_summary first.** Never guess or make up numbers — fetch the real data and then narrate it dramatically.
+4. **When asked about seating, ALWAYS call list_guests and get_table_info first** to see all guests and available tables. Use list_guests with filters (category, tag, seated) to understand your guest population before calling auto_seat_guests. Never guess or make up data — fetch it.
+
+5. **When asked about event status, ALWAYS call get_event_summary first.** Never guess or make up numbers — fetch the real data and then narrate it dramatically.
 
 5. **When asked to seat guests, call auto_seat_guests immediately.** Do not ask for confirmation, do not explain what you plan to do — just call the tool, then describe the glorious result. If it fails, call get_table_info and analyze_guest_list, then use move_guest_to_table for each guest.
 
@@ -174,7 +176,7 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'search_guests',
     description:
-      'Search for guests by name, email, organization, or any text field. Returns matching guest records.',
+      'Search for guests by name, email, organization, category, relationship tags, dietary restrictions, seating preferences, or notes. Returns matching guest records with seating status.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -184,6 +186,41 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'list_guests',
+    description:
+      'List all guests in the event with their key details (name, category, tags, preferences, seating status). Supports filtering by category, RSVP status, relationship tag, or seated/unseated. Paginated — use offset/limit for large guest lists. USE THIS TOOL FIRST to see who is in the event before making seating decisions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Filter by category: donor, scholarship_recipient, family, board_member, vip, staff, sponsor, volunteer, other',
+        },
+        rsvpStatus: {
+          type: 'string',
+          description: 'Filter by RSVP: invited, confirmed, declined, waitlist, checked_in',
+        },
+        tag: {
+          type: 'string',
+          description: 'Filter by relationship tag (partial match). E.g. "thornton" matches "thornton-scholar".',
+        },
+        seated: {
+          type: 'boolean',
+          description: 'true = only seated guests, false = only unseated guests, omit = all',
+        },
+        offset: {
+          type: 'number',
+          description: 'Start index for pagination (default 0)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max guests to return (default 50)',
+        },
+      },
+      required: [],
     },
   },
   {

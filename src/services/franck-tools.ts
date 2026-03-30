@@ -261,7 +261,14 @@ function searchGuests(
       g.email,
       g.organization,
       g.category,
+      g.notes,
+      g.dietaryRestrictions,
+      g.accessibilityNeeds,
+      g.tablePreference,
+      g.seatingPreference,
+      ...(g.relationshipTags ?? []),
     ]
+      .filter(Boolean)
       .join(' ')
       .toLowerCase();
     return haystack.includes(needle);
@@ -291,8 +298,76 @@ function searchGuests(
         category: g.category,
         rsvpStatus: g.rsvpStatus,
         partySize: g.partySize,
+        relationshipTags: g.relationshipTags ?? [],
+        tablePreference: g.tablePreference || null,
+        seatingPreference: g.seatingPreference || null,
         seating: table
           ? { tableId: table.id, tableNumber: table.tableNumber ?? null, tableName: table.name }
+          : null,
+      };
+    }),
+  });
+}
+
+function listGuests(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  let filtered = ctx.guests;
+
+  // Optional filters
+  const category = input.category as GuestCategory | undefined;
+  const rsvpStatus = input.rsvpStatus as RSVPStatus | undefined;
+  const tag = input.tag as string | undefined;
+  const seated = input.seated as boolean | undefined;
+
+  if (category) filtered = filtered.filter((g) => g.category === category);
+  if (rsvpStatus) filtered = filtered.filter((g) => g.rsvpStatus === rsvpStatus);
+  if (tag) {
+    const needle = tag.toLowerCase();
+    filtered = filtered.filter((g) =>
+      (g.relationshipTags ?? []).some((t) => t.toLowerCase().includes(needle)),
+    );
+  }
+  if (seated === true) {
+    const seatedIds = new Set(ctx.assignments.map((a) => a.guestId));
+    filtered = filtered.filter((g) => seatedIds.has(g.id));
+  } else if (seated === false) {
+    const seatedIds = new Set(ctx.assignments.map((a) => a.guestId));
+    filtered = filtered.filter((g) => !seatedIds.has(g.id));
+  }
+
+  // Pagination
+  const offset = typeof input.offset === 'number' ? input.offset : 0;
+  const limit = typeof input.limit === 'number' ? input.limit : 50;
+  const page = filtered.slice(offset, offset + limit);
+
+  return json({
+    summary: `${filtered.length} guests${category ? ` (${category})` : ''}${tag ? ` with tag "${tag}"` : ''}${seated === true ? ' (seated)' : seated === false ? ' (unseated)' : ''} — showing ${offset + 1}-${Math.min(offset + limit, filtered.length)} of ${filtered.length}`,
+    total: filtered.length,
+    offset,
+    limit,
+    hasMore: offset + limit < filtered.length,
+    guests: page.map((g) => {
+      const assignment = ctx.assignments.find((a) => a.guestId === g.id);
+      const table = assignment ? ctx.tables.find((t) => t.id === assignment.tableId) : null;
+      return {
+        id: g.id,
+        displayName: g.displayName,
+        category: g.category,
+        rsvpStatus: g.rsvpStatus,
+        organization: g.organization,
+        relationshipTags: g.relationshipTags ?? [],
+        tablePreference: g.tablePreference || null,
+        seatingPreference: g.seatingPreference || null,
+        dietaryRestrictions: g.dietaryRestrictions || null,
+        accessibilityNeeds: g.accessibilityNeeds || null,
+        seated: table
+          ? { tableNumber: table.tableNumber ?? null, tableName: table.name }
           : null,
       };
     }),
@@ -1716,6 +1791,7 @@ const TOOL_MAP: Record<
   get_event_summary: getEventSummary,
   analyze_guest_list: analyzeGuestList,
   search_guests: searchGuests,
+  list_guests: listGuests,
   get_guest_details: getGuestDetails,
   auto_seat_guests: autoSeatGuests,
   score_seating: scoreSeating,
