@@ -221,7 +221,16 @@ export const useEventStore = create<EventStore>()(
       hasCompletedOnboarding: true,
       orgMembers: ownerMember ? [...s.orgMembers, ownerMember] : s.orgMembers,
     }));
-    if (userId) dbSync(() => db.createOrgWithMember(org, userId));
+    // Critical write — log failures loudly so we know data isn't reaching Supabase
+    if (userId) {
+      db.createOrgWithMember(org, userId)
+        .then(() => console.log('[supabase-sync] Org + member created in Supabase'))
+        .catch((err) => {
+          console.error('[supabase-sync] CRITICAL: Failed to create org in Supabase:', err);
+          _dbSyncFailures++;
+          _dbSyncLastError = err instanceof Error ? err.message : String(err);
+        });
+    }
   },
   updateOrganization: (id, updates) => {
     set((s) => ({

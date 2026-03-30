@@ -27,7 +27,11 @@ export function useSupabaseSync() {
       const orgIds = await fetchOrgMemberships(userId);
 
       // New user with no memberships — nothing to sync
+      // IMPORTANT: Do NOT clear localStorage here. The user may have local
+      // data that hasn't been written to Supabase yet (e.g. due to RLS
+      // policy issues or network failures). Only clear on explicit sign-out.
       if (orgIds.length === 0) {
+        console.log('[supabase-sync] No org memberships found — keeping local data');
         setLoading(false);
         return;
       }
@@ -74,7 +78,7 @@ export function useSupabaseSync() {
       const relationshipMemberships =
         await fetchRelationshipMemberships(groupIds);
 
-      // Hydrate the Zustand store
+      // Hydrate the Zustand store — REPLACES all data with server truth
       useEventStore.setState({
         organizations,
         activeOrgId,
@@ -90,9 +94,17 @@ export function useSupabaseSync() {
         hasCompletedOnboarding: organizations.length > 0,
       });
 
+      console.log(
+        `[supabase-sync] Loaded: ${organizations.length} org(s), ` +
+        `${events.length} event(s), ${guests.length} guest(s), ` +
+        `${layoutObjects.length} layout object(s), ${seatingAssignments.length} assignment(s)`,
+      );
+
       setLoading(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync data");
+      const message = err instanceof Error ? err.message : "Failed to sync data";
+      console.error('[supabase-sync] Sync failed:', message);
+      setError(message);
       setLoading(false);
     }
   }, []);
