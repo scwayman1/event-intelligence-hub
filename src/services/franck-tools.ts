@@ -95,6 +95,46 @@ function validateNumber(
   return null;
 }
 
+const VALID_CATEGORIES: GuestCategory[] = ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'other'];
+
+const CATEGORY_ALIASES: Record<string, GuestCategory> = {
+  donor: 'donor', donors: 'donor',
+  scholar: 'scholarship_recipient', scholarship: 'scholarship_recipient',
+  scholarship_recipient: 'scholarship_recipient', recipient: 'scholarship_recipient',
+  student: 'scholarship_recipient',
+  family: 'family',
+  board: 'board_member', board_member: 'board_member',
+  vip: 'vip',
+  staff: 'staff',
+  sponsor: 'sponsor',
+  volunteer: 'volunteer',
+  other: 'other',
+};
+
+const VALID_RSVP: RSVPStatus[] = ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
+
+const RSVP_ALIASES: Record<string, RSVPStatus> = {
+  invited: 'invited', pending: 'invited',
+  confirmed: 'confirmed', yes: 'confirmed', accepted: 'confirmed',
+  declined: 'declined', no: 'declined',
+  waitlist: 'waitlist', waitlisted: 'waitlist',
+  checked_in: 'checked_in', checkedin: 'checked_in',
+};
+
+/** Normalize a category string from LLM input to a valid GuestCategory. */
+function normalizeCategory(raw: unknown): GuestCategory {
+  if (typeof raw !== 'string' || !raw.trim()) return 'other';
+  const key = raw.toLowerCase().replace(/\s+/g, '_');
+  return CATEGORY_ALIASES[key] ?? (VALID_CATEGORIES.includes(key as GuestCategory) ? key as GuestCategory : 'other');
+}
+
+/** Normalize an RSVP status string from LLM input to a valid RSVPStatus. */
+function normalizeRsvp(raw: unknown): RSVPStatus {
+  if (typeof raw !== 'string' || !raw.trim()) return 'invited';
+  const key = raw.toLowerCase().replace(/\s+/g, '_');
+  return RSVP_ALIASES[key] ?? (VALID_RSVP.includes(key as RSVPStatus) ? key as RSVPStatus : 'invited');
+}
+
 /** Build a comma-separated list of valid table numbers from context tables. */
 function validTableNumbers(tables: Array<{ tableNumber?: number | null; name: string }>): string {
   if (tables.length === 0) return '(no tables exist)';
@@ -319,14 +359,14 @@ function listGuests(
 
   let filtered = ctx.guests;
 
-  // Optional filters
-  const category = input.category as GuestCategory | undefined;
-  const rsvpStatus = input.rsvpStatus as RSVPStatus | undefined;
+  // Optional filters — case-insensitive to handle mismatched data
+  const category = input.category ? normalizeCategory(input.category) : undefined;
+  const rsvpStatus = input.rsvpStatus ? normalizeRsvp(input.rsvpStatus) : undefined;
   const tag = input.tag as string | undefined;
   const seated = input.seated as boolean | undefined;
 
-  if (category) filtered = filtered.filter((g) => g.category === category);
-  if (rsvpStatus) filtered = filtered.filter((g) => g.rsvpStatus === rsvpStatus);
+  if (category) filtered = filtered.filter((g) => g.category.toLowerCase().replace(/\s+/g, '_') === category);
+  if (rsvpStatus) filtered = filtered.filter((g) => g.rsvpStatus.toLowerCase().replace(/\s+/g, '_') === rsvpStatus);
   if (tag) {
     const needle = tag.toLowerCase();
     filtered = filtered.filter((g) =>
@@ -814,8 +854,8 @@ function updateGuestTool(
   const store = useEventStore.getState();
   const updates: Partial<Guest> = {};
 
-  if (input.rsvpStatus !== undefined) updates.rsvpStatus = input.rsvpStatus as Guest['rsvpStatus'];
-  if (input.category !== undefined) updates.category = input.category as Guest['category'];
+  if (input.rsvpStatus !== undefined) updates.rsvpStatus = normalizeRsvp(input.rsvpStatus);
+  if (input.category !== undefined) updates.category = normalizeCategory(input.category);
   if (input.partySize !== undefined) updates.partySize = input.partySize as number;
   if (input.dietaryRestrictions !== undefined) updates.dietaryRestrictions = input.dietaryRestrictions as string;
   if (input.accessibilityNeeds !== undefined) updates.accessibilityNeeds = input.accessibilityNeeds as string;
@@ -910,8 +950,8 @@ function bulkUpdateGuestsTool(
     if (numErr) return errorResult(numErr);
   }
 
-  if (input.rsvpStatus !== undefined) updates.rsvpStatus = input.rsvpStatus as Guest['rsvpStatus'];
-  if (input.category !== undefined) updates.category = input.category as Guest['category'];
+  if (input.rsvpStatus !== undefined) updates.rsvpStatus = normalizeRsvp(input.rsvpStatus);
+  if (input.category !== undefined) updates.category = normalizeCategory(input.category);
   if (input.partySize !== undefined) updates.partySize = input.partySize as number;
 
   if (Object.keys(updates).length === 0) {
@@ -931,10 +971,10 @@ function bulkUpdateGuestsTool(
       targets = ctx.guests.filter((g) => g.id.startsWith('csv-import-')).map((g) => g.id);
     } else if (filterLower.startsWith('category:')) {
       const cat = filterLower.replace('category:', '').trim();
-      targets = ctx.guests.filter((g) => g.category === cat).map((g) => g.id);
+      targets = ctx.guests.filter((g) => g.category.toLowerCase().replace(/\s+/g, '_') === cat).map((g) => g.id);
     } else if (filterLower.startsWith('rsvp:')) {
       const rsvp = filterLower.replace('rsvp:', '').trim();
-      targets = ctx.guests.filter((g) => g.rsvpStatus === rsvp).map((g) => g.id);
+      targets = ctx.guests.filter((g) => g.rsvpStatus.toLowerCase().replace(/\s+/g, '_') === rsvp).map((g) => g.id);
     }
   }
 
@@ -1308,15 +1348,15 @@ function addGuestTool(
     email: (input.email as string) ?? '',
     phone: (input.phone as string) ?? '',
     organization: (input.organization as string) ?? '',
-    category: (input.category as GuestCategory) ?? 'other',
-    rsvpStatus: (input.rsvpStatus as RSVPStatus) ?? 'invited',
+    category: normalizeCategory(input.category),
+    rsvpStatus: normalizeRsvp(input.rsvpStatus),
     partySize: (input.partySize as number) ?? 1,
     dietaryRestrictions: (input.dietaryRestrictions as string) ?? '',
     accessibilityNeeds: (input.accessibilityNeeds as string) ?? '',
     notes: (input.notes as string) ?? '',
-    relationshipTags: [],
-    tablePreference: '',
-    seatingPreference: '',
+    relationshipTags: Array.isArray(input.relationshipTags) ? input.relationshipTags as string[] : [],
+    tablePreference: (input.tablePreference as string) ?? '',
+    seatingPreference: (input.seatingPreference as string) ?? '',
   };
 
   store.addGuest(guest);
@@ -1362,15 +1402,15 @@ function addGuestsBulkTool(
       email: (g.email as string) ?? '',
       phone: (g.phone as string) ?? '',
       organization: (g.organization as string) ?? '',
-      category: (g.category as GuestCategory) ?? 'other',
-      rsvpStatus: (g.rsvpStatus as RSVPStatus) ?? 'invited',
+      category: normalizeCategory(g.category),
+      rsvpStatus: normalizeRsvp(g.rsvpStatus),
       partySize: (g.partySize as number) ?? 1,
       dietaryRestrictions: (g.dietaryRestrictions as string) ?? '',
       accessibilityNeeds: (g.accessibilityNeeds as string) ?? '',
       notes: (g.notes as string) ?? '',
-      relationshipTags: [],
-      tablePreference: '',
-      seatingPreference: '',
+      relationshipTags: Array.isArray(g.relationshipTags) ? g.relationshipTags as string[] : [],
+      tablePreference: (g.tablePreference as string) ?? '',
+      seatingPreference: (g.seatingPreference as string) ?? '',
     };
 
     store.addGuest(guest);
