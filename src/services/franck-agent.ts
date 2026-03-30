@@ -1264,8 +1264,10 @@ export async function sendMessage(
     // Append the raw assistant response to history
     rawMessages.push(normalized.rawAssistantMessage);
 
-    // If the model wants to use tools, execute them and loop
-    if (normalized.stopReason === 'tool_use' && normalized.toolCalls.length > 0) {
+    // If the model wants to use tools, execute them and loop.
+    // Some models (especially via OpenRouter) return tool_calls with stopReason "stop"
+    // instead of "tool_use" — so we check for tool_calls presence regardless of stopReason.
+    if (normalized.toolCalls.length > 0) {
       const toolResultBlocks: ToolResultBlock[] = [];
 
       for (const toolCall of normalized.toolCalls) {

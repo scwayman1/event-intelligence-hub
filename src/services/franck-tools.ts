@@ -552,9 +552,26 @@ function autoSeatGuests(
     strategy,
   });
 
+  // If proposal generated 0 assignments, include diagnostic info
+  if (proposal.assignments.length === 0) {
+    return json({
+      applied: 0,
+      totalProposed: 0,
+      diagnostics: {
+        tablesFound: ctx.tables.length,
+        guestsInEvent: ctx.guests.length,
+        versionId: ctx.versionId,
+        algorithmLog: proposal.log.slice(-10),
+      },
+      summary: `Seating algorithm produced 0 assignments. ${ctx.tables.length} tables, ${ctx.guests.length} guests. Check algorithm log for details.`,
+      instruction: 'The auto-seating algorithm returned 0 assignments. Report this to the user and show the diagnostic details. Do NOT make up a plan — ask the user to check their layout has tables in the active version.',
+    });
+  }
+
   // Apply the assignments to the store
   const store = useEventStore.getState();
   let applied = 0;
+  const applyErrors: string[] = [];
   for (const assignment of proposal.assignments) {
     try {
       if (assignment.seatNumber != null) {
@@ -573,7 +590,8 @@ function autoSeatGuests(
       }
       applied++;
     } catch (err) {
-      // Log failure but continue seating remaining guests
+      const msg = err instanceof Error ? err.message : String(err);
+      applyErrors.push(`${assignment.guestId}: ${msg}`);
       console.warn(`[auto_seat_guests] Failed to seat guest ${assignment.guestId} at table ${assignment.tableId}:`, err);
     }
   }
@@ -581,7 +599,8 @@ function autoSeatGuests(
   return json({
     applied,
     totalProposed: proposal.assignments.length,
-    assignments: proposal.assignments.map((a) => {
+    applyErrors: applyErrors.length > 0 ? applyErrors.slice(0, 10) : undefined,
+    assignments: proposal.assignments.slice(0, 30).map((a) => {
       const guest = ctx.guests.find((g) => g.id === a.guestId);
       const table = ctx.tables.find((t) => t.id === a.tableId);
       return {
@@ -596,7 +615,8 @@ function autoSeatGuests(
     }),
     score: proposal.score,
     proposalSummary: proposal.summary,
-    summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.`,
+    algorithmLog: proposal.log.slice(-5),
+    summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.${applyErrors.length > 0 ? ` (${applyErrors.length} errors during apply)` : ''}`,
     instruction: 'IMPORTANT: Report these results to the user NOW. Show the summary, highlight notable placements (donors with scholars), and give the score. Do NOT describe a plan — the seating is DONE.',
   });
 }

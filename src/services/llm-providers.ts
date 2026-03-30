@@ -477,7 +477,7 @@ async function callAnthropic(
       name: b.name ?? '',
       input: (b.input as Record<string, unknown>) ?? {},
     })),
-    stopReason: stopReason === 'tool_use' ? 'tool_use' : 'end_turn',
+    stopReason: stopReason === 'tool_use' || toolUseBlocks.length > 0 ? 'tool_use' : 'end_turn',
     rawAssistantMessage: { role: 'assistant', content },
   };
 }
