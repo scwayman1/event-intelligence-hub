@@ -42,6 +42,13 @@ export interface EventCollaborator {
   status: 'pending' | 'accepted';
 }
 
+/** Org-level LLM configuration shared by all team members */
+export interface OrgLLMConfig {
+  provider: 'anthropic' | 'openrouter';
+  apiKey: string;
+  model: string;
+}
+
 /** An organization / school instance — all data is scoped to one */
 export interface Organization {
   id: string;
@@ -49,6 +56,7 @@ export interface Organization {
   shortName: string;
   logoUrl?: string;
   primaryColor?: string;
+  llmConfig?: OrgLLMConfig;
   createdAt: string;
 }
 

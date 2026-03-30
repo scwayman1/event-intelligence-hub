@@ -42,12 +42,16 @@ import {
   hasProviderConfig,
   hasCustomProviderConfig,
   saveProviderConfig,
+  clearPersonalProviderConfig,
   getProviderConfig,
+  getConfigSource,
+  getOrgLLMConfig,
   DEFAULT_FREE_CONFIG,
   PROVIDERS,
   getAvailableWorkflows,
   getChainCapabilities,
 } from '@/services/franck-agent';
+import { useEventStore } from '@/data/store';
 import type {
   FranckConversation,
   ProviderType,
@@ -205,7 +209,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
     try { return getProviderConfig().model; } catch { return PROVIDERS.anthropic.defaultModel; }
   });
   const [keyStored, setKeyStored] = useState(() => hasProviderConfig());
-  const usingFreeDefault = !hasCustomProviderConfig() && !!DEFAULT_FREE_CONFIG;
+  const configSource = getConfigSource();
+  const usingFreeDefault = configSource === 'free';
+  const usingOrgKey = configSource === 'org';
+  const [saveScope, setSaveScope] = useState<'org' | 'personal'>('org');
+  const activeOrgId = useEventStore((s) => s.activeOrgId);
+  const organizations = useEventStore((s) => s.organizations);
+  const updateOrganization = useEventStore((s) => s.updateOrganization);
 
   // Derive the actively locked model label for the header
   const activeModelLabel = (() => {
@@ -215,7 +225,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
       const model = provider.models.find((m) => m.id === config.model);
       return model?.label ?? config.model.split('/').pop() ?? 'Unknown';
     } catch {
-      return DEFAULT_FREE_CONFIG ? 'Step 1.5 Flash (Free)' : 'Not configured';
+      return DEFAULT_FREE_CONFIG ? 'DeepSeek V3 (Free)' : 'Not configured';
     }
   })();
 
@@ -435,7 +445,29 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
   // ── Save provider config ────────────────────────────────────────────────
   const handleSaveKey = () => {
-    if (apiKeyInput.trim()) {
+    if (!apiKeyInput.trim()) return;
+    const modelDef = PROVIDERS[selectedProvider].models.find((m) => m.id === selectedModel);
+
+    if (saveScope === 'org' && activeOrgId) {
+      // Save to org — shared by all team members
+      const llmConfig = {
+        provider: selectedProvider,
+        apiKey: apiKeyInput.trim(),
+        model: selectedModel,
+      };
+      updateOrganization(activeOrgId, { llmConfig });
+      // Also clear any personal override so org config takes effect
+      clearPersonalProviderConfig();
+      setKeyStored(true);
+      setApiKeyInput('');
+      setModelJustChanged(true);
+      setTimeout(() => setModelJustChanged(false), 2000);
+      toast.success('Org API key saved!', {
+        description: `All team members will now use ${modelDef?.label ?? selectedModel}. No setup needed for them!`,
+        duration: 4000,
+      });
+    } else {
+      // Save as personal override (localStorage only)
       saveProviderConfig({
         provider: selectedProvider,
         apiKey: apiKeyInput.trim(),
@@ -443,6 +475,12 @@ export function FranckChat({ eventId }: FranckChatProps) {
       });
       setKeyStored(true);
       setApiKeyInput('');
+      setModelJustChanged(true);
+      setTimeout(() => setModelJustChanged(false), 2000);
+      toast.success('Personal API key saved!', {
+        description: `Franck is now powered by ${modelDef?.label ?? selectedModel}.`,
+        duration: 3000,
+      });
     }
   };
 
@@ -746,35 +784,49 @@ export function FranckChat({ eventId }: FranckChatProps) {
               </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="w-[340px]"
+                className="w-[360px]"
               >
                 <div className="space-y-4">
-                  {/* Active model indicator */}
+                  {/* Active model indicator with source badge */}
                   <div className={cn(
                     'rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all duration-300',
                     modelJustChanged
                       ? 'bg-emerald-500/20 border border-emerald-400/40'
-                      : 'bg-emerald-500/10 border border-emerald-500/20',
+                      : usingOrgKey
+                        ? 'bg-violet-500/10 border border-violet-500/20'
+                        : 'bg-emerald-500/10 border border-emerald-500/20',
                   )}>
                     <Lock className={cn(
                       'h-3.5 w-3.5 shrink-0 transition-colors duration-300',
-                      modelJustChanged ? 'text-emerald-400' : 'text-emerald-500',
+                      modelJustChanged ? 'text-emerald-400' : usingOrgKey ? 'text-violet-400' : 'text-emerald-500',
                     )} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className={cn(
                         'text-[11px] font-semibold truncate transition-colors duration-300',
-                        modelJustChanged ? 'text-emerald-300' : 'text-emerald-400',
+                        modelJustChanged ? 'text-emerald-300' : usingOrgKey ? 'text-violet-400' : 'text-emerald-400',
                       )}>
-                        {modelJustChanged ? 'Locked!' : 'Active:'} {activeModelLabel}
+                        {modelJustChanged ? 'Updated!' : 'Active:'} {activeModelLabel}
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         {modelJustChanged
-                          ? 'Model updated successfully'
-                          : usingFreeDefault
-                            ? 'Free via OpenRouter · no key needed'
-                            : 'Locked and ready'}
+                          ? 'Configuration saved'
+                          : usingOrgKey
+                            ? 'Org key · shared with your team'
+                            : usingFreeDefault
+                              ? 'Free via OpenRouter · no key needed'
+                              : 'Personal key'}
                       </p>
                     </div>
+                    <span className={cn(
+                      'text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0',
+                      usingOrgKey
+                        ? 'bg-violet-500/15 text-violet-400'
+                        : usingFreeDefault
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-blue-500/15 text-blue-400',
+                    )}>
+                      {usingOrgKey ? 'Org' : usingFreeDefault ? 'Free' : 'Personal'}
+                    </span>
                   </div>
 
                   {/* Provider tabs */}
@@ -807,7 +859,9 @@ export function FranckChat({ eventId }: FranckChatProps) {
                       {PROVIDERS[selectedProvider].models.map((m) => {
                         const isActive = selectedModel === m.id;
                         const isFree = m.label.toLowerCase().includes('free');
-                        const needsKey = !isFree && !hasCustomProviderConfig();
+                        const isRecommended = m.label.toLowerCase().includes('recommended');
+                        const hasKey = hasCustomProviderConfig() || usingOrgKey;
+                        const needsKey = !isFree && !hasKey;
                         return (
                           <button
                             key={m.id}
@@ -838,7 +892,12 @@ export function FranckChat({ eventId }: FranckChatProps) {
                                 Free
                               </span>
                             )}
-                            {needsKey && !isFree && (
+                            {isRecommended && !isFree && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 uppercase tracking-wide">
+                                Best
+                              </span>
+                            )}
+                            {needsKey && !isFree && !isRecommended && (
                               <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500/80 uppercase tracking-wide">
                                 Key
                               </span>
@@ -852,14 +911,14 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     </div>
                   </div>
 
-                  {/* API Key */}
+                  {/* API Key + Scope selector */}
                   <div>
                     <div className="flex items-center gap-2 mb-1.5">
                       <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
                       <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">API Key</label>
-                      {keyStored && getProviderConfig()?.provider === selectedProvider && (
+                      {(usingOrgKey || keyStored) && (
                         <span className="ml-auto flex items-center gap-1 text-emerald-500 text-[10px] font-medium">
-                          <Check className="h-3 w-3" /> Saved
+                          <Check className="h-3 w-3" /> {usingOrgKey ? 'Org key active' : 'Saved'}
                         </span>
                       )}
                     </div>
@@ -868,32 +927,73 @@ export function FranckChat({ eventId }: FranckChatProps) {
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
                       placeholder={
-                        keyStored && getProviderConfig()?.provider === selectedProvider
-                          ? 'Key saved (enter new to replace)'
-                          : PROVIDERS[selectedProvider].keyPlaceholder
+                        usingOrgKey
+                          ? 'Org key active (enter new to replace)'
+                          : keyStored
+                            ? 'Key saved (enter new to replace)'
+                            : PROVIDERS[selectedProvider].keyPlaceholder
                       }
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
 
+                  {/* Save scope toggle */}
+                  {apiKeyInput.trim() && activeOrgId && (
+                    <div className="flex gap-1 p-0.5 rounded-lg bg-muted/30 border border-border/50">
+                      <button
+                        onClick={() => setSaveScope('org')}
+                        className={cn(
+                          'flex-1 rounded-md px-3 py-1.5 text-[11px] font-medium transition-all duration-150',
+                          saveScope === 'org'
+                            ? 'bg-violet-600 text-white shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        )}
+                      >
+                        Save for team
+                      </button>
+                      <button
+                        onClick={() => setSaveScope('personal')}
+                        className={cn(
+                          'flex-1 rounded-md px-3 py-1.5 text-[11px] font-medium transition-all duration-150',
+                          saveScope === 'personal'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        )}
+                      >
+                        Just for me
+                      </button>
+                    </div>
+                  )}
+
                   <Button
                     size="sm"
                     onClick={handleSaveKey}
                     disabled={!apiKeyInput.trim()}
-                    className="w-full"
+                    className={cn('w-full', saveScope === 'org' && apiKeyInput.trim() && 'bg-violet-600 hover:bg-violet-700')}
                   >
-                    Save Configuration
+                    {apiKeyInput.trim() && saveScope === 'org'
+                      ? 'Save for Entire Team'
+                      : 'Save Configuration'}
                   </Button>
+
+                  {/* Helpful context */}
+                  {saveScope === 'org' && apiKeyInput.trim() && activeOrgId && (
+                    <p className="text-[10px] text-muted-foreground leading-relaxed text-center">
+                      Your team members will use this key automatically — no setup on their end.
+                    </p>
+                  )}
 
                   {/* OpenRouter onboarding */}
                   {selectedProvider === 'openrouter' && (
                     <div className="space-y-2">
-                      <div className="rounded-md bg-muted/30 border border-border/50 px-3 py-2">
-                        <p className="text-[10px] text-muted-foreground leading-relaxed">
-                          <span className="font-semibold text-emerald-500">Free models work out of the box</span> — no key needed.
-                          For premium models (Claude, GPT-4), get your own OpenRouter key:
-                        </p>
-                      </div>
+                      {!usingOrgKey && !hasCustomProviderConfig() && (
+                        <div className="rounded-md bg-muted/30 border border-border/50 px-3 py-2">
+                          <p className="text-[10px] text-muted-foreground leading-relaxed">
+                            <span className="font-semibold text-emerald-500">Free models work out of the box.</span>{' '}
+                            Add an OpenRouter key to unlock faster, premium models like Gemini Flash (pennies/day):
+                          </p>
+                        </div>
+                      )}
                       <a
                         href="https://openrouter.ai/keys"
                         target="_blank"
@@ -905,7 +1005,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
                         )}
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Get your own OpenRouter key
+                        Get an OpenRouter key
                       </a>
                       <p className="text-[10px] text-muted-foreground leading-relaxed text-center">
                         One key, 100+ models, pay only for what you use.

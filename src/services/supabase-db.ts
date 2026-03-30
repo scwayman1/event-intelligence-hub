@@ -28,12 +28,18 @@ function throwOnError<T>(result: { data: T; error: { message: string } | null },
 // ──────────────────────────────────────────────
 
 export function rowToOrganization(row: any): Organization {
+  // Parse LLM config from the settings JSONB column
+  const settings = row.settings ?? {};
+  const llmCfg = settings.llm_config;
   return {
     id: row.id,
     name: row.name,
     shortName: row.short_name,
     logoUrl: row.logo_url ?? undefined,
     primaryColor: row.primary_color ?? undefined,
+    llmConfig: llmCfg?.provider && llmCfg?.api_key
+      ? { provider: llmCfg.provider, apiKey: llmCfg.api_key, model: llmCfg.model }
+      : undefined,
     createdAt: row.created_at,
   };
 }
@@ -45,6 +51,15 @@ export function organizationToRow(org: Partial<Organization>) {
   if (org.logoUrl !== undefined) row.logo_url = org.logoUrl;
   if (org.primaryColor !== undefined) row.primary_color = org.primaryColor;
   if (org.id !== undefined) row.id = org.id;
+  if (org.llmConfig !== undefined) {
+    row.settings = {
+      llm_config: {
+        provider: org.llmConfig.provider,
+        api_key: org.llmConfig.apiKey,
+        model: org.llmConfig.model,
+      },
+    };
+  }
   return row;
 }
 
