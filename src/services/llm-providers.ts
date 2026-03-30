@@ -133,12 +133,13 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
       { id: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (Free)' },
       { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen 3 235B (Free)' },
       { id: 'google/gemini-2.5-flash-preview:free', label: 'Gemini 2.5 Flash (Free)' },
-      // Premium models (require your own OpenRouter key)
-      { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
+      // Paid models (require your own OpenRouter key — pennies per conversation)
+      { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash (Recommended)' },
+      { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
       { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
       { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro' },
+      { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
       { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
-      { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
     ],
   },
 };
@@ -149,6 +150,9 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 
 const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
 const FREE_MODEL = 'deepseek/deepseek-chat-v3-0324:free';
+
+/** Best paid model for org-level use — fast, cheap, great tool calling */
+export const RECOMMENDED_PAID_MODEL = 'google/gemini-2.5-flash-preview';
 
 export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
   ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
@@ -161,8 +165,30 @@ export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
 const CONFIG_KEY = 'franck-provider-config';
 const LEGACY_KEY = 'franck-api-key';
 
+/** Cached org config — set by setOrgLLMConfig() when store loads */
+let _orgLLMConfig: ProviderConfig | null = null;
+
+/**
+ * Called by the UI when the active org changes or on app load.
+ * Pushes org-level LLM config into the provider resolution chain.
+ */
+export function setOrgLLMConfig(cfg: { provider: 'anthropic' | 'openrouter'; apiKey: string; model: string } | undefined): void {
+  _orgLLMConfig = cfg ? { provider: cfg.provider, apiKey: cfg.apiKey, model: cfg.model } : null;
+}
+
+/** Returns the current org-level LLM config (if any). */
+export function getOrgLLMConfig(): ProviderConfig | null {
+  return _orgLLMConfig;
+}
+
+/**
+ * Resolution priority:
+ * 1. Personal override (localStorage) — user's own API key
+ * 2. Org-level config (Supabase) — shared across all team members
+ * 3. Built-in free model (DeepSeek V3 via bundled OpenRouter key)
+ */
 export function getProviderConfig(): ProviderConfig {
-  // 1. Check for user-saved config
+  // 1. Check for personal user-saved config in localStorage
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (raw) return JSON.parse(raw) as ProviderConfig;
@@ -181,10 +207,13 @@ export function getProviderConfig(): ProviderConfig {
     return config;
   }
 
-  // 3. Fall back to built-in free model
+  // 3. Org-level config (shared by all team members)
+  if (_orgLLMConfig) return _orgLLMConfig;
+
+  // 4. Fall back to built-in free model
   if (DEFAULT_FREE_CONFIG) return DEFAULT_FREE_CONFIG;
 
-  // 4. No config at all — should not happen in production
+  // 5. No config at all — should not happen in production
   throw new Error('No LLM provider configured.');
 }
 
@@ -192,7 +221,27 @@ export function saveProviderConfig(config: ProviderConfig): void {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
 
-/** Whether the user has explicitly configured their own key (not using free default) */
+/** Clear the personal override so the user falls back to org config */
+export function clearPersonalProviderConfig(): void {
+  localStorage.removeItem(CONFIG_KEY);
+  localStorage.removeItem(LEGACY_KEY);
+}
+
+/** Where the current config is coming from */
+export type ConfigSource = 'personal' | 'org' | 'free';
+
+export function getConfigSource(): ConfigSource {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (raw) return 'personal';
+  } catch { /* ignore */ }
+  const legacyKey = localStorage.getItem(LEGACY_KEY);
+  if (legacyKey) return 'personal';
+  if (_orgLLMConfig) return 'org';
+  return 'free';
+}
+
+/** Whether the user has explicitly configured their own key (not using org or free default) */
 export function hasCustomProviderConfig(): boolean {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);

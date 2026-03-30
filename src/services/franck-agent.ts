@@ -19,12 +19,17 @@ import {
   callLLM,
   getProviderConfig,
   saveProviderConfig,
+  clearPersonalProviderConfig,
   hasProviderConfig,
   hasCustomProviderConfig,
+  getConfigSource,
+  getOrgLLMConfig,
   DEFAULT_FREE_CONFIG,
   PROVIDERS,
+  RECOMMENDED_PAID_MODEL,
   type ProviderConfig,
   type ProviderType,
+  type ConfigSource,
   type NormalizedResponse,
 } from './llm-providers';
 import {
@@ -671,12 +676,17 @@ interface ToolResultBlock {
 export {
   getProviderConfig,
   saveProviderConfig,
+  clearPersonalProviderConfig,
   hasProviderConfig,
   hasCustomProviderConfig,
+  getConfigSource,
+  getOrgLLMConfig,
   PROVIDERS,
   DEFAULT_FREE_CONFIG,
+  RECOMMENDED_PAID_MODEL,
   type ProviderConfig,
   type ProviderType,
+  type ConfigSource,
 };
 
 // Re-export workflow/chain types for FranckChat consumption
