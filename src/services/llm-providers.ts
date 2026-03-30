@@ -74,13 +74,13 @@ interface ModelCapabilities {
 }
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
-  // Free models with tool use support
+  // Free models with reliable tool/function calling support
   'google/gemini-2.5-flash-preview:free': { toolUse: true },
-  // Models that do NOT support tool use well
-  'qwen/qwen3-235b-a22b:free': { toolUse: false },
+  'deepseek/deepseek-chat-v3-0324:free': { toolUse: true },
+  'meta-llama/llama-4-maverick:free': { toolUse: true },
+  'qwen/qwen3-235b-a22b:free': { toolUse: true },
+  // Models with limited/no tool use
   'nvidia/llama-3.3-nemotron-super-49b-v1:free': { toolUse: false },
-  'meta-llama/llama-4-maverick:free': { toolUse: false },
-  'deepseek/deepseek-chat-v3-0324:free': { toolUse: false },
   'mistralai/mistral-large-2': { toolUse: false },
 };
 
@@ -126,13 +126,13 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'openrouter',
     label: 'OpenRouter',
     keyPlaceholder: 'sk-or-v1-...',
-    defaultModel: 'google/gemini-2.5-flash-preview:free',
+    defaultModel: 'deepseek/deepseek-chat-v3-0324:free',
     models: [
-      // Free models (work out of the box)
-      { id: 'google/gemini-2.5-flash-preview:free', label: 'Gemini 2.5 Flash (Free)' },
-      { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen 3 235B (Free)' },
-      { id: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (Free)' },
+      // Free models (work out of the box, all support tool calling)
       { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'DeepSeek V3 (Free)' },
+      { id: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (Free)' },
+      { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen 3 235B (Free)' },
+      { id: 'google/gemini-2.5-flash-preview:free', label: 'Gemini 2.5 Flash (Free)' },
       // Premium models (require your own OpenRouter key)
       { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
       { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
@@ -148,7 +148,7 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 // ──────────────────────────────────────────────
 
 const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
-const FREE_MODEL = 'google/gemini-2.5-flash-preview:free';
+const FREE_MODEL = 'deepseek/deepseek-chat-v3-0324:free';
 
 export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
   ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
