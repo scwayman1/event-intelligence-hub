@@ -535,6 +535,23 @@ function autoSeatGuests(
     );
   }
 
+  // If all guests are already seated, auto-clear and re-seat from scratch.
+  // This handles the common case where the user says "seat everyone" when
+  // everyone is already seated — they want a fresh arrangement.
+  const assignedGuestIds = new Set(ctx.assignments.map((a) => a.guestId));
+  const unseatedEligible = ctx.guests.filter(
+    (g) => g.rsvpStatus !== 'declined' && !assignedGuestIds.has(g.id),
+  );
+
+  if (unseatedEligible.length === 0 && ctx.guests.length > 0 && ctx.assignments.length > 0) {
+    const store = useEventStore.getState();
+    for (const a of ctx.assignments) {
+      store.removeSeatingAssignment(a.id);
+    }
+    // Refresh context after clearing
+    ctx.assignments = [];
+  }
+
   // Pass strategy hints from the LLM if provided
   const disperseCategories = Array.isArray(input.disperseCategories)
     ? input.disperseCategories as string[]
