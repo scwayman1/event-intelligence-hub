@@ -303,7 +303,16 @@ export const useEventStore = create<EventStore>()(
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
     };
     set((s) => ({ teamInvites: [...s.teamInvites, invite] }));
-    dbSync(() => db.upsertTeamInvite(invite));
+    // Write invite to Supabase so it's accessible from other devices.
+    // Use direct await-style call with explicit error logging.
+    db.upsertTeamInvite(invite)
+      .then(() => console.log('[team-invite] Saved to Supabase:', invite.inviteCode))
+      .catch((err) => {
+        console.error('[team-invite] FAILED to save to Supabase:', err);
+        console.error('[team-invite] Invite details:', JSON.stringify({ id: invite.id, orgId, role, createdBy: invite.createdBy }));
+        // Surface the error so the user knows the invite won't work on other devices
+        alert(`Warning: The invite was created locally but failed to sync to the server. It may not work on other devices.\n\nError: ${err instanceof Error ? err.message : String(err)}`);
+      });
     return invite;
   },
   revokeTeamInvite: (inviteId) => {

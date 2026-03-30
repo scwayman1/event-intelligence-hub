@@ -58,9 +58,11 @@ export default function JoinInvite() {
       .then(async (dbInvite) => {
         if (cancelled) return;
         if (!dbInvite) {
+          console.error('[JoinInvite] Invite not found in Supabase for code:', inviteCode);
           setStatus('not-found');
           return;
         }
+        console.log('[JoinInvite] Found invite in Supabase:', dbInvite.id, 'orgId:', dbInvite.orgId);
         // Hydrate invite into local store so redeemInvite can find it
         setRemoteInvite(dbInvite);
         useEventStore.setState((s) => {
@@ -68,21 +70,44 @@ export default function JoinInvite() {
           if (exists) return {};
           return { teamInvites: [...s.teamInvites, dbInvite] };
         });
-        // Also fetch the org name from Supabase if not in local store
+        // Also hydrate the org if not in local store
         let name = organizations.find((o) => o.id === dbInvite.orgId)?.name;
         if (!name) {
-          const { data: orgRow } = await supabase
+          const { data: orgRow, error: orgError } = await supabase
             .from('organizations')
-            .select('name')
+            .select('*')
             .eq('id', dbInvite.orgId)
             .maybeSingle();
+          if (orgError) {
+            console.error('[JoinInvite] Failed to fetch org:', orgError);
+          }
           name = orgRow?.name ?? 'Unknown Organization';
+          // Hydrate org into store so redeemInvite's "already a member" check works
+          if (orgRow) {
+            const org = {
+              id: orgRow.id,
+              name: orgRow.name,
+              shortName: orgRow.short_name,
+              createdAt: orgRow.created_at,
+            };
+            useEventStore.setState((s) => {
+              const exists = s.organizations.some((o) => o.id === org.id);
+              if (exists) return {};
+              return { organizations: [...s.organizations, org] };
+            });
+          }
         }
         if (cancelled) return;
         applyInvite(dbInvite, name);
       })
-      .catch(() => {
-        if (!cancelled) setStatus('not-found');
+      .catch((err) => {
+        console.error('[JoinInvite] Supabase fetch error:', err);
+        if (!cancelled) {
+          setStatus('error');
+          setErrorMessage(
+            `Could not verify this invite. ${err instanceof Error ? err.message : 'Please try refreshing the page.'}`,
+          );
+        }
       });
     return () => { cancelled = true; };
 
