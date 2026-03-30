@@ -683,70 +683,40 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
   const conversationalPrefixes = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'yes', 'no', 'ok', 'sure'];
   if (conversationalPrefixes.includes(normalized)) return null;
 
-  // ── CRITICAL: Long, complex messages should go to the LLM ──────
-  // Workflows are designed for short, direct commands like "seat everyone"
-  // or "swap two guests". Long messages with detailed instructions need
-  // LLM reasoning to understand the nuance.
+  // ── CRITICAL: Only match short, direct commands ────────────────
+  // Workflows are for simple commands like "seat everyone" or "auto seat".
+  // Anything longer than 15 words is too complex for a workflow.
   const wordCount = normalized.split(' ').length;
-  if (wordCount > 20) return null;
+  if (wordCount > 15) return null;
 
+  // ── Skip workflows that require parameters ─────────────────────
+  // Workflows like "Swap Two Guests" and "Move Guest to Table" need
+  // guest names / table numbers that the matcher can't extract.
+  // These must go through the LLM tool-calling path.
+  const PARAM_REQUIRED_WORKFLOWS = new Set([
+    'swap-two-guests',
+    'move-guest-to-table',
+  ]);
+
+  // ── EXACT phrase matching ONLY ─────────────────────────────────
+  // Fuzzy matching caused too many false positives. Now we only match
+  // when the user's message contains an exact trigger phrase.
   let bestMatch: WorkflowDefinition | null = null;
-  let bestScore = 0;
-  let bestExactMatch: WorkflowDefinition | null = null;
-  let bestExactLength = 0;
+  let bestLength = 0;
 
   for (const workflow of WORKFLOWS) {
-    // Check for exact phrase inclusion first (highest priority)
-    // Only match if the phrase is a significant portion of the message
-    // (prevents matching "seat everyone" inside a 50-word paragraph)
+    if (PARAM_REQUIRED_WORKFLOWS.has(workflow.id)) continue;
+
     for (const phrase of workflow.triggerPhrases) {
       if (normalized === phrase || normalized.includes(phrase)) {
-        // The phrase must cover at least 40% of the message length
+        // The phrase must cover a meaningful portion of the message
         const coverage = phrase.length / normalized.length;
-        if (coverage >= 0.4 && phrase.length > bestExactLength) {
-          bestExactLength = phrase.length;
-          bestExactMatch = workflow;
+        if (coverage >= 0.35 && phrase.length > bestLength) {
+          bestLength = phrase.length;
+          bestMatch = workflow;
         }
       }
     }
-
-    // Fuzzy matching: score based on keyword overlap with synonym expansion
-    // Collect all unique significant words from trigger phrases
-    const rawTriggerWords = new Set<string>();
-    for (const phrase of workflow.triggerPhrases) {
-      for (const word of phrase.split(' ')) {
-        if (word.length >= 3) rawTriggerWords.add(word);
-      }
-    }
-
-    // Expand trigger words with synonyms
-    const triggerWords = expandWithSynonyms(rawTriggerWords);
-
-    // Count how many trigger words appear in the user message (using fuzzy matching)
-    const messageWords = normalized.split(' ');
-    let hits = 0;
-    for (const tw of triggerWords) {
-      if (messageWords.some(mw => fuzzyWordMatch(mw, tw))) {
-        hits++;
-      }
-    }
-
-    // Score = hits / total trigger words (percentage of keywords matched)
-    const score = triggerWords.size > 0 ? hits / triggerWords.size : 0;
-
-    // Require at least 2 keyword hits AND at least 40% match
-    // Also penalize if the message has many non-matching words (noise)
-    const noiseRatio = (messageWords.length - hits) / messageWords.length;
-    const adjustedScore = score * (1 - noiseRatio * 0.5);
-    if (hits >= 2 && adjustedScore > bestScore && adjustedScore >= 0.35) {
-      bestScore = adjustedScore;
-      bestMatch = workflow;
-    }
-  }
-
-  // Exact phrase matches take priority over fuzzy matches
-  if (bestExactMatch) {
-    return { workflow: bestExactMatch, params: {} };
   }
 
   return bestMatch ? { workflow: bestMatch, params: {} } : null;
