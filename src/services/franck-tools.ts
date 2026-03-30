@@ -1533,6 +1533,21 @@ function addGuestTool(
   const firstName = input.firstName as string;
   const lastName = input.lastName as string;
 
+  // Duplicate check: warn if a guest with matching name already exists
+  const nameLower = `${firstName} ${lastName}`.toLowerCase();
+  const existing = ctx.guests.find(
+    (g) => g.displayName.toLowerCase() === nameLower,
+  );
+  if (existing) {
+    const emailMatch = input.email && existing.email && (input.email as string).toLowerCase() === existing.email.toLowerCase();
+    return json({
+      summary: `Duplicate detected: "${existing.displayName}" already exists (ID: ${existing.id})${emailMatch ? ' with matching email' : ''}. Use update_guest to modify the existing record, or pass force: true to add anyway.`,
+      duplicate: true,
+      existingGuestId: existing.id,
+      existingDisplayName: existing.displayName,
+    });
+  }
+
   const store = useEventStore.getState();
   const guestId = `guest-${crypto.randomUUID()}`;
 
@@ -1582,11 +1597,26 @@ function addGuestsBulkTool(
 
   const store = useEventStore.getState();
   const added: Array<{ guestId: string; displayName: string }> = [];
+  const skippedDuplicates: Array<{ displayName: string; existingId: string }> = [];
+
+  // Build a set of existing names for fast lookup
+  const existingNames = new Set(ctx.guests.map((g) => g.displayName.toLowerCase()));
 
   for (const g of guestsInput) {
     const firstName = g.firstName as string | undefined;
     const lastName = g.lastName as string | undefined;
     if (!firstName || !lastName) continue;
+
+    // Skip duplicates by name match
+    const displayName = `${firstName} ${lastName}`;
+    const nameLower = displayName.toLowerCase();
+    if (existingNames.has(nameLower)) {
+      const existing = ctx.guests.find((eg) => eg.displayName.toLowerCase() === nameLower);
+      skippedDuplicates.push({ displayName, existingId: existing?.id ?? 'unknown' });
+      continue;
+    }
+    // Also prevent duplicates within the same bulk call
+    existingNames.add(nameLower);
 
     const guestId = `guest-${crypto.randomUUID()}`;
 
@@ -1615,12 +1645,17 @@ function addGuestsBulkTool(
     added.push({ guestId, displayName: guest.displayName });
   }
 
-  const skipped = guestsInput.length - added.length;
+  const skippedMissingName = guestsInput.length - added.length - skippedDuplicates.length;
+  const parts: string[] = [`Added ${added.length} guest${added.length === 1 ? '' : 's'}`];
+  if (skippedDuplicates.length > 0) parts.push(`skipped ${skippedDuplicates.length} duplicate${skippedDuplicates.length === 1 ? '' : 's'}`);
+  if (skippedMissingName > 0) parts.push(`skipped ${skippedMissingName} (missing name)`);
   return json({
-    summary: `Added ${added.length} guest${added.length === 1 ? '' : 's'}${skipped > 0 ? `, skipped ${skipped} (missing name)` : ''}`,
+    summary: parts.join(', '),
     added: added.length,
-    skipped,
+    skippedDuplicates: skippedDuplicates.length,
+    skippedMissingName,
     guests: added,
+    duplicates: skippedDuplicates.length > 0 ? skippedDuplicates : undefined,
   });
 }
 
@@ -2212,6 +2247,224 @@ function analyzeLayoutTool(
 }
 
 // ---------------------------------------------------------------------------
+// GUEST DEDUP / MERGE
+// ---------------------------------------------------------------------------
+
+/**
+ * Find duplicate guests and optionally merge them.
+ * Duplicates are detected by matching firstName+lastName (case-insensitive).
+ * When merging, keeps the most complete profile and transfers all relationship
+ * memberships and seating assignments to the surviving record.
+ */
+function deduplicateGuestsTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const action = (input.action as string)?.toLowerCase() ?? 'scan';
+  const store = useEventStore.getState();
+
+  // Group guests by normalized name
+  const nameGroups = new Map<string, Guest[]>();
+  for (const guest of ctx.guests) {
+    const key = guest.displayName.toLowerCase().trim();
+    if (!nameGroups.has(key)) nameGroups.set(key, []);
+    nameGroups.get(key)!.push(guest);
+  }
+
+  // Also check by email for guests with different names but same email
+  const emailGroups = new Map<string, Guest[]>();
+  for (const guest of ctx.guests) {
+    if (!guest.email) continue;
+    const key = guest.email.toLowerCase().trim();
+    if (!emailGroups.has(key)) emailGroups.set(key, []);
+    emailGroups.get(key)!.push(guest);
+  }
+
+  // Build duplicate clusters
+  const duplicateClusters: Array<{
+    key: string;
+    matchType: 'name' | 'email';
+    guests: Guest[];
+  }> = [];
+  const seen = new Set<string>();
+
+  for (const [name, guests] of nameGroups) {
+    if (guests.length < 2) continue;
+    duplicateClusters.push({ key: name, matchType: 'name', guests });
+    for (const g of guests) seen.add(g.id);
+  }
+
+  for (const [email, guests] of emailGroups) {
+    if (guests.length < 2) continue;
+    // Skip if all these guests were already caught by name matching
+    const unseen = guests.filter((g) => !seen.has(g.id));
+    if (unseen.length === 0 && guests.every((g) => seen.has(g.id))) {
+      // Check if they're in different name groups
+      const names = new Set(guests.map((g) => g.displayName.toLowerCase().trim()));
+      if (names.size > 1) {
+        duplicateClusters.push({ key: email, matchType: 'email', guests });
+      }
+    }
+  }
+
+  if (duplicateClusters.length === 0) {
+    return json({
+      summary: `No duplicates found among ${ctx.guests.length} guests.`,
+      totalGuests: ctx.guests.length,
+      duplicateClusters: 0,
+    });
+  }
+
+  if (action === 'scan') {
+    // Just report duplicates
+    const report = duplicateClusters.map((cluster) => ({
+      matchType: cluster.matchType,
+      key: cluster.key,
+      count: cluster.guests.length,
+      guests: cluster.guests.map((g) => ({
+        id: g.id,
+        displayName: g.displayName,
+        email: g.email || undefined,
+        category: g.category,
+        rsvpStatus: g.rsvpStatus,
+        organization: g.organization || undefined,
+        hasNotes: !!g.notes,
+        hasDietary: !!g.dietaryRestrictions,
+      })),
+    }));
+
+    const totalDuplicates = duplicateClusters.reduce((sum, c) => sum + c.guests.length - 1, 0);
+    return json({
+      summary: `Found ${duplicateClusters.length} duplicate group${duplicateClusters.length === 1 ? '' : 's'} (${totalDuplicates} redundant record${totalDuplicates === 1 ? '' : 's'}) among ${ctx.guests.length} guests. Use action: "merge" to auto-merge, keeping the most complete profile.`,
+      totalGuests: ctx.guests.length,
+      duplicateClusters: duplicateClusters.length,
+      totalRedundant: totalDuplicates,
+      clusters: report,
+    });
+  }
+
+  if (action === 'merge') {
+    let merged = 0;
+    let removed = 0;
+    const mergeLog: string[] = [];
+
+    for (const cluster of duplicateClusters) {
+      const guests = [...cluster.guests];
+
+      // Score each guest by data completeness — higher score = more complete
+      const scored = guests.map((g) => {
+        let score = 0;
+        if (g.email) score += 2;
+        if (g.phone) score += 1;
+        if (g.organization) score += 1;
+        if (g.dietaryRestrictions) score += 1;
+        if (g.accessibilityNeeds) score += 1;
+        if (g.notes) score += 1;
+        if (g.category !== 'other') score += 1;
+        if (g.rsvpStatus !== 'invited') score += 2; // Confirmed/declined = more info
+        if (g.partySize > 1) score += 1;
+        if (g.relationshipTags?.length) score += g.relationshipTags.length;
+        return { guest: g, score };
+      });
+      scored.sort((a, b) => b.score - a.score);
+
+      const survivor = scored[0].guest;
+      const duplicates = scored.slice(1).map((s) => s.guest);
+
+      // Merge data from duplicates into survivor (fill in blanks)
+      const updates: Partial<Guest> = {};
+      for (const dup of duplicates) {
+        if (!survivor.email && dup.email) updates.email = dup.email;
+        if (!survivor.phone && dup.phone) updates.phone = dup.phone;
+        if (!survivor.organization && dup.organization) updates.organization = dup.organization;
+        if (!survivor.dietaryRestrictions && dup.dietaryRestrictions) updates.dietaryRestrictions = dup.dietaryRestrictions;
+        if (!survivor.accessibilityNeeds && dup.accessibilityNeeds) updates.accessibilityNeeds = dup.accessibilityNeeds;
+        if (!survivor.notes && dup.notes) updates.notes = dup.notes;
+        if (survivor.category === 'other' && dup.category !== 'other') updates.category = dup.category;
+        if (survivor.rsvpStatus === 'invited' && dup.rsvpStatus !== 'invited') updates.rsvpStatus = dup.rsvpStatus;
+        if (dup.partySize > (updates.partySize ?? survivor.partySize)) updates.partySize = dup.partySize;
+        // Merge relationship tags
+        const currentTags = new Set(updates.relationshipTags ?? survivor.relationshipTags ?? []);
+        for (const tag of dup.relationshipTags ?? []) currentTags.add(tag);
+        if (currentTags.size > (survivor.relationshipTags?.length ?? 0)) {
+          updates.relationshipTags = Array.from(currentTags);
+        }
+      }
+
+      // Apply merged data to survivor
+      if (Object.keys(updates).length > 0) {
+        const mergedGuest = { ...survivor, ...updates };
+        if (updates.firstName || updates.lastName) {
+          mergedGuest.displayName = `${mergedGuest.firstName} ${mergedGuest.lastName}`;
+        }
+        store.updateGuest(mergedGuest);
+      }
+
+      // Transfer relationship memberships from duplicates to survivor
+      for (const dup of duplicates) {
+        const dupMemberships = ctx.memberships.filter((m) => m.guestId === dup.id);
+        for (const m of dupMemberships) {
+          // Only transfer if survivor doesn't already have this group membership
+          const survivorHasGroup = ctx.memberships.some(
+            (sm) => sm.guestId === survivor.id && sm.groupId === m.groupId,
+          );
+          if (!survivorHasGroup) {
+            store.addRelationshipMembership({
+              ...m,
+              id: `rm-${crypto.randomUUID()}`,
+              guestId: survivor.id,
+            });
+          }
+        }
+      }
+
+      // Transfer seating assignments from duplicates to survivor
+      for (const dup of duplicates) {
+        const dupAssignments = ctx.assignments.filter((a) => a.guestId === dup.id);
+        for (const a of dupAssignments) {
+          // Only transfer if survivor isn't already seated
+          const survivorSeated = ctx.assignments.some(
+            (sa) => sa.guestId === survivor.id,
+          );
+          if (!survivorSeated) {
+            store.addSeatingAssignment({
+              ...a,
+              id: `sa-${crypto.randomUUID()}`,
+              guestId: survivor.id,
+            });
+          }
+        }
+      }
+
+      // Remove duplicates
+      for (const dup of duplicates) {
+        store.removeGuest(dup.id);
+        removed++;
+      }
+
+      merged++;
+      mergeLog.push(
+        `Merged "${cluster.key}": kept ${survivor.id} (${survivor.displayName}), removed ${duplicates.length} duplicate${duplicates.length === 1 ? '' : 's'}`,
+      );
+    }
+
+    return json({
+      summary: `Merged ${merged} duplicate group${merged === 1 ? '' : 's'}, removed ${removed} redundant record${removed === 1 ? '' : 's'}. ${ctx.guests.length - removed} guests remain.`,
+      merged,
+      removed,
+      remainingGuests: ctx.guests.length - removed,
+      log: mergeLog,
+    });
+  }
+
+  return errorResult(`Unknown action "${action}". Use "scan" (default) or "merge".`);
+}
+
+// ---------------------------------------------------------------------------
 // Tool dispatcher
 // ---------------------------------------------------------------------------
 
@@ -2254,6 +2507,7 @@ const TOOL_MAP: Record<
   get_rsvp_summary: getRsvpSummaryTool,
   update_guest: updateGuestTool,
   delete_guests: deleteGuestsTool,
+  deduplicate_guests: deduplicateGuestsTool,
   bulk_update_guests: bulkUpdateGuestsTool,
   move_guest_to_table: moveGuestToTableTool,
   swap_guests: swapGuestsTool,

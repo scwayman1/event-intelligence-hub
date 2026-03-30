@@ -604,6 +604,22 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
     },
   },
   {
+    name: 'deduplicate_guests',
+    description:
+      'Detect and merge duplicate guest profiles. Finds duplicates by matching name (case-insensitive) and email. Use action "scan" to see duplicates without changing anything, or "merge" to auto-merge keeping the most complete profile and transferring all relationship memberships and seating assignments to the surviving record.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['scan', 'merge'],
+          description: 'Action: "scan" (default) to detect duplicates, "merge" to auto-merge them',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'delete_guests',
     description:
       'Delete one or more guests. Provide specific guestIds OR a filter. Filters: "csv_imports" (delete all CSV-imported duplicates), "id_prefix:xxx" (delete guests whose ID starts with xxx).',
