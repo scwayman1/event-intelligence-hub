@@ -358,22 +358,27 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     }
   }
 
-  // ── Pass 3: Category clustering ──
-  log.push('--- Pass 3: Category clustering ---');
+  // ── Pass 3: Category DISTRIBUTION (not clustering!) ──
+  log.push('--- Pass 3: Category distribution (spreading donors, staff, officials across tables) ---');
 
-  // 3a: Board members and VIPs at premium tables
-  const vipGuests = eligibleGuests.filter(
-    (g) => unseatedSet.has(g.id) && VIP_TIER_CATEGORIES.has(g.category),
+  // The goal is to DISTRIBUTE donors, staff, officials, and VIPs across tables
+  // so each table has a mix. Never bunch all donors or all students at one table.
+
+  // Categories we want to spread evenly
+  const SPREAD_CATEGORIES = new Set<GuestCategory>(['donor', 'sponsor', 'board_member', 'vip', 'staff']);
+  const STUDENT_CATEGORIES = new Set<GuestCategory>(['scholarship_recipient']);
+
+  // 3a: Distribute donors/staff/VIPs using round-robin across tables
+  const spreadGuests = eligibleGuests.filter(
+    (g) => unseatedSet.has(g.id) && SPREAD_CATEGORIES.has(g.category),
   );
 
-  if (vipGuests.length > 0) {
-    log.push(`Clustering ${vipGuests.length} VIP-tier guests.`);
-    // Find or designate VIP tables (tables with fewest people that have VIP names or first available)
-    const vipTables = tableStates
-      .filter(hasRoom)
-      .sort((a, b) => a.seated.size - b.seated.size);
+  if (spreadGuests.length > 0) {
+    log.push(`Distributing ${spreadGuests.length} donors/staff/VIP guests across tables.`);
+    const availableTables = tableStates.filter(hasRoom);
+    let tableIndex = 0;
 
-    for (const guest of vipGuests) {
+    for (const guest of spreadGuests) {
       if (!unseatedSet.has(guest.id)) continue;
 
       let targetTable: TableState | undefined;
@@ -382,12 +387,62 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
         if (targetTable && !hasRoom(targetTable)) targetTable = undefined;
       }
       if (!targetTable) {
-        targetTable = vipTables.find(hasRoom);
+        // Round-robin: place each donor/staff at a different table
+        let attempts = 0;
+        while (attempts < availableTables.length) {
+          const candidate = availableTables[tableIndex % availableTables.length];
+          tableIndex++;
+          if (hasRoom(candidate)) {
+            targetTable = candidate;
+            break;
+          }
+          attempts++;
+        }
       }
 
       if (targetTable) {
-        placeGuest(guest.id, targetTable, `VIP-tier clustering (${guest.category})`);
-        log.push(`Placed VIP ${guest.displayName} at ${targetTable.tableName}.`);
+        placeGuest(guest.id, targetTable, `Distributed ${guest.category} (spread across tables)`);
+        log.push(`Distributed ${guest.category} ${guest.displayName} to ${targetTable.tableName}.`);
+      }
+    }
+  }
+
+  // 3b: Distribute students across tables, preferring tables that already have a donor/staff
+  const studentGuests = eligibleGuests.filter(
+    (g) => unseatedSet.has(g.id) && STUDENT_CATEGORIES.has(g.category),
+  );
+
+  if (studentGuests.length > 0) {
+    log.push(`Distributing ${studentGuests.length} students, preferring tables with donors/staff.`);
+
+    for (const guest of studentGuests) {
+      if (!unseatedSet.has(guest.id)) continue;
+
+      // Prefer tables that have at least one donor/staff but fewest students
+      const targetTable = tableStates
+        .filter(hasRoom)
+        .sort((a, b) => {
+          // Count donors/staff at each table
+          let aDonors = 0, bDonors = 0, aStudents = 0, bStudents = 0;
+          for (const gId of a.seated) {
+            const g = guestById.get(gId);
+            if (g && SPREAD_CATEGORIES.has(g.category)) aDonors++;
+            if (g && STUDENT_CATEGORIES.has(g.category)) aStudents++;
+          }
+          for (const gId of b.seated) {
+            const g = guestById.get(gId);
+            if (g && SPREAD_CATEGORIES.has(g.category)) bDonors++;
+            if (g && STUDENT_CATEGORIES.has(g.category)) bStudents++;
+          }
+          // Prefer tables with donors but fewer students
+          const aScore = (aDonors > 0 ? 100 : 0) - aStudents * 10;
+          const bScore = (bDonors > 0 ? 100 : 0) - bStudents * 10;
+          return bScore - aScore;
+        })[0];
+
+      if (targetTable) {
+        placeGuest(guest.id, targetTable, `Student placed with donors/staff`);
+        log.push(`Placed student ${guest.displayName} at ${targetTable.tableName}.`);
       }
     }
   }
@@ -612,34 +667,45 @@ function computeScore(
     ? clamp100((totalGroupScore / groupCount) * 100)
     : 100;
 
-  // --- Category clustering ---
-  // How well are same-category guests clustered at the same tables?
-  let categoryScore = 0;
-  let categoryCount = 0;
+  // --- Category distribution ---
+  // How well are donors/staff/VIPs spread across tables? Penalize bunching.
+  // A table that's 100% donors scores 0. Even distribution scores 100.
+  const SPREAD_CATS = new Set(['donor', 'sponsor', 'board_member', 'vip', 'staff']);
+  let distributionScore = 0;
+  let tablesWithGuests = 0;
 
-  const categoryTableMap = new Map<string, Map<string, number>>(); // category -> tableId -> count
   for (const ts of tableStates) {
+    if (ts.seated.size === 0) continue;
+    tablesWithGuests++;
+
+    let spreadCount = 0;
+    let totalCount = 0;
     for (const gId of ts.seated) {
       const guest = guestById.get(gId);
       if (!guest) continue;
-      if (!categoryTableMap.has(guest.category)) {
-        categoryTableMap.set(guest.category, new Map());
-      }
-      const tableMap = categoryTableMap.get(guest.category)!;
-      tableMap.set(ts.tableId, (tableMap.get(ts.tableId) ?? 0) + 1);
+      totalCount++;
+      if (SPREAD_CATS.has(guest.category)) spreadCount++;
     }
+
+    if (totalCount === 0) continue;
+
+    // Ideal: each table has 1-2 donors/staff out of 8-10 guests (10-25%)
+    // Terrible: table is 100% donors
+    const ratio = spreadCount / totalCount;
+    // Score peaks when ratio is 0.1-0.3, drops sharply above 0.5
+    let tableScore: number;
+    if (ratio <= 0.3) {
+      tableScore = 100; // ideal mix
+    } else if (ratio <= 0.5) {
+      tableScore = 100 - (ratio - 0.3) * 250; // drops to 50 at 0.5
+    } else {
+      tableScore = Math.max(0, 50 - (ratio - 0.5) * 100); // drops to 0 at 1.0
+    }
+    distributionScore += tableScore;
   }
 
-  for (const [, tableMap] of categoryTableMap) {
-    const totalInCategory = [...tableMap.values()].reduce((a, b) => a + b, 0);
-    if (totalInCategory < 2) continue;
-    categoryCount++;
-    const maxAtOneTable = Math.max(...tableMap.values());
-    categoryScore += maxAtOneTable / totalInCategory;
-  }
-
-  const categoryClustering = categoryCount > 0
-    ? clamp100((categoryScore / categoryCount) * 100)
+  const categoryClustering = tablesWithGuests > 0
+    ? clamp100(distributionScore / tablesWithGuests)
     : 100;
 
   // --- Utilization balance ---
