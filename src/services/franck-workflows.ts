@@ -811,7 +811,7 @@ function summarizeToolResult(toolName: string, resultStr: string): string {
       case 'clear_all_seating':
         return `Cleared **${data.cleared ?? 0}** seating assignments.`;
       case 'score_seating':
-        return `Seating score: **${data.score ?? 'N/A'}**/100`;
+        return `Seating score: **${data.score?.overall ?? data.score ?? 'N/A'}**/100`;
       case 'run_refinement_loop':
         return `Refinement: score ${data.startScore ?? '?'} \u2192 ${data.endScore ?? '?'} (${data.swapsApplied ?? 0} swaps, ${data.guestsPlaced ?? 0} guests placed)`;
       case 'flag_issues':
