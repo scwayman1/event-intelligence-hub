@@ -683,6 +683,13 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
   const conversationalPrefixes = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'yes', 'no', 'ok', 'sure'];
   if (conversationalPrefixes.includes(normalized)) return null;
 
+  // ── CRITICAL: Long, complex messages should go to the LLM ──────
+  // Workflows are designed for short, direct commands like "seat everyone"
+  // or "swap two guests". Long messages with detailed instructions need
+  // LLM reasoning to understand the nuance.
+  const wordCount = normalized.split(' ').length;
+  if (wordCount > 20) return null;
+
   let bestMatch: WorkflowDefinition | null = null;
   let bestScore = 0;
   let bestExactMatch: WorkflowDefinition | null = null;
@@ -690,10 +697,13 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
 
   for (const workflow of WORKFLOWS) {
     // Check for exact phrase inclusion first (highest priority)
-    // If multiple workflows match exactly, prefer the longest matching phrase
+    // Only match if the phrase is a significant portion of the message
+    // (prevents matching "seat everyone" inside a 50-word paragraph)
     for (const phrase of workflow.triggerPhrases) {
       if (normalized === phrase || normalized.includes(phrase)) {
-        if (phrase.length > bestExactLength) {
+        // The phrase must cover at least 40% of the message length
+        const coverage = phrase.length / normalized.length;
+        if (coverage >= 0.4 && phrase.length > bestExactLength) {
           bestExactLength = phrase.length;
           bestExactMatch = workflow;
         }
@@ -724,9 +734,12 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
     // Score = hits / total trigger words (percentage of keywords matched)
     const score = triggerWords.size > 0 ? hits / triggerWords.size : 0;
 
-    // Require at least 2 keyword hits AND at least 25% match
-    if (hits >= 2 && score > bestScore && score >= 0.25) {
-      bestScore = score;
+    // Require at least 2 keyword hits AND at least 40% match
+    // Also penalize if the message has many non-matching words (noise)
+    const noiseRatio = (messageWords.length - hits) / messageWords.length;
+    const adjustedScore = score * (1 - noiseRatio * 0.5);
+    if (hits >= 2 && adjustedScore > bestScore && adjustedScore >= 0.35) {
+      bestScore = adjustedScore;
       bestMatch = workflow;
     }
   }
