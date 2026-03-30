@@ -275,7 +275,12 @@ function analyzeGuestList(
       accessibilityNeedsCount: analytics.accessibilityNeeds.length,
     },
     rsvpDetails: {
-      partySizeByStatus: buildPartySizeByStatus(ctx.guests),
+      partySizeByStatus: Object.fromEntries(
+        (['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'] as const).map((status) => [
+          status,
+          ctx.guests.filter((g) => g.rsvpStatus === status).reduce((sum, g) => sum + (g.partySize || 1), 0),
+        ]),
+      ),
       highPriorityNonResponders: ctx.guests
         .filter(
           (g) =>

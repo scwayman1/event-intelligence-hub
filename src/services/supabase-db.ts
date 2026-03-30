@@ -710,3 +710,19 @@ export async function upsertOrgMember(member: OrgMember): Promise<void> {
     .upsert(row as any, { onConflict: 'id' });
   throwOnError(result, 'upsertOrgMember');
 }
+
+export async function deleteOrgMember(memberId: string): Promise<void> {
+  const result = await supabase
+    .from('org_members')
+    .delete()
+    .eq('id', memberId);
+  throwOnError(result, 'deleteOrgMember');
+}
+
+export async function deleteTeamInvite(inviteId: string): Promise<void> {
+  const result = await supabase
+    .from('team_invites')
+    .delete()
+    .eq('id', inviteId);
+  throwOnError(result, 'deleteTeamInvite');
+}

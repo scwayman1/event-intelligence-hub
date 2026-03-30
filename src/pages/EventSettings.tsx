@@ -25,6 +25,7 @@ const roleLabels: Record<CollaboratorRole, string> = {
 export default function EventSettings() {
   const { eventId } = useParams();
   const events = useEventStore((s) => s.events);
+  const updateEvent = useEventStore((s) => s.updateEvent);
   const userProfile = useEventStore((s) => s.userProfile);
   const getEventCollaborators = useEventStore((s) => s.getEventCollaborators);
   const removeCollaborator = useEventStore((s) => s.removeCollaborator);
@@ -32,8 +33,48 @@ export default function EventSettings() {
   const collaborators = eventId ? getEventCollaborators(eventId) : [];
 
   const [showInvite, setShowInvite] = useState(false);
+  const [name, setName] = useState(event?.name ?? '');
+  const [date, setDate] = useState(event?.date ?? '');
+  const [time, setTime] = useState(event?.time ?? '');
+  const [venue, setVenue] = useState(event?.venue ?? '');
+  const [venueAddress, setVenueAddress] = useState(event?.venueAddress ?? '');
 
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
+
+  const hasChanges =
+    name !== event.name ||
+    date !== event.date ||
+    time !== event.time ||
+    venue !== event.venue ||
+    venueAddress !== event.venueAddress;
+
+  function handleSave() {
+    if (!eventId || !hasChanges) return;
+    updateEvent(eventId, { name, date, time, venue, venueAddress });
+    toast.success('Event settings saved!');
+  }
+
+  function handleExportGuestCSV() {
+    const guests = useEventStore.getState().guests.filter((g) => g.eventId === eventId);
+    if (guests.length === 0) {
+      toast.error('No guests to export');
+      return;
+    }
+    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Organization', 'Category', 'RSVP Status', 'Party Size', 'Dietary Restrictions', 'Notes'];
+    const rows = guests.map((g) => [
+      g.firstName, g.lastName, g.email, g.phone, g.organization,
+      g.category, g.rsvpStatus, String(g.partySize), g.dietaryRestrictions, g.notes,
+    ].map((v) => `"${(v ?? '').replace(/"/g, '""')}"`).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${event.name.replace(/\s+/g, '-')}-guests.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${guests.length} guests`);
+  }
 
   return (
     <div className="p-8 max-w-3xl">
@@ -42,7 +83,9 @@ export default function EventSettings() {
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">Event configuration and preferences</p>
         </div>
-        <Button size="sm" className="gap-2"><Save className="w-4 h-4" />Save Changes</Button>
+        <Button size="sm" className="gap-2" onClick={handleSave} disabled={!hasChanges}>
+          <Save className="w-4 h-4" />Save Changes
+        </Button>
       </div>
 
       <div className="space-y-8">
@@ -52,25 +95,25 @@ export default function EventSettings() {
           <div className="space-y-4">
             <div>
               <label className="text-xs text-muted-foreground">Event Name</label>
-              <Input className="mt-1 bg-muted border-border" defaultValue={event.name} />
+              <Input className="mt-1 bg-muted border-border" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-muted-foreground">Date</label>
-                <Input className="mt-1 bg-muted border-border font-mono" defaultValue={event.date} />
+                <Input className="mt-1 bg-muted border-border font-mono" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Time</label>
-                <Input className="mt-1 bg-muted border-border font-mono" defaultValue={event.time} />
+                <Input className="mt-1 bg-muted border-border font-mono" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
               </div>
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Venue</label>
-              <Input className="mt-1 bg-muted border-border" defaultValue={event.venue} />
+              <Input className="mt-1 bg-muted border-border" value={venue} onChange={(e) => setVenue(e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Venue Address</label>
-              <Input className="mt-1 bg-muted border-border" defaultValue={event.venueAddress} />
+              <Input className="mt-1 bg-muted border-border" value={venueAddress} onChange={(e) => setVenueAddress(e.target.value)} />
             </div>
           </div>
         </section>
@@ -141,11 +184,11 @@ export default function EventSettings() {
 
         {/* Export */}
         <section className="glass-panel p-6">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Export Preferences</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Export</h3>
           <div className="flex gap-3">
-            <Button variant="outline" size="sm">Export Guest List (CSV)</Button>
-            <Button variant="outline" size="sm">Export Seating Chart (PDF)</Button>
-            <Button variant="outline" size="sm">Print Layout</Button>
+            <Button variant="outline" size="sm" onClick={handleExportGuestCSV}>Export Guest List (CSV)</Button>
+            <Button variant="outline" size="sm" onClick={() => toast.info('PDF export coming soon')}>Export Seating Chart (PDF)</Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>Print Layout</Button>
           </div>
         </section>
 

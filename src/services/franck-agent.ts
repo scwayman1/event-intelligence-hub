@@ -318,7 +318,7 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'generate_email_draft',
     description:
-      'Generate an email draft for selected guests. Supports templates: rsvp_reminder, confirmation_thanks, table_assignment, event_update, or custom.',
+      'Generate an email draft for a specific guest. Supports templates: rsvp_reminder, confirmation_thanks, table_assignment, event_update, or custom.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -327,13 +327,12 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
           enum: ['rsvp_reminder', 'confirmation_thanks', 'table_assignment', 'event_update', 'custom'],
           description: 'The type of email template to use',
         },
-        guestIds: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Array of guest IDs to generate the email for',
+        guestId: {
+          type: 'string',
+          description: 'The guest ID to generate the email for',
         },
       },
-      required: ['templateType', 'guestIds'],
+      required: ['templateType', 'guestId'],
     },
   },
   {

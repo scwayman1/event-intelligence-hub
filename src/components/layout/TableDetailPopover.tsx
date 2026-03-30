@@ -66,8 +66,10 @@ export function TableDetailPopover({ table, guests, capacity }: TableDetailPopov
       {guests.length > 0 && (
         <div className="space-y-1.5">
           {guests.map((guest) => {
-            const cat = categoryStyles[guest.category];
-            const rsvp = rsvpStyles[guest.rsvpStatus];
+            const normalizedCat = (guest.category?.toLowerCase().replace(/\s+/g, '_') ?? 'other') as GuestCategory;
+            const cat = categoryStyles[normalizedCat] ?? categoryStyles.other;
+            const normalizedRsvp = (guest.rsvpStatus?.toLowerCase().replace(/\s+/g, '_') ?? 'invited') as RSVPStatus;
+            const rsvp = rsvpStyles[normalizedRsvp] ?? rsvpStyles.invited;
             return (
               <div
                 key={guest.id}

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus, Copy, Check, Clock, Archive, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const statusConfig: Record<string, { color: string; icon: React.ElementType }> = {
   active: { color: 'bg-success/20 text-success border-success/30', icon: Check },
@@ -17,6 +18,7 @@ export default function EventVersions() {
   const events = useEventStore((s) => s.events);
   const versions = useEventStore((s) => s.versions);
   const addVersion = useEventStore((s) => s.addVersion);
+  const updateEvent = useEventStore((s) => s.updateEvent);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
 
@@ -82,8 +84,27 @@ export default function EventVersions() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" className="text-xs"><Copy className="w-3.5 h-3.5 mr-1" />Duplicate</Button>
-                  {!isActive && <Button variant="outline" size="sm" className="text-xs">Set Active</Button>}
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => {
+                    if (!eventId) return;
+                    const newId = `ver-${crypto.randomUUID().slice(0, 8)}`;
+                    const now = new Date().toISOString();
+                    addVersion({
+                      id: newId,
+                      eventId,
+                      name: `${version.name} (Copy)`,
+                      status: 'draft',
+                      createdAt: now,
+                      updatedAt: now,
+                      createdBy: version.createdBy,
+                      notes: version.notes,
+                    });
+                    toast.success(`Duplicated "${version.name}"`);
+                  }}><Copy className="w-3.5 h-3.5 mr-1" />Duplicate</Button>
+                  {!isActive && <Button variant="outline" size="sm" className="text-xs" onClick={() => {
+                    if (!eventId) return;
+                    updateEvent(eventId, { activeVersionId: version.id });
+                    toast.success(`"${version.name}" is now active`);
+                  }}>Set Active</Button>}
                 </div>
               </div>
             </div>

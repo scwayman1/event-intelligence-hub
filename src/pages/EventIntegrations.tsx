@@ -1,7 +1,8 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Upload, Download, Webhook, QrCode, RefreshCw, Database, FileSpreadsheet } from 'lucide-react';
+import { toast } from 'sonner';
 
 const integrations = [
   { name: 'Eventbrite', description: 'Sync registrations and attendee data', icon: ExternalLink, status: 'available', category: 'Registration' },
@@ -21,7 +22,8 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 };
 
 export default function EventIntegrations() {
-  useParams();
+  const { eventId } = useParams();
+  const navigate = useNavigate();
 
   return (
     <div className="p-8 max-w-5xl">
@@ -32,8 +34,8 @@ export default function EventIntegrations() {
 
       {/* Quick actions */}
       <div className="flex gap-3 mb-8">
-        <Button variant="outline" size="sm" className="gap-2"><Upload className="w-3.5 h-3.5" />Import Guests</Button>
-        <Button variant="outline" size="sm" className="gap-2"><Download className="w-3.5 h-3.5" />Export Seating</Button>
+        <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate(`/events/${eventId}/guests`)}><Upload className="w-3.5 h-3.5" />Import Guests</Button>
+        <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Export seating coming soon')}><Download className="w-3.5 h-3.5" />Export Seating</Button>
       </div>
 
       {/* Integration cards */}
@@ -54,7 +56,7 @@ export default function EventIntegrations() {
                   <p className="text-xs text-muted-foreground">{item.description}</p>
                   <p className="text-xs text-muted-foreground mt-1 opacity-60">{item.category}</p>
                 </div>
-                <Button variant="ghost" size="sm" className="text-xs" disabled={item.status === 'coming_soon'}>
+                <Button variant="ghost" size="sm" className="text-xs" disabled={item.status === 'coming_soon'} onClick={() => toast.info(`${item.name} integration coming soon`)}>
                   {item.status === 'coming_soon' ? 'Soon' : 'Connect'}
                 </Button>
               </div>

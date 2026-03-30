@@ -252,7 +252,15 @@ export const useEventStore = create<EventStore>()(
     collaborators: [],
     teamInvites: [],
     orgMembers: [],
+    pendingInviteCode: null,
     hasCompletedOnboarding: false,
+    // Clear messaging state
+    conversations: [],
+    messages: [],
+    readReceipts: [],
+    guestMessages: [],
+    messageTemplates: [],
+    systemAlerts: [],
   }),
 
   // ── Collaborators ──
@@ -345,6 +353,7 @@ export const useEventStore = create<EventStore>()(
   },
   revokeTeamInvite: (inviteId) => {
     set((s) => ({ teamInvites: s.teamInvites.filter((i) => i.id !== inviteId) }));
+    dbSync(() => db.deleteTeamInvite(inviteId));
   },
   getOrgInvites: (orgId) => get().teamInvites.filter((i) => i.orgId === orgId),
   findInviteByCode: (code) => get().teamInvites.find((i) => i.inviteCode === code),
@@ -394,9 +403,11 @@ export const useEventStore = create<EventStore>()(
   // ── Org Members ──
   addOrgMember: (member) => {
     set((s) => ({ orgMembers: [...s.orgMembers, member] }));
+    dbSync(() => db.upsertOrgMember(member));
   },
   removeOrgMember: (memberId) => {
     set((s) => ({ orgMembers: s.orgMembers.filter((m) => m.id !== memberId) }));
+    dbSync(() => db.deleteOrgMember(memberId));
   },
   getOrgMembers: (orgId) => get().orgMembers.filter((m) => m.orgId === orgId),
   isUserOrgMember: (orgId, userId) => get().orgMembers.some((m) => m.orgId === orgId && m.userId === userId),
@@ -677,12 +688,22 @@ export const useEventStore = create<EventStore>()(
   getGroupMembers: (groupId) => {
     const memberships = get().relationshipMemberships.filter((m) => m.groupId === groupId);
     const guests = get().guests;
-    return memberships.map((m) => ({ membership: m, guest: guests.find((g) => g.id === m.guestId)! })).filter((entry) => entry.guest);
+    return memberships
+      .map((m) => {
+        const guest = guests.find((g) => g.id === m.guestId);
+        return guest ? { membership: m, guest } : null;
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   },
   getGuestRelationships: (guestId) => {
     const memberships = get().relationshipMemberships.filter((m) => m.guestId === guestId);
     const groups = get().relationshipGroups;
-    return memberships.map((m) => ({ group: groups.find((g) => g.id === m.groupId)!, membership: m })).filter((entry) => entry.group);
+    return memberships
+      .map((m) => {
+        const group = groups.find((g) => g.id === m.groupId);
+        return group ? { group, membership: m } : null;
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   },
 
   // ── Selectors ──
