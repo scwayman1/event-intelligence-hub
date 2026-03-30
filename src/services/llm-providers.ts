@@ -538,9 +538,16 @@ async function callOpenRouter(
   if (Array.isArray(msg.tool_calls)) {
     for (const tc of msg.tool_calls as { id: string; function: { name: string; arguments: string } }[]) {
       try {
-        const parsed = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        // Some models (e.g. DeepSeek) may return arguments as an object instead of a string
+        const args = tc.function.arguments;
+        const parsed: Record<string, unknown> =
+          typeof args === 'string'
+            ? JSON.parse(args) as Record<string, unknown>
+            : (args as unknown as Record<string, unknown>) ?? {};
+        // Generate a fallback ID if the model doesn't provide one (some models omit it)
+        const id = tc.id || `tool_call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         toolCalls.push({
-          id: tc.id,
+          id,
           name: tc.function.name,
           input: parsed,
         });

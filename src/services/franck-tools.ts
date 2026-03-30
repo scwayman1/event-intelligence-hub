@@ -84,6 +84,15 @@ function validateRequired(
 }
 
 /** Validate that a value is a finite number. Returns an error string or null. */
+/** Coerce a value to a number if it's a numeric string, otherwise return as-is. */
+function coerceNumber(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return value;
+}
+
 function validateNumber(
   value: unknown,
   paramName: string,
@@ -264,6 +273,30 @@ function analyzeGuestList(
       pendingHighPriorityCount: analytics.pendingHighPriority.length,
       needsFollowUpCount: analytics.needsFollowUp.length,
       accessibilityNeedsCount: analytics.accessibilityNeeds.length,
+    },
+    rsvpDetails: {
+      partySizeByStatus: buildPartySizeByStatus(ctx.guests),
+      highPriorityNonResponders: ctx.guests
+        .filter(
+          (g) =>
+            (['donor', 'vip', 'board_member', 'sponsor'] as GuestCategory[]).includes(
+              g.category,
+            ) && g.rsvpStatus === 'invited',
+        )
+        .map((g) => ({
+          displayName: g.displayName,
+          email: g.email,
+          category: g.category,
+          partySize: g.partySize,
+        })),
+      responseRate:
+        ctx.guests.length > 0
+          ? Math.round(
+              (ctx.guests.filter((g) => g.rsvpStatus !== 'invited').length /
+                ctx.guests.length) *
+                100,
+            )
+          : 0,
     },
     segments: segments.map((s) => ({
       id: s.id,

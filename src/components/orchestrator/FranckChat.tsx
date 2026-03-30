@@ -279,6 +279,9 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
+  // Real-time tool execution tracking for the LLM agentic loop
+  const [activeToolName, setActiveToolName] = useState<string | null>(null);
+  const [executedTools, setExecutedTools] = useState<string[]>([]);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<ProviderType>(() => {
     try { return getProviderConfig().provider; } catch { return 'anthropic'; }
@@ -504,12 +507,17 @@ export function FranckChat({ eventId }: FranckChatProps) {
         // Reset progress indicators
         setWorkflowProgress(null);
         setChainProgress(null);
+        setActiveToolName(null);
+        setExecutedTools([]);
 
         const result = await sendMessage(
           conv,
           content,
           eventId,
-          undefined, // onToolExecution
+          (toolName) => {
+            setActiveToolName(toolName);
+            setExecutedTools((prev) => [...prev, toolName]);
+          },
           (progress) => setWorkflowProgress(progress),
           (progress) => setChainProgress(progress),
         );
@@ -518,6 +526,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
         // Clear progress after completion
         setWorkflowProgress(null);
         setChainProgress(null);
+        setActiveToolName(null);
 
         // If the response is empty and no tools were called, provide a fallback
         const responseContent = (!result.response || !result.response.trim()) && result.toolCalls.length === 0
@@ -556,6 +565,8 @@ export function FranckChat({ eventId }: FranckChatProps) {
         setMessages((prev) => [...prev, errorMsg]);
       } finally {
         setIsLoading(false);
+        setActiveToolName(null);
+        setExecutedTools([]);
       }
     },
     [input, isLoading, keyStored, conversation, eventId]

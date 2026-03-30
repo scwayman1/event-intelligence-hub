@@ -67,8 +67,13 @@ function normalizeGuestCategory(cat: string): string {
   return cat.toLowerCase().replace(/\s+/g, '_');
 }
 
-/** Membership roles considered anchor roles. */
-const ANCHOR_ROLES = new Set(['Donor', 'Host', 'Mentor', 'Sponsor']);
+/** Membership roles considered anchor roles (compared case-insensitively). */
+const ANCHOR_ROLES = new Set(['donor', 'host', 'mentor', 'sponsor']);
+
+/** Check if a role is an anchor role (case-insensitive). */
+function isAnchorRole(role: string): boolean {
+  return ANCHOR_ROLES.has(role.toLowerCase());
+}
 
 /** Categories considered "VIP-tier" for clustering at premium tables. */
 const VIP_TIER_CATEGORIES = new Set<GuestCategory>(['donor', 'board_member', 'vip', 'sponsor']);
@@ -95,6 +100,8 @@ interface ProposalParams {
   disperseCategories?: string[];
   /** Free-text strategy hint from the user/LLM */
   strategy?: string;
+  /** When true, include 'invited' guests (not just confirmed/checked_in) in auto-seating */
+  includeInvited?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +276,7 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     const members = membershipsByGroup.get(group.id) ?? [];
     // Find the anchor member(s) — those with anchor roles or anchor categories
     const anchorMembers = members.filter((m) => {
-      if (ANCHOR_ROLES.has(m.role)) return true;
+      if (isAnchorRole(m.role)) return true;
       const guest = guestById.get(m.guestId);
       return guest && ANCHOR_CATEGORIES.includes(normalizeGuestCategory(guest.category) as GuestCategory);
     });
@@ -322,7 +329,7 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     // Find which table(s) the anchor(s) are at
     const anchorTableIds = new Set<string>();
     for (const m of members) {
-      if (ANCHOR_ROLES.has(m.role) || (guestById.get(m.guestId) && ANCHOR_CATEGORIES.includes(normalizeGuestCategory(guestById.get(m.guestId)!.category) as GuestCategory))) {
+      if (isAnchorRole(m.role) || (guestById.get(m.guestId) && ANCHOR_CATEGORIES.includes(normalizeGuestCategory(guestById.get(m.guestId)!.category) as GuestCategory))) {
         // Check if this anchor is already seated
         for (const ts of tableStates) {
           if (ts.seated.has(m.guestId)) {
@@ -703,7 +710,7 @@ function computeScore(
       const guest = guestById.get(gId);
       if (!guest) continue;
       totalCount++;
-      if (SPREAD_CATS.has(guest.category)) spreadCount++;
+      if (SPREAD_CATS.has(normalizeGuestCategory(guest.category))) spreadCount++;
     }
 
     if (totalCount === 0) continue;
