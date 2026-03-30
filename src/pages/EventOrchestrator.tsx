@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 import { useEventStore } from '@/data/store';
 import { HealthScoreCard } from '@/components/orchestrator/HealthScoreCard';
 import { InsightCard } from '@/components/orchestrator/InsightCard';
-import { FranckChat } from '@/components/orchestrator/FranckChat';
 import {
   computeEventHealth,
   analyzeGuests,
@@ -685,9 +684,6 @@ export default function EventOrchestrator() {
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Franck Eggelhoffer AI Agent */}
-      <FranckChat eventId={eventId!} />
     </div>
   );
 }
