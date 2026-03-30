@@ -10,6 +10,8 @@ import type {
   RelationshipGroup,
   RelationshipMembership,
   EventCollaborator,
+  TeamInvite,
+  OrgMember,
 } from '@/types/events';
 
 // ──────────────────────────────────────────────
@@ -614,4 +616,80 @@ export async function upsertCollaborator(c: EventCollaborator): Promise<void> {
 export async function deleteCollaborator(id: string): Promise<void> {
   const result = await supabase.from('collaborators').delete().eq('id', id);
   throwOnError(result, 'deleteCollaborator');
+}
+
+// ──────────────────────────────────────────────
+// TeamInvite
+// ──────────────────────────────────────────────
+
+function rowToTeamInvite(row: any): TeamInvite {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    inviteCode: row.invite_code,
+    role: row.role,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    // DB uses status/use_count instead of usedBy/usedAt
+    usedBy: row.status === 'used' ? 'redeemed' : undefined,
+    usedAt: row.status === 'used' ? row.created_at : undefined,
+  };
+}
+
+export async function upsertTeamInvite(invite: TeamInvite): Promise<void> {
+  const row: Record<string, unknown> = {
+    id: invite.id,
+    org_id: invite.orgId,
+    invite_code: invite.inviteCode,
+    role: invite.role,
+    created_by: invite.createdBy,
+    created_at: invite.createdAt,
+    expires_at: invite.expiresAt,
+    status: invite.usedBy ? 'used' : 'active',
+    use_count: invite.usedBy ? 1 : 0,
+    max_uses: 1,
+  };
+  const result = await supabase
+    .from('team_invites')
+    .upsert(row as any, { onConflict: 'id' });
+  throwOnError(result, 'upsertTeamInvite');
+}
+
+export async function fetchTeamInviteByCode(code: string): Promise<TeamInvite | null> {
+  const { data, error } = await supabase
+    .from('team_invites')
+    .select('*')
+    .eq('invite_code', code)
+    .maybeSingle();
+  if (error) throw new Error(`fetchTeamInviteByCode: ${error.message}`);
+  if (!data) return null;
+  return rowToTeamInvite(data);
+}
+
+export async function fetchTeamInvites(orgId: string): Promise<TeamInvite[]> {
+  const { data, error } = await supabase
+    .from('team_invites')
+    .select('*')
+    .eq('org_id', orgId);
+  throwOnError({ data, error }, 'fetchTeamInvites');
+  return (data ?? []).map(rowToTeamInvite);
+}
+
+// ──────────────────────────────────────────────
+// OrgMember (additional helpers)
+// ──────────────────────────────────────────────
+
+export async function upsertOrgMember(member: OrgMember): Promise<void> {
+  const row: Record<string, unknown> = {
+    id: member.id,
+    org_id: member.orgId,
+    user_id: member.userId,
+    role: member.role,
+    joined_at: member.joinedAt,
+  };
+  const result = await supabase
+    .from('org_members')
+    .upsert(row as any, { onConflict: 'id' });
+  throwOnError(result, 'upsertOrgMember');
 }

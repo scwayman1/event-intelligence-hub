@@ -4,6 +4,8 @@ import { useEventStore } from '@/data/store';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Sprout, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { fetchTeamInviteByCode } from '@/services/supabase-db';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function JoinInvite() {
   const { inviteCode } = useParams<{ inviteCode: string }>();
@@ -18,6 +20,7 @@ export default function JoinInvite() {
   const [status, setStatus] = useState<'loading' | 'not-found' | 'expired' | 'used' | 'already-member' | 'ready' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [orgName, setOrgName] = useState('');
+  const [remoteInvite, setRemoteInvite] = useState<Awaited<ReturnType<typeof fetchTeamInviteByCode>> | undefined>(undefined);
 
   useEffect(() => {
     if (authLoading) return;
@@ -34,26 +37,60 @@ export default function JoinInvite() {
       return;
     }
 
-    // Validate the invite
-    const invite = findInviteByCode(inviteCode);
-    if (!invite) {
-      setStatus('not-found');
+    // Try local store first, then fall back to Supabase
+    const localInvite = findInviteByCode(inviteCode);
+    if (localInvite) {
+      applyInvite(localInvite);
       return;
     }
 
-    if (invite.usedBy) {
-      setStatus('used');
-      return;
-    }
+    // Fetch from Supabase — invite was created on another device
+    let cancelled = false;
+    fetchTeamInviteByCode(inviteCode)
+      .then(async (dbInvite) => {
+        if (cancelled) return;
+        if (!dbInvite) {
+          setStatus('not-found');
+          return;
+        }
+        // Hydrate invite into local store so redeemInvite can find it
+        setRemoteInvite(dbInvite);
+        useEventStore.setState((s) => {
+          const exists = s.teamInvites.some((i) => i.id === dbInvite.id);
+          if (exists) return {};
+          return { teamInvites: [...s.teamInvites, dbInvite] };
+        });
+        // Also fetch the org name from Supabase if not in local store
+        let name = organizations.find((o) => o.id === dbInvite.orgId)?.name;
+        if (!name) {
+          const { data: orgRow } = await supabase
+            .from('organizations')
+            .select('name')
+            .eq('id', dbInvite.orgId)
+            .maybeSingle();
+          name = orgRow?.name ?? 'Unknown Organization';
+        }
+        if (cancelled) return;
+        applyInvite(dbInvite, name);
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('not-found');
+      });
+    return () => { cancelled = true; };
 
-    if (new Date(invite.expiresAt) < new Date()) {
-      setStatus('expired');
-      return;
+    function applyInvite(invite: NonNullable<typeof localInvite>, overrideName?: string) {
+      if (invite.usedBy) {
+        setStatus('used');
+        return;
+      }
+      if (new Date(invite.expiresAt) < new Date()) {
+        setStatus('expired');
+        return;
+      }
+      const org = organizations.find((o) => o.id === invite.orgId);
+      setOrgName(overrideName ?? org?.name ?? 'Unknown Organization');
+      setStatus('ready');
     }
-
-    const org = organizations.find((o) => o.id === invite.orgId);
-    setOrgName(org?.name ?? 'Unknown Organization');
-    setStatus('ready');
   }, [authLoading, user, inviteCode, findInviteByCode, organizations, navigate, setPendingInviteCode]);
 
   function handleJoin() {

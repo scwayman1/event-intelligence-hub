@@ -303,6 +303,7 @@ export const useEventStore = create<EventStore>()(
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
     };
     set((s) => ({ teamInvites: [...s.teamInvites, invite] }));
+    dbSync(() => db.upsertTeamInvite(invite));
     return invite;
   },
   revokeTeamInvite: (inviteId) => {
@@ -339,12 +340,15 @@ export const useEventStore = create<EventStore>()(
       inviteId: invite.id,
     };
 
+    const usedInvite = updatedInvites.find((i) => i.id === invite.id)!;
     set({
       teamInvites: updatedInvites,
       orgMembers: [...state.orgMembers, newMember],
       activeOrgId: invite.orgId,
       pendingInviteCode: null,
     });
+    dbSync(() => db.upsertTeamInvite(usedInvite));
+    dbSync(() => db.upsertOrgMember(newMember));
 
     return { success: true, orgId: invite.orgId };
   },
