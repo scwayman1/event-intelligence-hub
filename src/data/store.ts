@@ -6,9 +6,26 @@ import { seedDonors, seedRecipients, seedAllGuests, seedRelationshipGroups, seed
 import { MESSAGING_DEFAULTS, createMessagingActions, type MessagingState, type MessagingActions } from './messaging-store';
 import * as db from '@/services/supabase-db';
 
-// Fire-and-forget async Supabase write — keeps UI snappy
+// Async Supabase write — keeps UI snappy but tracks failures
+let _dbSyncFailures = 0;
+let _dbSyncLastError: string | null = null;
+
 function dbSync(fn: () => Promise<void>) {
-  fn().catch((err) => console.error('[supabase-sync]', err));
+  fn()
+    .then(() => {
+      // Reset failure count on success
+      if (_dbSyncFailures > 0) _dbSyncFailures = 0;
+    })
+    .catch((err) => {
+      _dbSyncFailures++;
+      _dbSyncLastError = err instanceof Error ? err.message : String(err);
+      console.error(`[supabase-sync] Write failed (${_dbSyncFailures} failures):`, err);
+    });
+}
+
+/** Check if there have been recent Supabase write failures */
+export function getDbSyncStatus(): { healthy: boolean; failures: number; lastError: string | null } {
+  return { healthy: _dbSyncFailures === 0, failures: _dbSyncFailures, lastError: _dbSyncLastError };
 }
 
 // ──────────────────────────────────────────────
@@ -192,7 +209,23 @@ export const useEventStore = create<EventStore>()(
     return { success: true };
   },
 
-  signOut: () => set({ userProfile: null }),
+  signOut: () => set({
+    userProfile: null,
+    organizations: [],
+    activeOrgId: null,
+    events: [],
+    guests: [],
+    versions: [],
+    layoutObjects: [],
+    seatingAssignments: [],
+    seatingRules: [],
+    relationshipGroups: [],
+    relationshipMemberships: [],
+    collaborators: [],
+    teamInvites: [],
+    orgMembers: [],
+    hasCompletedOnboarding: false,
+  }),
 
   // ── Collaborators ──
   addCollaborator: (collab) => {

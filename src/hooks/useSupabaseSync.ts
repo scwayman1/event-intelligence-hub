@@ -26,8 +26,23 @@ export function useSupabaseSync() {
       // Fetch org memberships for the user
       const orgIds = await fetchOrgMemberships(userId);
 
-      // New user with no memberships — nothing to sync
+      // New user with no memberships — nothing to sync, but mark as synced
       if (orgIds.length === 0) {
+        // Clear any stale data from a previous user's localStorage
+        useEventStore.setState({
+          organizations: [],
+          activeOrgId: null,
+          events: [],
+          guests: [],
+          versions: [],
+          layoutObjects: [],
+          seatingAssignments: [],
+          seatingRules: [],
+          relationshipGroups: [],
+          relationshipMemberships: [],
+          collaborators: [],
+          hasCompletedOnboarding: false,
+        });
         setLoading(false);
         return;
       }
@@ -74,7 +89,7 @@ export function useSupabaseSync() {
       const relationshipMemberships =
         await fetchRelationshipMemberships(groupIds);
 
-      // Hydrate the Zustand store
+      // Hydrate the Zustand store — REPLACES all data with server truth
       useEventStore.setState({
         organizations,
         activeOrgId,
@@ -90,9 +105,17 @@ export function useSupabaseSync() {
         hasCompletedOnboarding: organizations.length > 0,
       });
 
+      console.log(
+        `[supabase-sync] Loaded: ${organizations.length} org(s), ` +
+        `${events.length} event(s), ${guests.length} guest(s), ` +
+        `${layoutObjects.length} layout object(s), ${seatingAssignments.length} assignment(s)`,
+      );
+
       setLoading(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync data");
+      const message = err instanceof Error ? err.message : "Failed to sync data";
+      console.error('[supabase-sync] Sync failed:', message);
+      setError(message);
       setLoading(false);
     }
   }, []);

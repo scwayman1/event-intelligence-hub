@@ -30,13 +30,14 @@ import { AuthProvider, useAuthContext } from "@/contexts/AuthContext";
 
 const queryClient = new QueryClient();
 
-/** Must be signed in to access anything */
+/** Must be signed in to access anything. Waits for Supabase sync to finish. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuthContext();
-  if (loading) {
+  const { user, loading, syncing } = useAuthContext();
+  if (loading || syncing) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center gap-3">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        {syncing && <p className="text-sm text-muted-foreground">Loading your data...</p>}
       </div>
     );
   }
@@ -60,9 +61,9 @@ function RedirectIfOnboarded({ children }: { children: React.ReactNode }) {
 
 /** Redirects signed-in users away from auth pages */
 function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuthContext();
+  const { user, loading, syncing } = useAuthContext();
   const hasCompletedOnboarding = useEventStore((s) => s.hasCompletedOnboarding);
-  if (loading) {
+  if (loading || syncing) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
