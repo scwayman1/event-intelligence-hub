@@ -65,13 +65,18 @@ export default function SignUp() {
 
     if (authError) {
       setError(authError.message);
-    } else {
-      // If there's a pending invite, redirect to the join page
-      if (pendingInviteCode) {
+      return;
+    }
+
+    if (pendingInviteCode) {
+      // After signup, Supabase's onAuthStateChange needs a moment to fire
+      // and propagate the user state. Delay navigation so JoinInvite sees
+      // the authenticated user instead of redirecting back to sign-up.
+      setTimeout(() => {
         navigate(`/join/${pendingInviteCode}`, { replace: true });
-      } else {
-        navigate('/welcome');
-      }
+      }, 600);
+    } else {
+      navigate('/welcome');
     }
   }
 

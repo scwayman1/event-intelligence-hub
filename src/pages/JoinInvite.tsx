@@ -30,8 +30,16 @@ export default function JoinInvite() {
       return;
     }
 
-    // If not logged in, store the invite code and redirect to sign-up
+    // If not logged in:
+    // - If there's already a pendingInviteCode, the user just came from sign-up/sign-in
+    //   and auth state is still propagating. Wait instead of redirecting back.
+    // - Otherwise, store the invite code and redirect to sign-up.
     if (!user) {
+      const existingPending = useEventStore.getState().pendingInviteCode;
+      if (existingPending === inviteCode) {
+        // Auth is still loading after sign-up — stay on loading screen
+        return;
+      }
       setPendingInviteCode(inviteCode);
       navigate('/sign-up', { replace: true });
       return;

@@ -33,12 +33,13 @@ export default function SignIn() {
 
     if (authError) {
       setError(authError.message);
-    } else {
-      if (pendingInviteCode) {
+    } else if (pendingInviteCode) {
+      // Delay to let onAuthStateChange propagate user state
+      setTimeout(() => {
         navigate(`/join/${pendingInviteCode}`, { replace: true });
-      } else {
-        navigate('/');
-      }
+      }, 600);
+    } else {
+      navigate('/');
     }
   }
 
