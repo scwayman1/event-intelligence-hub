@@ -440,6 +440,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
       });
       setKeyStored(true);
       setApiKeyInput('');
+      setModelJustChanged(true);
+      setTimeout(() => setModelJustChanged(false), 2000);
+      const modelDef = PROVIDERS[selectedProvider].models.find((m) => m.id === selectedModel);
+      toast.success('API key saved!', {
+        description: `Franck is now powered by ${modelDef?.label ?? selectedModel}. Let the magic begin!`,
+        duration: 3000,
+      });
     }
   };
 
