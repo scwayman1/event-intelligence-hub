@@ -204,10 +204,14 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'auto-seat',
       'seat everyone',
       'seat the guests',
+      'seat my guests',
       'seat all guests',
+      'seat all the guests',
+      'seat guests',
       'assign seats',
       'assign seating',
       'do the seating',
+      'do seating',
       'arrange seating',
       'arrange the guests',
       'seat people',
@@ -223,6 +227,18 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       'put guests in seats',
       'seat all the attendees',
       'figure out the seating',
+      'run the seating algorithm',
+      'run the seating',
+      'run seating',
+      'run auto seat',
+      'generate seating',
+      'generate the seating',
+      'create seating',
+      'create the seating',
+      'make the seating',
+      'make seating assignments',
+      'seating please',
+      'do auto seat',
     ],
     buildSteps: (_params, _eventId) => [
       {
@@ -674,7 +690,7 @@ export const WORKFLOWS: WorkflowDefinition[] = [
  * Returns the BEST match by score if it meets the minimum threshold, or null.
  */
 export function matchWorkflow(userMessage: string): WorkflowMatch | null {
-  const normalized = userMessage.toLowerCase().trim()
+  let normalized = userMessage.toLowerCase().trim()
     .replace(/[?!.,;:'"]/g, '') // strip punctuation
     .replace(/\s+/g, ' ');
 
@@ -689,6 +705,30 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
   const wordCount = normalized.split(' ').length;
   if (wordCount > 15) return null;
 
+  // ── Strip common conversational prefixes ───────────────────────
+  // Users often say "please seat everyone" or "can you seat everyone"
+  // which should still match the "seat everyone" trigger phrase.
+  const prefixPatterns = [
+    /^(?:please\s+)/,
+    /^(?:can you\s+)/,
+    /^(?:could you\s+)/,
+    /^(?:would you\s+)/,
+    /^(?:go ahead and\s+)/,
+    /^(?:i want you to\s+)/,
+    /^(?:i need you to\s+)/,
+    /^(?:i'd like you to\s+)/,
+    /^(?:just\s+)/,
+    /^(?:hey\s+)/,
+    /^(?:franck\s+)/,
+    /^(?:hey franck\s+)/,
+  ];
+  let stripped = normalized;
+  for (const prefix of prefixPatterns) {
+    stripped = stripped.replace(prefix, '');
+  }
+  // Also strip trailing "please"
+  stripped = stripped.replace(/\s+please$/, '').trim();
+
   // ── Skip workflows that require parameters ─────────────────────
   // Workflows like "Swap Two Guests" and "Move Guest to Table" need
   // guest names / table numbers that the matcher can't extract.
@@ -701,19 +741,27 @@ export function matchWorkflow(userMessage: string): WorkflowMatch | null {
   // ── EXACT phrase matching ONLY ─────────────────────────────────
   // Fuzzy matching caused too many false positives. Now we only match
   // when the user's message contains an exact trigger phrase.
+  // We try both the original normalized message and the prefix-stripped
+  // version so "please seat everyone" matches "seat everyone".
   let bestMatch: WorkflowDefinition | null = null;
   let bestLength = 0;
+
+  const candidates = [normalized, stripped];
+  // Deduplicate if they're the same
+  const uniqueCandidates = [...new Set(candidates)];
 
   for (const workflow of WORKFLOWS) {
     if (PARAM_REQUIRED_WORKFLOWS.has(workflow.id)) continue;
 
     for (const phrase of workflow.triggerPhrases) {
-      if (normalized === phrase || normalized.includes(phrase)) {
-        // The phrase must cover a meaningful portion of the message
-        const coverage = phrase.length / normalized.length;
-        if (coverage >= 0.35 && phrase.length > bestLength) {
-          bestLength = phrase.length;
-          bestMatch = workflow;
+      for (const candidate of uniqueCandidates) {
+        if (candidate === phrase || candidate.includes(phrase)) {
+          // The phrase must cover a meaningful portion of the message
+          const coverage = phrase.length / candidate.length;
+          if (coverage >= 0.35 && phrase.length > bestLength) {
+            bestLength = phrase.length;
+            bestMatch = workflow;
+          }
         }
       }
     }

@@ -62,6 +62,11 @@ function clamp100(n: number): number {
 /** Guest categories that qualify as anchors (placed first). */
 const ANCHOR_CATEGORIES: GuestCategory[] = ['donor', 'sponsor', 'board_member', 'vip'];
 
+/** Normalize a guest category to lowercase with underscores for safe comparison. */
+function normalizeGuestCategory(cat: string): string {
+  return cat.toLowerCase().replace(/\s+/g, '_');
+}
+
 /** Membership roles considered anchor roles. */
 const ANCHOR_ROLES = new Set(['Donor', 'Host', 'Mentor', 'Sponsor']);
 
@@ -212,11 +217,13 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
 
   log.push(`${alreadySeated.size} guests already have existing assignments (preserved).`);
 
-  // Only consider confirmed/checked-in guests for auto-seating
+  // Consider all guests who haven't explicitly declined for auto-seating.
+  // Many imported guests remain in 'invited' or 'waitlist' status and still
+  // need seats assigned — filtering only 'confirmed' silently drops them.
   const eligibleGuests = guests.filter(
     (g) =>
       !alreadySeated.has(g.id) &&
-      (g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in'),
+      g.rsvpStatus !== 'declined',
   );
   const unseatedSet = new Set(eligibleGuests.map((g) => g.id));
 
@@ -264,7 +271,7 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     const anchorMembers = members.filter((m) => {
       if (ANCHOR_ROLES.has(m.role)) return true;
       const guest = guestById.get(m.guestId);
-      return guest && ANCHOR_CATEGORIES.includes(guest.category);
+      return guest && ANCHOR_CATEGORIES.includes(normalizeGuestCategory(guest.category) as GuestCategory);
     });
 
     for (const anchorMembership of anchorMembers) {
@@ -315,7 +322,7 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     // Find which table(s) the anchor(s) are at
     const anchorTableIds = new Set<string>();
     for (const m of members) {
-      if (ANCHOR_ROLES.has(m.role) || (guestById.get(m.guestId) && ANCHOR_CATEGORIES.includes(guestById.get(m.guestId)!.category))) {
+      if (ANCHOR_ROLES.has(m.role) || (guestById.get(m.guestId) && ANCHOR_CATEGORIES.includes(normalizeGuestCategory(guestById.get(m.guestId)!.category) as GuestCategory))) {
         // Check if this anchor is already seated
         for (const ts of tableStates) {
           if (ts.seated.has(m.guestId)) {
@@ -382,7 +389,7 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
 
   // 3a: Distribute donors/staff/VIPs using round-robin across tables
   const spreadGuests = eligibleGuests.filter(
-    (g) => unseatedSet.has(g.id) && SPREAD_CATEGORIES.has(g.category),
+    (g) => unseatedSet.has(g.id) && SPREAD_CATEGORIES.has(normalizeGuestCategory(g.category) as GuestCategory),
   );
 
   if (spreadGuests.length > 0) {
@@ -421,7 +428,7 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
 
   // 3b: Distribute students across tables, preferring tables that already have a donor/staff
   const studentGuests = eligibleGuests.filter(
-    (g) => unseatedSet.has(g.id) && STUDENT_CATEGORIES.has(g.category),
+    (g) => unseatedSet.has(g.id) && STUDENT_CATEGORIES.has(normalizeGuestCategory(g.category) as GuestCategory),
   );
 
   if (studentGuests.length > 0) {
@@ -438,13 +445,13 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
           let aDonors = 0, bDonors = 0, aStudents = 0, bStudents = 0;
           for (const gId of a.seated) {
             const g = guestById.get(gId);
-            if (g && SPREAD_CATEGORIES.has(g.category)) aDonors++;
-            if (g && STUDENT_CATEGORIES.has(g.category)) aStudents++;
+            if (g && SPREAD_CATEGORIES.has(normalizeGuestCategory(g.category) as GuestCategory)) aDonors++;
+            if (g && STUDENT_CATEGORIES.has(normalizeGuestCategory(g.category) as GuestCategory)) aStudents++;
           }
           for (const gId of b.seated) {
             const g = guestById.get(gId);
-            if (g && SPREAD_CATEGORIES.has(g.category)) bDonors++;
-            if (g && STUDENT_CATEGORIES.has(g.category)) bStudents++;
+            if (g && SPREAD_CATEGORIES.has(normalizeGuestCategory(g.category) as GuestCategory)) bDonors++;
+            if (g && STUDENT_CATEGORIES.has(normalizeGuestCategory(g.category) as GuestCategory)) bStudents++;
           }
           // Prefer tables with donors but fewer students
           const aScore = (aDonors > 0 ? 100 : 0) - aStudents * 10;
@@ -900,10 +907,10 @@ export function getSeatingRecommendations(
     let priority: 'critical' | 'high' | 'medium' | 'low' = 'medium';
     let score = 50;
 
-    if (VIP_TIER_CATEGORIES.has(guest.category)) {
+    if (VIP_TIER_CATEGORIES.has(normalizeGuestCategory(guest.category) as GuestCategory)) {
       priority = 'critical';
       score = 95;
-    } else if (guest.category === 'scholarship_recipient') {
+    } else if (normalizeGuestCategory(guest.category) === 'scholarship_recipient') {
       priority = 'high';
       score = 75;
     } else if (guest.category === 'family') {

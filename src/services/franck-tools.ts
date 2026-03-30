@@ -539,8 +539,9 @@ function autoSeatGuests(
         );
       }
       applied++;
-    } catch {
-      // Skip individual failures, continue seating others
+    } catch (err) {
+      // Log failure but continue seating remaining guests
+      console.warn(`[auto_seat_guests] Failed to seat guest ${assignment.guestId} at table ${assignment.tableId}:`, err);
     }
   }
 
@@ -1803,6 +1804,199 @@ function createVersionTool(
 }
 
 // ---------------------------------------------------------------------------
+// Layout analysis
+// ---------------------------------------------------------------------------
+
+interface SpacingIssue {
+  table1: string;
+  table2: string;
+  distance: number;
+  recommendation: string;
+}
+
+function analyzeLayoutTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const event = ctx.event;
+  const activeVersion = ctx.activeVersion;
+  const versionId = ctx.versionId;
+
+  // Get ALL layout objects (tables + decorations + zones etc.)
+  const allObjects = state.layoutObjects.filter((o) => o.versionId === versionId);
+  const tables = ctx.tables; // round_table | rect_table only
+
+  // Canvas dimensions from version or defaults
+  const canvasWidth = activeVersion?.canvasWidth ?? 1200;
+  const canvasHeight = activeVersion?.canvasHeight ?? 800;
+
+  // Total capacity from tables
+  const totalCapacity = tables.reduce((sum, t) => sum + t.capacity, 0);
+
+  // Confirmed guests count
+  const confirmedGuests = ctx.guests.filter(
+    (g) => g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in',
+  ).length;
+
+  // ---------- Spacing analysis ----------
+
+  const MIN_SPACING = 100; // px — minimum distance between table centers
+  const spacingIssues: SpacingIssue[] = [];
+
+  for (let i = 0; i < tables.length; i++) {
+    for (let j = i + 1; j < tables.length; j++) {
+      const a = tables[i];
+      const b = tables[j];
+      const cx1 = a.x + a.width / 2;
+      const cy1 = a.y + a.height / 2;
+      const cx2 = b.x + b.width / 2;
+      const cy2 = b.y + b.height / 2;
+      const dist = Math.sqrt((cx2 - cx1) ** 2 + (cy2 - cy1) ** 2);
+      if (dist < MIN_SPACING) {
+        const nameA = a.tableNumber != null ? `Table ${a.tableNumber}` : a.name;
+        const nameB = b.tableNumber != null ? `Table ${b.tableNumber}` : b.name;
+        spacingIssues.push({
+          table1: nameA,
+          table2: nameB,
+          distance: Math.round(dist),
+          recommendation: `Move at least ${Math.round(MIN_SPACING - dist)}px apart`,
+        });
+      }
+    }
+  }
+
+  // ---------- Overlap detection ----------
+
+  const overlaps: { table1: string; table2: string }[] = [];
+  for (let i = 0; i < tables.length; i++) {
+    for (let j = i + 1; j < tables.length; j++) {
+      const a = tables[i];
+      const b = tables[j];
+      // Simple axis-aligned bounding box overlap
+      const aRight = a.x + a.width;
+      const aBottom = a.y + a.height;
+      const bRight = b.x + b.width;
+      const bBottom = b.y + b.height;
+      if (a.x < bRight && aRight > b.x && a.y < bBottom && aBottom > b.y) {
+        const nameA = a.tableNumber != null ? `Table ${a.tableNumber}` : a.name;
+        const nameB = b.tableNumber != null ? `Table ${b.tableNumber}` : b.name;
+        overlaps.push({ table1: nameA, table2: nameB });
+      }
+    }
+  }
+
+  // ---------- Out-of-bounds detection ----------
+
+  const outOfBounds: string[] = [];
+  for (const t of tables) {
+    if (t.x < 0 || t.y < 0 || t.x + t.width > canvasWidth || t.y + t.height > canvasHeight) {
+      outOfBounds.push(t.tableNumber != null ? `Table ${t.tableNumber}` : t.name);
+    }
+  }
+
+  // ---------- Empty area detection (quadrant-based) ----------
+
+  const quadrants = [
+    { label: 'top-left', xMin: 0, xMax: canvasWidth / 2, yMin: 0, yMax: canvasHeight / 2 },
+    { label: 'top-right', xMin: canvasWidth / 2, xMax: canvasWidth, yMin: 0, yMax: canvasHeight / 2 },
+    { label: 'bottom-left', xMin: 0, xMax: canvasWidth / 2, yMin: canvasHeight / 2, yMax: canvasHeight },
+    { label: 'bottom-right', xMin: canvasWidth / 2, xMax: canvasWidth, yMin: canvasHeight / 2, yMax: canvasHeight },
+  ];
+
+  const emptyQuadrants: string[] = [];
+  for (const q of quadrants) {
+    const tablesInQuadrant = tables.filter((t) => {
+      const cx = t.x + t.width / 2;
+      const cy = t.y + t.height / 2;
+      return cx >= q.xMin && cx < q.xMax && cy >= q.yMin && cy < q.yMax;
+    });
+    if (tablesInQuadrant.length === 0) {
+      emptyQuadrants.push(q.label);
+    }
+  }
+
+  // ---------- Spacing evenness ----------
+
+  let spacingNote = '';
+  if (tables.length >= 3) {
+    const distances: number[] = [];
+    for (let i = 0; i < tables.length; i++) {
+      let minDist = Infinity;
+      for (let j = 0; j < tables.length; j++) {
+        if (i === j) continue;
+        const a = tables[i];
+        const b = tables[j];
+        const d = Math.sqrt(
+          ((a.x + a.width / 2) - (b.x + b.width / 2)) ** 2 +
+          ((a.y + a.height / 2) - (b.y + b.height / 2)) ** 2,
+        );
+        if (d < minDist) minDist = d;
+      }
+      distances.push(minDist);
+    }
+    const avg = distances.reduce((s, d) => s + d, 0) / distances.length;
+    const variance = distances.reduce((s, d) => s + (d - avg) ** 2, 0) / distances.length;
+    const stdDev = Math.sqrt(variance);
+    if (stdDev > avg * 0.5) {
+      spacingNote = 'Table spacing is quite uneven — some tables are bunched while others are isolated.';
+    }
+  }
+
+  // ---------- Build suggestions ----------
+
+  const suggestions: string[] = [];
+  for (const issue of spacingIssues) {
+    suggestions.push(`${issue.table1} and ${issue.table2} are only ${issue.distance}px apart — consider spreading them out`);
+  }
+  for (const ol of overlaps) {
+    suggestions.push(`${ol.table1} and ${ol.table2} are overlapping — reposition to avoid collision`);
+  }
+  if (outOfBounds.length > 0) {
+    suggestions.push(`${outOfBounds.join(', ')} extend${outOfBounds.length === 1 ? 's' : ''} outside the canvas bounds`);
+  }
+  for (const eq of emptyQuadrants) {
+    suggestions.push(`The ${eq} area of the venue has no tables — consider using that space`);
+  }
+  if (spacingNote) {
+    suggestions.push(spacingNote);
+  }
+  if (totalCapacity < confirmedGuests) {
+    suggestions.push(`Not enough capacity: ${totalCapacity} seats for ${confirmedGuests} confirmed guests — add more tables or increase table sizes`);
+  }
+
+  const issueCount = spacingIssues.length + overlaps.length + outOfBounds.length;
+  const summaryParts: string[] = [
+    `${tables.length} tables arranged across ${canvasWidth}x${canvasHeight} canvas`,
+  ];
+  if (issueCount > 0) {
+    summaryParts.push(`${issueCount} potential issue${issueCount > 1 ? 's' : ''} found`);
+  }
+  summaryParts.push(`Total capacity: ${totalCapacity}, confirmed guests: ${confirmedGuests}`);
+
+  return json({
+    summary: summaryParts.join('. ') + '.',
+    totalTables: tables.length,
+    totalObjects: allObjects.length,
+    totalCapacity,
+    canvasSize: { width: canvasWidth, height: canvasHeight },
+    spacingIssues,
+    overlaps,
+    outOfBounds,
+    emptyQuadrants,
+    capacityCheck: {
+      totalCapacity,
+      confirmedGuests,
+      surplus: totalCapacity - confirmedGuests,
+    },
+    suggestions,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tool dispatcher
 // ---------------------------------------------------------------------------
 
@@ -1850,6 +2044,7 @@ const TOOL_MAP: Record<
   unseat_guest: unseatGuestTool,
   clear_all_seating: clearAllSeatingTool,
   run_refinement_loop: runRefinementLoopTool,
+  analyze_layout: analyzeLayoutTool,
 };
 
 /**
