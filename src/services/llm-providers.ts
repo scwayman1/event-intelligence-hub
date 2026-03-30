@@ -74,11 +74,13 @@ interface ModelCapabilities {
 }
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
+  // Free models with tool use support
+  'google/gemini-2.5-flash-preview:free': { toolUse: true },
   // Models that do NOT support tool use well
-  'stepfun/step-1.5-flash:free': { toolUse: false },
+  'qwen/qwen3-235b-a22b:free': { toolUse: false },
   'nvidia/llama-3.3-nemotron-super-49b-v1:free': { toolUse: false },
-  'meta-llama/llama-4-maverick': { toolUse: false },
-  'deepseek/deepseek-chat-v3': { toolUse: false },
+  'meta-llama/llama-4-maverick:free': { toolUse: false },
+  'deepseek/deepseek-chat-v3-0324:free': { toolUse: false },
   'mistralai/mistral-large-2': { toolUse: false },
 };
 
@@ -124,19 +126,19 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'openrouter',
     label: 'OpenRouter',
     keyPlaceholder: 'sk-or-v1-...',
-    defaultModel: 'anthropic/claude-sonnet-4',
+    defaultModel: 'google/gemini-2.5-flash-preview:free',
     models: [
+      // Free models (work out of the box)
+      { id: 'google/gemini-2.5-flash-preview:free', label: 'Gemini 2.5 Flash (Free)' },
+      { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen 3 235B (Free)' },
+      { id: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (Free)' },
+      { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'DeepSeek V3 (Free)' },
+      // Premium models (require your own OpenRouter key)
       { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
       { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
       { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro' },
-      { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash' },
-      { id: 'stepfun/step-1.5-flash:free', label: 'Step 1.5 Flash (Free)' },
-      { id: 'nvidia/llama-3.3-nemotron-super-49b-v1:free', label: 'Nemotron Super 49B (Free)' },
       { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
       { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-      { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
-      { id: 'deepseek/deepseek-chat-v3', label: 'DeepSeek V3' },
-      { id: 'mistralai/mistral-large-2', label: 'Mistral Large 2' },
     ],
   },
 };
@@ -146,7 +148,7 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 // ──────────────────────────────────────────────
 
 const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
-const FREE_MODEL = 'stepfun/step-1.5-flash:free';
+const FREE_MODEL = 'google/gemini-2.5-flash-preview:free';
 
 export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
   ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
