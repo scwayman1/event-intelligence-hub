@@ -11,9 +11,12 @@ import {
   fetchRelationshipGroups,
   fetchRelationshipMemberships,
   fetchCollaborators,
+  fetchOrgMembers,
+  fetchTeamInvites,
 } from "@/services/supabase-db";
 import { useEventStore } from "@/data/store";
 import { setOrgLLMConfig } from "@/services/llm-providers";
+import type { TeamInvite } from "@/types/events";
 
 export function useSupabaseSync() {
   const [loading, setLoading] = useState(false);
@@ -59,6 +62,13 @@ export function useSupabaseSync() {
       const guests = perOrgResults.flatMap(([, g]) => g);
       const relationshipGroups = perOrgResults.flatMap(([, , rg]) => rg);
 
+      // Fetch org-level data (members, invites) in parallel with event-level data
+      const [orgMembers, ...teamInviteArrays] = await Promise.all([
+        fetchOrgMembers(orgIds),
+        ...orgIds.map((id) => fetchTeamInvites(id).catch(() => [] as TeamInvite[])),
+      ]);
+      const teamInvites = teamInviteArrays.flat();
+
       // Collect all event IDs and fetch event-level data in parallel
       const eventIds = events.map((e) => e.id);
       const [versions, seatingRules, collaborators] = await Promise.all([
@@ -102,6 +112,8 @@ export function useSupabaseSync() {
         relationshipGroups,
         relationshipMemberships,
         collaborators,
+        orgMembers,
+        teamInvites,
         hasCompletedOnboarding: organizations.length > 0,
       });
 

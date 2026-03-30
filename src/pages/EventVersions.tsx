@@ -16,6 +16,7 @@ export default function EventVersions() {
   const { eventId } = useParams();
   const events = useEventStore((s) => s.events);
   const versions = useEventStore((s) => s.versions);
+  const addVersion = useEventStore((s) => s.addVersion);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
 
@@ -31,7 +32,22 @@ export default function EventVersions() {
           <h1 className="text-2xl font-bold text-foreground">Versions</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage layout and seating scenarios</p>
         </div>
-        <Button size="sm" className="gap-2"><Plus className="w-4 h-4" />New Version</Button>
+        <Button size="sm" className="gap-2" onClick={() => {
+          if (!eventId) return;
+          const versionId = `ver-${crypto.randomUUID().slice(0, 8)}`;
+          const now = new Date().toISOString();
+          const versionNumber = eventVersions.length + 1;
+          addVersion({
+            id: versionId,
+            eventId,
+            name: `Version ${versionNumber}`,
+            status: 'draft',
+            createdAt: now,
+            updatedAt: now,
+            createdBy: 'User',
+            notes: '',
+          });
+        }}><Plus className="w-4 h-4" />New Version</Button>
       </div>
 
       <div className="space-y-3">

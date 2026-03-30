@@ -680,6 +680,23 @@ export async function fetchTeamInvites(orgId: string): Promise<TeamInvite[]> {
 // OrgMember (additional helpers)
 // ──────────────────────────────────────────────
 
+export async function fetchOrgMembers(orgIds: string[]): Promise<OrgMember[]> {
+  if (orgIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('org_members')
+    .select('*')
+    .in('org_id', orgIds);
+  throwOnError({ data, error }, 'fetchOrgMembers');
+  return (data ?? []).map((r: any): OrgMember => ({
+    id: r.id,
+    orgId: r.org_id,
+    userId: r.user_id,
+    role: r.role,
+    joinedAt: r.joined_at,
+    inviteId: r.invite_id ?? undefined,
+  }));
+}
+
 export async function upsertOrgMember(member: OrgMember): Promise<void> {
   const row: Record<string, unknown> = {
     id: member.id,
