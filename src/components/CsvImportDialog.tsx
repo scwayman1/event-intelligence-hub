@@ -21,7 +21,16 @@ interface ParsedRow {
   errors: string[];
 }
 
+function detectDelimiter(text: string): string {
+  // Check first line to detect delimiter (tab vs comma)
+  const firstLine = text.split(/\r?\n/)[0] ?? '';
+  const tabs = (firstLine.match(/\t/g) ?? []).length;
+  const commas = (firstLine.match(/,/g) ?? []).length;
+  return tabs > commas ? '\t' : ',';
+}
+
 function parseCSV(text: string): string[][] {
+  const delimiter = detectDelimiter(text);
   const rows: string[][] = [];
   let current = '';
   let inQuotes = false;
@@ -43,7 +52,7 @@ function parseCSV(text: string): string[][] {
     } else {
       if (ch === '"') {
         inQuotes = true;
-      } else if (ch === ',') {
+      } else if (ch === delimiter) {
         row.push(current.trim());
         current = '';
       } else if (ch === '\n' || (ch === '\r' && next === '\n')) {
@@ -68,7 +77,7 @@ const EXPECTED_HEADERS = [
   'first_name', 'last_name', 'email', 'phone', 'organization',
   'category', 'rsvp_status', 'party_size', 'dietary_restrictions',
   'accessibility_needs', 'notes', 'table_preference', 'seating_preference',
-  'relationship_tags',
+  'relationship_tags', 'additional_tags',
 ];
 
 function parseRow(
@@ -153,6 +162,7 @@ function parseRow(
   const tablePreference = get('table_preference');
   const seatingPreference = get('seating_preference');
   const relationshipTagsStr = get('relationship_tags');
+  const additionalTagsStr = get('additional_tags');
 
   if (!firstName) errors.push('Missing first_name');
   if (!lastName) errors.push('Missing last_name');
@@ -167,9 +177,13 @@ function parseRow(
   const partySize = partySizeStr ? parseInt(partySizeStr, 10) : 1;
   if (isNaN(partySize) || partySize < 1) errors.push(`Invalid party_size "${partySizeStr}"`);
 
-  const tags = relationshipTagsStr
-    ? relationshipTagsStr.split(';').map((t) => t.trim()).filter(Boolean)
-    : [];
+  // Merge relationship_tags and additional_tags into one tags array
+  // Support both semicolon and comma as separators
+  const splitTags = (s: string) => s.split(/[;,]/).map((t) => t.trim()).filter(Boolean);
+  const tags = [
+    ...(relationshipTagsStr ? splitTags(relationshipTagsStr) : []),
+    ...(additionalTagsStr ? splitTags(additionalTagsStr) : []),
+  ];
 
   if (errors.length > 0) {
     return { row: rowNum, guest: null, errors };
@@ -247,6 +261,8 @@ export function CsvImportDialog({ eventId, orgId, open, onOpenChange }: CsvImpor
         'table_preference': 'table_preference', 'table': 'table_preference', 'preferred_table': 'table_preference',
         'seating_preference': 'seating_preference', 'seating': 'seating_preference', 'seat_preference': 'seating_preference',
         'relationship_tags': 'relationship_tags', 'tags': 'relationship_tags', 'groups': 'relationship_tags', 'relationships': 'relationship_tags',
+        'relationship_group': 'relationship_tags', 'group': 'relationship_tags',
+        'additional_tags': 'additional_tags',
       };
 
       // Resolve aliases into canonical header map
@@ -344,7 +360,7 @@ export function CsvImportDialog({ eventId, orgId, open, onOpenChange }: CsvImpor
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
                 onChange={handleFileSelect}
                 className="hidden"
               />
