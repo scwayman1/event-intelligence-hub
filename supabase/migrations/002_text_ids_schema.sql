@@ -239,6 +239,10 @@ CREATE POLICY "Users can read own profile"
   ON public.profiles FOR SELECT
   USING (id = auth.uid());
 
+CREATE POLICY "Users can insert own profile"
+  ON public.profiles FOR INSERT
+  WITH CHECK (id = auth.uid());
+
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (id = auth.uid())
@@ -258,9 +262,9 @@ CREATE POLICY "Org members can update their orgs"
   USING (public.is_org_member(id));
 
 -- ── org_members ──
-CREATE POLICY "Org members can read memberships"
+CREATE POLICY "Users can read own memberships"
   ON public.org_members FOR SELECT
-  USING (public.is_org_member(org_id));
+  USING (user_id = auth.uid());
 
 CREATE POLICY "Users can add themselves to orgs"
   ON public.org_members FOR INSERT
