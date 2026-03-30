@@ -1042,7 +1042,7 @@ function moveGuestToTableTool(
 
   const guestId = input.guestId as string;
   let tableId = input.tableId as string | undefined;
-  const tableNumber = input.tableNumber as number | undefined;
+  const tableNumber = coerceNumber(input.tableNumber) as number | undefined;
 
   if (tableNumber != null) {
     const numErr = validateNumber(tableNumber, 'tableNumber');
@@ -1069,6 +1069,14 @@ function moveGuestToTableTool(
   if (!table) {
     return errorResult(
       `Table '${tableId}' not found. Valid tables: ${validTableNumbers(ctx.tables)}`,
+    );
+  }
+
+  // Check table capacity
+  const currentOccupants = ctx.assignments.filter((a) => a.tableId === tableId && a.guestId !== guestId).length;
+  if (table.capacity > 0 && currentOccupants >= table.capacity) {
+    return errorResult(
+      `${table.tableNumber != null ? `Table ${table.tableNumber}` : table.name} is full (${currentOccupants}/${table.capacity}). Remove a guest first or choose another table.`,
     );
   }
 

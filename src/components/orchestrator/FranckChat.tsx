@@ -1231,16 +1231,42 @@ export function FranckChat({ eventId }: FranckChatProps) {
                 <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
                   F
                 </Badge>
-                <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span className="italic">
-                      {LOADING_MESSAGES[loadingMsgIndex]}
-                    </span>
-                  </div>
+                <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-1.5">
+                  {/* Active tool execution indicator */}
+                  {activeToolName ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-fuchsia-400" />
+                      <span className="text-fuchsia-400 font-medium">
+                        {'\uD83D\uDD27'} Executing: {activeToolName.replace(/_/g, ' ')}...
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span className="italic">
+                        {LOADING_MESSAGES[loadingMsgIndex]}
+                      </span>
+                    </div>
+                  )}
+                  {/* Show list of already-executed tools during long chains */}
+                  {executedTools.length > 1 && (
+                    <div className="text-[11px] text-muted-foreground/70 ml-5 space-y-0.5">
+                      {executedTools.slice(0, -1).map((tool, idx) => (
+                        <div key={`${tool}-${idx}`} className="flex items-center gap-1.5">
+                          <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500 shrink-0" />
+                          <span>{tool.replace(/_/g, ' ')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {executedTools.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground/50 ml-5">
+                      {executedTools.length} tool{executedTools.length !== 1 ? 's' : ''} executed so far
+                    </p>
+                  )}
                   {loadingTooLong && (
-                    <p className="text-[11px] text-amber-500/80 mt-1.5 italic">
-                      This is taking longer than usual...
+                    <p className="text-[11px] text-amber-500/80 mt-1 italic">
+                      This is taking longer than usual — Franck is working through a complex operation...
                     </p>
                   )}
                 </div>
