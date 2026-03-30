@@ -262,9 +262,10 @@ export function TableHoverCard({
           {guests.length > 0 ? (
             <div className="space-y-1">
               {guests.map((guest) => {
-                const cat = categoryBadge[guest.category];
-                const dot = rsvpDot[guest.rsvpStatus];
-                const label = rsvpLabel[guest.rsvpStatus];
+                const normalizedCategory = (guest.category?.toLowerCase().replace(/\s+/g, '_') ?? 'other') as GuestCategory;
+                const cat = categoryBadge[normalizedCategory] ?? categoryBadge.other;
+                const dot = rsvpDot[guest.rsvpStatus] ?? rsvpDot.invited;
+                const label = rsvpLabel[guest.rsvpStatus] ?? 'Unknown';
 
                 // Find this guest's relationship memberships at this table
                 const guestMemberships = relationshipMemberships.filter(
@@ -333,7 +334,7 @@ export function TableHoverCard({
                     {guestGroups.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {guestGroups.map((g) => {
-                          const c = g.color ?? RELATIONSHIP_TYPE_COLORS[g.type];
+                          const c = g.color ?? RELATIONSHIP_TYPE_COLORS[g.type] ?? 'hsl(200 15% 55%)';
                           const role = guestMemberships.find((m) => m.groupId === g.id)?.role;
                           return (
                             <span
