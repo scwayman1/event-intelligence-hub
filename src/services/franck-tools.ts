@@ -387,6 +387,12 @@ function autoSeatGuests(
     );
   }
 
+  // Pass strategy hints from the LLM if provided
+  const disperseCategories = Array.isArray(input.disperseCategories)
+    ? input.disperseCategories as string[]
+    : undefined;
+  const strategy = typeof input.strategy === 'string' ? input.strategy : undefined;
+
   const proposal = generateSeatingProposal({
     tables: ctx.tables,
     guests: ctx.guests,
@@ -394,6 +400,8 @@ function autoSeatGuests(
     relationshipGroups: ctx.groups,
     relationshipMemberships: ctx.memberships,
     versionId: ctx.versionId,
+    disperseCategories,
+    strategy,
   });
 
   // Apply the assignments to the store
