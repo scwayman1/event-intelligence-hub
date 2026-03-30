@@ -945,12 +945,62 @@ export async function sendMessage(
   })();
 
   if (!config) {
-    // No LLM provider — use intent classifier + fallback responses
+    // No LLM provider — use intent classifier to auto-execute workflows
+    // or provide helpful fallback responses
     const intentMatch = classifyIntent(userMessage);
     const storeSnapshot = useEventStore.getState();
     const eventCtx = extractEventContext(storeSnapshot, eventId);
 
-    // Map intent to the fallback response system's intent type
+    // For action intents, try to auto-execute the corresponding workflow
+    // instead of just suggesting it. This makes Franck useful without an LLM.
+    const intentToWorkflowId: Record<string, string> = {
+      seat_guests: 'auto-seat',
+      optimize: 'quick-optimization',
+      event_status: 'event-readiness-check',
+    };
+
+    const targetWorkflowId = intentToWorkflowId[intentMatch.intent];
+    if (targetWorkflowId) {
+      const targetWorkflow = WORKFLOWS.find(w => w.id === targetWorkflowId);
+      if (targetWorkflow) {
+        const result = await runWorkflow(
+          targetWorkflow,
+          {},
+          eventId,
+          onWorkflowProgress,
+        );
+        const summary = formatWorkflowSummary(targetWorkflow, result);
+
+        const updatedConversation: FranckConversation = {
+          eventId,
+          rawMessages: [
+            ...conversation.rawMessages,
+            { role: 'user', content: userMessage },
+            { role: 'assistant', content: summary },
+          ],
+          messages: [
+            ...conversation.messages,
+            { role: 'user', content: userMessage, timestamp: Date.now() },
+            {
+              role: 'assistant',
+              content: summary,
+              toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
+              workflowName: targetWorkflow.name,
+              timestamp: Date.now(),
+            },
+          ],
+        };
+
+        return {
+          response: summary,
+          conversation: updatedConversation,
+          toolCalls: result.toolCalls,
+          workflowName: targetWorkflow.name,
+        };
+      }
+    }
+
+    // For non-action intents, provide contextual fallback responses
     const intentMapping: Record<string, FallbackIntent> = {
       event_status: 'event_status',
       guest_list: 'guest_list',
