@@ -850,6 +850,19 @@ export const useEventStore = create<EventStore>()(
         if (Array.isArray(merged.guests)) {
           merged.guests = merged.guests.map(normalizeGuest);
         }
+        // Push org-level LLM config from rehydrated store into the provider layer.
+        // This ensures the config is available immediately on page load,
+        // before the Supabase sync completes (which also sets it).
+        if (Array.isArray(merged.organizations) && merged.activeOrgId) {
+          const activeOrg = (merged.organizations as Organization[]).find(
+            (o) => o.id === merged.activeOrgId,
+          );
+          if (activeOrg?.llmConfig) {
+            import('@/services/llm-providers').then(({ setOrgLLMConfig }) => {
+              setOrgLLMConfig(activeOrg.llmConfig);
+            });
+          }
+        }
         return merged;
       },
     }

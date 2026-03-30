@@ -623,16 +623,40 @@ export function FranckChat({ eventId }: FranckChatProps) {
         apiKey: apiKeyInput.trim(),
         model: selectedModel,
       };
+      // Also save as personal config so this device works immediately
+      // even if the Supabase write fails or takes time
+      saveProviderConfig({
+        provider: selectedProvider,
+        apiKey: apiKeyInput.trim(),
+        model: selectedModel,
+      });
       updateOrganization(activeOrgId, { llmConfig });
-      // Also clear any personal override so org config takes effect
-      clearPersonalProviderConfig();
       setKeyStored(true);
       setApiKeyInput('');
       setModelJustChanged(true);
       setTimeout(() => setModelJustChanged(false), 2000);
-      toast.success('Org API key saved!', {
-        description: `All team members will now use ${modelDef?.label ?? selectedModel}. No setup needed for them!`,
-        duration: 4000,
+      // Verify the Supabase write actually worked
+      import('@/services/supabase-db').then(async ({ upsertOrganization: upsertOrg }) => {
+        try {
+          const fullOrg = useEventStore.getState().organizations.find((o) => o.id === activeOrgId);
+          if (fullOrg) {
+            await upsertOrg(fullOrg);
+            console.log('[llm-config] Org LLM config saved to Supabase');
+            // Now safe to clear personal override — org config is confirmed in DB
+            clearPersonalProviderConfig();
+            toast.success('Org API key saved!', {
+              description: `All team members will now use ${modelDef?.label ?? selectedModel}. No setup needed for them!`,
+              duration: 4000,
+            });
+          }
+        } catch (err) {
+          console.error('[llm-config] Failed to save org config to Supabase:', err);
+          toast.error('Warning: saved locally but failed to sync to team', {
+            description: 'Your key works on this device. Other devices may not see it until the sync issue is resolved.',
+            duration: 6000,
+          });
+          // Keep personal config as fallback since Supabase write failed
+        }
       });
     } else {
       // Save as personal override (localStorage only)
