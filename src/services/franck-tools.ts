@@ -841,6 +841,124 @@ function getAttendanceProjection(
   });
 }
 
+function getRsvpSummaryTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const { guests } = ctx;
+  if (guests.length === 0) {
+    return errorResult('No guests found for this event.');
+  }
+
+  // Group guests by RSVP status
+  const byStatus: Record<RSVPStatus, Guest[]> = {
+    invited: [],
+    confirmed: [],
+    declined: [],
+    waitlist: [],
+    checked_in: [],
+  };
+  for (const g of guests) {
+    byStatus[g.rsvpStatus].push(g);
+  }
+
+  // Build status breakdown with names (first 10 per status, "and X more" for large lists)
+  const statusBreakdown: Record<string, { count: number; names: string[]; overflow?: string }> = {};
+  for (const status of VALID_RSVP) {
+    const list = byStatus[status];
+    if (list.length === 0) {
+      statusBreakdown[status] = { count: 0, names: [] };
+      continue;
+    }
+    const names = list.slice(0, 10).map((g) => g.displayName);
+    const entry: { count: number; names: string[]; overflow?: string } = {
+      count: list.length,
+      names,
+    };
+    if (list.length > 10) {
+      entry.overflow = `and ${list.length - 10} more`;
+    }
+    statusBreakdown[status] = entry;
+  }
+
+  // Response rate: responded = confirmed + declined + checked_in vs total
+  const respondedCount =
+    byStatus.confirmed.length + byStatus.declined.length + byStatus.checked_in.length;
+  const responseRate =
+    guests.length > 0
+      ? Math.round((respondedCount / guests.length) * 100)
+      : 0;
+
+  // High-priority non-responders: donors, VIPs, board_members with rsvpStatus "invited"
+  const highPriorityCategories: GuestCategory[] = ['donor', 'vip', 'board_member'];
+  const highPriorityNonResponders = guests
+    .filter(
+      (g) =>
+        highPriorityCategories.includes(g.category) &&
+        g.rsvpStatus === 'invited',
+    )
+    .map((g) => ({
+      displayName: g.displayName,
+      email: g.email,
+      category: g.category,
+    }));
+
+  // Total expected attendance: sum of partySize for confirmed + checked_in
+  const totalExpectedAttendance = [...byStatus.confirmed, ...byStatus.checked_in].reduce(
+    (sum, g) => sum + (g.partySize || 1),
+    0,
+  );
+
+  // Category breakdown within each RSVP status
+  const categoryByStatus: Record<string, Record<string, number>> = {};
+  for (const status of VALID_RSVP) {
+    const catCounts: Record<string, number> = {};
+    for (const g of byStatus[status]) {
+      catCounts[g.category] = (catCounts[g.category] || 0) + 1;
+    }
+    if (Object.keys(catCounts).length > 0) {
+      categoryByStatus[status] = catCounts;
+    }
+  }
+
+  // Build readable category summary strings (e.g. "15 donors, 143 scholars")
+  const categoryLabel: Record<string, string> = {
+    donor: 'donors',
+    scholarship_recipient: 'scholars',
+    family: 'family',
+    board_member: 'board members',
+    vip: 'VIPs',
+    staff: 'staff',
+    sponsor: 'sponsors',
+    volunteer: 'volunteers',
+    other: 'other',
+  };
+  const categorySummaryByStatus: Record<string, string> = {};
+  for (const status of VALID_RSVP) {
+    if (categoryByStatus[status]) {
+      categorySummaryByStatus[status] = Object.entries(categoryByStatus[status])
+        .map(([cat, count]) => `${count} ${categoryLabel[cat] ?? cat}`)
+        .join(', ');
+    }
+  }
+
+  return json({
+    summary: `RSVP summary: ${respondedCount}/${guests.length} responded (${responseRate}%), ${totalExpectedAttendance} expected attendees, ${highPriorityNonResponders.length} high-priority non-responders`,
+    eventId,
+    totalGuests: guests.length,
+    responseRate,
+    respondedCount,
+    totalExpectedAttendance,
+    statusBreakdown,
+    categoryByStatus: categorySummaryByStatus,
+    highPriorityNonResponders,
+  });
+}
+
 function analyzeDietaryNeedsTool(
   state: StoreState,
   eventId: string,
@@ -2096,6 +2214,7 @@ const TOOL_MAP: Record<
   flag_issues: flagIssues,
   get_attendance_projection: getAttendanceProjection,
   analyze_dietary_needs: analyzeDietaryNeedsTool,
+  get_rsvp_summary: getRsvpSummaryTool,
   update_guest: updateGuestTool,
   delete_guests: deleteGuestsTool,
   bulk_update_guests: bulkUpdateGuestsTool,

@@ -706,6 +706,11 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
       required: [],
     },
   },
+  {
+    name: 'get_rsvp_summary',
+    description: 'Get detailed RSVP analytics: response rates, status breakdown with names, high-priority non-responders (donors/VIPs who haven\'t confirmed), and expected attendance. Use this when asked about RSVPs, attendance, or who hasn\'t responded.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
 ];
 
 // ──────────────────────────────────────────────
