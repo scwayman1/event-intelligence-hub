@@ -796,7 +796,7 @@ function summarizeToolResult(toolName: string, resultStr: string): string {
       case 'score_seating':
         return `Seating score: **${data.score?.overall ?? data.score ?? 'N/A'}**/100`;
       case 'run_refinement_loop':
-        return `Refinement: score ${data.startScore ?? '?'} \u2192 ${data.endScore ?? '?'} (${data.swapsApplied ?? 0} swaps, ${data.guestsPlaced ?? 0} guests placed)`;
+        return `Refinement: score ${data.initialScore ?? data.startScore ?? '?'} \u2192 ${data.finalScore ?? data.endScore ?? '?'} (${data.swapsApplied ?? 0} swaps, ${data.unseatedPlaced ?? data.guestsPlaced ?? 0} guests placed)`;
       case 'flag_issues':
         return data.issueCount === 0
           ? 'No issues found \u2014 magnifique!'
@@ -814,9 +814,19 @@ function summarizeToolResult(toolName: string, resultStr: string): string {
       case 'search_guests':
         return `Found **${data.results?.length ?? 0}** matching guest(s)`;
       case 'swap_guests':
-        return data.success ? 'Guests swapped successfully \u2014 voil\u00E0!' : `Swap failed: ${data.message ?? 'unknown error'}`;
+        return (data.swapped || data.success) ? 'Guests swapped successfully \u2014 voil\u00E0!' : `Swap failed: ${data.message ?? 'unknown error'}`;
       case 'move_guest_to_table':
-        return data.success ? `Guest moved to table \u2014 tr\u00E8s bien!` : `Move failed: ${data.message ?? 'unknown error'}`;
+        return (data.moved || data.success) ? `Guest moved to table \u2014 tr\u00E8s bien!` : `Move failed: ${data.message ?? 'unknown error'}`;
+      case 'unseat_guest':
+        return (data.unseated || data.success) ? `Guest unseated \u2014 c'est fait!` : `Unseat failed: ${data.message ?? 'unknown error'}`;
+      case 'add_table':
+        return `Added **${data.name ?? 'table'}** (capacity ${data.capacity ?? '?'})`;
+      case 'remove_table':
+        return `Removed **${data.tableName ?? 'table'}**${data.guestsUnseated ? `, unseated ${data.guestsUnseated} guest(s)` : ''}`;
+      case 'update_guest':
+        return data.summary ?? `Updated guest`;
+      case 'add_guest':
+        return `Added **${data.displayName ?? 'guest'}**`;
       default:
         // Generic: show a few key fields
         const keys = Object.keys(data).filter(k => k !== 'error');
