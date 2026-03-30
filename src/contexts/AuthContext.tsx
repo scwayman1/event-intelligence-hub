@@ -9,7 +9,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const { syncAll } = useSupabaseSync();
   const syncedUserRef = useRef<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  // Start syncing=true so we block rendering until sync completes.
+  // This prevents a one-frame gap where RequireOnboarding redirects
+  // to /welcome before Supabase data has loaded.
+  const [syncing, setSyncing] = useState(true);
 
   // Sync Supabase auth state to Zustand store so existing components still work
   useEffect(() => {
@@ -28,10 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         syncedUserRef.current = auth.user.id;
         setSyncing(true);
         syncAll(auth.user.id).finally(() => setSyncing(false));
+      } else {
+        // Already synced for this user — stop blocking
+        setSyncing(false);
       }
     } else if (!auth.loading) {
       // User signed out — clear Zustand profile
       syncedUserRef.current = null;
+      setSyncing(false);
       useEventStore.getState().signOut();
     }
   }, [auth.user, auth.loading, syncAll]);
