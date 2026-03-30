@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -106,6 +106,84 @@ const WORKFLOW_ACTIONS = [
   { label: 'Readiness Check', trigger: 'event readiness check', icon: '\u2705' },
   { label: 'Guest List Audit', trigger: 'guest list audit', icon: '\uD83D\uDCCB' },
 ];
+
+// ─── Franck's Countdown Nudges ────────────────────────────────────────────
+// Franck gets increasingly nervous as the event approaches.
+// These fire once per session when the chat opens.
+
+const NUDGE_COOLDOWN_KEY = 'franck-nudge-ts';
+
+interface NudgeContext {
+  daysUntil: number;
+  eventName: string;
+  totalGuests: number;
+  confirmedGuests: number;
+  seatedGuests: number;
+  tableCount: number;
+  confirmationPct: number;
+  seatingPct: number;
+}
+
+function generateFranckNudge(ctx: NudgeContext): string | null {
+  const { daysUntil, eventName, totalGuests, confirmedGuests, seatedGuests, tableCount, confirmationPct, seatingPct } = ctx;
+
+  // Event already passed or too far out
+  if (daysUntil < 0) return null;
+  if (daysUntil > 90) return null;
+
+  // Build urgency-appropriate messages
+  if (daysUntil === 0) {
+    if (seatingPct < 100) {
+      return `MON DIEU! **${eventName} is TODAY** and ${totalGuests - seatedGuests} guests are still not seated! This is a CATASTROPHE! Let Franck fix this IMMEDIATELY — say "full seating setup"! 🚨🎩`;
+    }
+    return `Today is the day! **${eventName}** — Franck has prepared everything to PERFECTION. ${confirmedGuests} guests, ${tableCount} tables, all magnifique. Go make it beautiful! ✨🎩`;
+  }
+
+  if (daysUntil <= 3) {
+    const parts: string[] = [`**${daysUntil} day${daysUntil === 1 ? '' : 's'}** until ${eventName}! Franck can barely BREATHE!`];
+    if (seatingPct < 80) parts.push(`Only ${seatingPct}% of guests are seated — this is NOT acceptable! Say "full seating setup" and let Franck WORK!`);
+    if (confirmationPct < 70) parts.push(`${100 - confirmationPct}% of guests have not confirmed! We need to chase these people DOWN!`);
+    if (seatingPct >= 80 && confirmationPct >= 70) parts.push(`But the preparation... it is coming together. ${confirmedGuests} confirmed, ${seatedGuests} seated. Franck approves... mostly. 😤`);
+    return parts.join(' ') + ' 🚨';
+  }
+
+  if (daysUntil <= 7) {
+    const parts: string[] = [`**${daysUntil} days** until ${eventName}! Franck is getting NERVOUS!`];
+    if (seatingPct < 50) parts.push(`Less than half the guests are seated — sacre bleu! We must do the seating NOW!`);
+    else if (seatingPct < 90) parts.push(`${seatedGuests} of ${confirmedGuests} confirmed guests are seated. We are close but NOT there yet!`);
+    if (confirmationPct < 60) parts.push(`And only ${confirmationPct}% confirmation rate?! We need reminder emails YESTERDAY!`);
+    return parts.join(' ');
+  }
+
+  if (daysUntil <= 14) {
+    if (seatingPct < 30) {
+      return `**${daysUntil} days** out from ${eventName} and the seating chart is practically EMPTY! ${seatedGuests} of ${confirmedGuests} guests seated — Franck cannot work under these conditions! Let's get moving! 💺`;
+    }
+    if (confirmationPct < 50) {
+      return `Two weeks until ${eventName} and only ${confirmationPct}% of guests have confirmed?! Franck needs ANSWERS from these people! Should I draft some reminder emails? 📧`;
+    }
+    if (tableCount === 0) {
+      return `**${daysUntil} days** until ${eventName} and there are NO TABLES! Not a single one! How can Franck create a masterpiece with no canvas?! Go to Layout and add some tables! 🪑`;
+    }
+    return `**${daysUntil} days** until ${eventName}. ${confirmedGuests} confirmed, ${seatedGuests} seated across ${tableCount} tables. We are making progress, but Franck does not REST until it is PERFECT! 🎩`;
+  }
+
+  if (daysUntil <= 30) {
+    if (totalGuests === 0) {
+      return `**${daysUntil} days** until ${eventName} and the guest list is EMPTY! Zero! Franck cannot seat GHOSTS! We need to add guests first! 👻`;
+    }
+    if (confirmationPct < 30) {
+      return `One month out from ${eventName} — ${totalGuests} guests invited but only ${confirmationPct}% confirmed. We should start sending those invitations, non? 📬`;
+    }
+    return null; // Don't be too annoying at 30 days if things are on track
+  }
+
+  if (daysUntil <= 60 && totalGuests === 0) {
+    return `${eventName} is in **${daysUntil} days** and the guest list is empty. Franck is patient... for now. But we should start planning, oui? 🎩`;
+  }
+
+  return null; // Too far out, stay calm
+}
 
 /** Suggested follow-up actions shown after freeform LLM responses */
 const CONTEXTUAL_SUGGESTIONS = [
@@ -217,6 +295,14 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const organizations = useEventStore((s) => s.organizations);
   const updateOrganization = useEventStore((s) => s.updateOrganization);
 
+  // Event data for Franck's countdown nudges
+  const events = useEventStore((s) => s.events);
+  const allGuests = useEventStore((s) => s.guests);
+  const seatingAssignments = useEventStore((s) => s.seatingAssignments);
+  const layoutObjects = useEventStore((s) => s.layoutObjects);
+  const event = useMemo(() => events.find((e) => e.id === eventId), [events, eventId]);
+  const nudgeRef = useRef(false);
+
   // Derive the actively locked model label for the header
   const activeModelLabel = (() => {
     try {
@@ -288,6 +374,61 @@ export function FranckChat({ eventId }: FranckChatProps) {
       });
     }
   }, [isOpen]);
+
+  // ── Franck's countdown nudge — fires once per session when chat opens ──
+  useEffect(() => {
+    if (!isOpen || nudgeRef.current || !event?.date) return;
+
+    // Only nudge once every 4 hours
+    const cooldownKey = `${NUDGE_COOLDOWN_KEY}-${eventId}`;
+    const lastNudge = localStorage.getItem(cooldownKey);
+    if (lastNudge && Date.now() - Number(lastNudge) < 4 * 60 * 60 * 1000) return;
+
+    const now = new Date().toISOString().split('T')[0];
+    const daysUntil = Math.round(
+      (new Date(event.date).getTime() - new Date(now).getTime()) / 86_400_000,
+    );
+
+    const eventGuests = allGuests.filter((g) => g.eventId === eventId);
+    const confirmed = eventGuests.filter((g) =>
+      g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in',
+    );
+    const versions = useEventStore.getState().versions.filter((v) => v.eventId === eventId);
+    const versionId = versions.find((v) => v.id === event.activeVersionId)?.id ?? event.activeVersionId;
+    const versionAssignments = seatingAssignments.filter((a) => a.versionId === versionId);
+    const tables = layoutObjects.filter(
+      (o) => (o.type === 'round_table' || o.type === 'rect_table') && o.versionId === versionId,
+    );
+
+    const ctx: NudgeContext = {
+      daysUntil,
+      eventName: event.name,
+      totalGuests: eventGuests.length,
+      confirmedGuests: confirmed.length,
+      seatedGuests: versionAssignments.length,
+      tableCount: tables.length,
+      confirmationPct: eventGuests.length > 0 ? Math.round((confirmed.length / eventGuests.length) * 100) : 0,
+      seatingPct: confirmed.length > 0 ? Math.round((versionAssignments.length / confirmed.length) * 100) : 0,
+    };
+
+    const nudge = generateFranckNudge(ctx);
+    if (nudge) {
+      nudgeRef.current = true;
+      localStorage.setItem(cooldownKey, String(Date.now()));
+      // Delay slightly so it feels like Franck is "noticing" the situation
+      setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `nudge-${Date.now()}`,
+            role: 'assistant',
+            content: nudge,
+            timestamp: Date.now(),
+          },
+        ]);
+      }, 800);
+    }
+  }, [isOpen, event, eventId, allGuests, seatingAssignments, layoutObjects]);
 
   // ── Rotate loading messages ─────────────────────────────────────────────
   useEffect(() => {
