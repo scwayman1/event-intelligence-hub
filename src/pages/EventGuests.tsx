@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Mail, Phone, Plus, Search, Sparkles, Tag, Upload, X } from 'lucide-react';
+import { AlertTriangle, Mail, Phone, Plus, Search, Sparkles, Tag, Upload, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
