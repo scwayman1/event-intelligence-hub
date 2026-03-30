@@ -280,7 +280,15 @@ export default function EventLayout() {
   }, [versionId, updateVersion]);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('imperial');
   const [snapMode, setSnapMode] = useState<'grid' | 'measured' | 'free'>('measured');
-  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+  const [canvasSize, setCanvasSizeLocal] = useState<{ width: number; height: number }>({
+    width: activeVersion?.canvasWidth ?? 800,
+    height: activeVersion?.canvasHeight ?? 600,
+  });
+  // Persist canvas size to version so it survives navigation
+  const setCanvasSize = useCallback((size: { width: number; height: number }) => {
+    setCanvasSizeLocal(size);
+    if (versionId) updateVersion(versionId, { canvasWidth: size.width, canvasHeight: size.height });
+  }, [versionId, updateVersion]);
   // Room bounds: the real-world dimensions of the physical space
   const [roomBounds, setRoomBounds] = useState<RoomBounds | null>(null);
   const [roomInputW, setRoomInputW] = useState('40');

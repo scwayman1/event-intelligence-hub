@@ -142,6 +142,8 @@ export interface EventVersion {
   venueImageData?: string;
   venueImageOpacity?: number;
   metersPerPixel?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
 }
 
 export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'relationship_group' | 'custom';
