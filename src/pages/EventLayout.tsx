@@ -245,6 +245,9 @@ export default function EventLayout() {
   const addLayoutObject = useEventStore((s) => s.addLayoutObject);
   const removeLayoutObject = useEventStore((s) => s.removeLayoutObject);
   const renumberTablesByPosition = useEventStore((s) => s.renumberTablesByPosition);
+  const guests = useEventStore((s) => s.guests);
+  const seatingAssignments = useEventStore((s) => s.seatingAssignments);
+  const seatingRules = useEventStore((s) => s.seatingRules);
   const getTableGuests = useEventStore((s) => s.getTableGuests);
 
   const event = events.find((e) => e.id === eventId);
@@ -332,15 +335,15 @@ export default function EventLayout() {
 
   const analytics = event ? buildEventAnalytics({
     event,
-    guests: useEventStore.getState().guests,
-    versions: useEventStore.getState().versions,
-    layoutObjects: useEventStore.getState().layoutObjects,
-    seatingAssignments: useEventStore.getState().seatingAssignments,
-    seatingRules: useEventStore.getState().seatingRules,
+    guests,
+    versions,
+    layoutObjects,
+    seatingAssignments,
+    seatingRules,
   }) : null;
 
   const selected = objects.find((o) => o.id === selectedId);
-  const selectedAssignments = selected ? useEventStore.getState().seatingAssignments.filter((a) => a.tableId === selected.id && a.versionId === versionId) : [];
+  const selectedAssignments = selected ? seatingAssignments.filter((a) => a.tableId === selected.id && a.versionId === versionId) : [];
 
   // Snap modes:
   // - 'grid': coarse grid snap (1ft increments for layout alignment)
