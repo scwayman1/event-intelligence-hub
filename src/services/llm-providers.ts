@@ -74,15 +74,17 @@ interface ModelCapabilities {
 }
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
-  // Free models with reliable tool/function calling support
+  // Free models with tool calling support
   'deepseek/deepseek-chat-v3.1:free': { toolUse: true },
-  'google/gemini-2.5-flash:free': { toolUse: true },
   'meta-llama/llama-4-maverick:free': { toolUse: true },
   'qwen/qwen3-235b-a22b:free': { toolUse: true },
   'qwen/qwen3-coder:free': { toolUse: true },
-  // Models with limited/no tool use
-  'nvidia/llama-3.3-nemotron-super-49b-v1:free': { toolUse: false },
-  'mistralai/mistral-large-2': { toolUse: false },
+  // Paid models with tool calling
+  'deepseek/deepseek-chat-v3.1': { toolUse: true },
+  'deepseek/deepseek-v3.2': { toolUse: true },
+  'deepseek/deepseek-v3.2-speciale': { toolUse: true },
+  // Reasoning models — limited tool use (think-then-act)
+  'deepseek/deepseek-r1': { toolUse: false },
 };
 
 const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: false };
@@ -117,10 +119,12 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'anthropic',
     label: 'Anthropic',
     keyPlaceholder: 'sk-ant-...',
-    defaultModel: 'claude-sonnet-4-20250514',
+    defaultModel: 'claude-sonnet-4-6-20260305',
     models: [
-      { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-      { id: 'claude-haiku-4-20250414', label: 'Claude Haiku 4' },
+      { id: 'claude-sonnet-4-6-20260305', label: 'Claude Sonnet 4.6' },
+      { id: 'claude-opus-4-6-20260305', label: 'Claude Opus 4.6' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+      { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (Legacy)' },
     ],
   },
   openrouter: {
@@ -129,18 +133,26 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     keyPlaceholder: 'sk-or-v1-...',
     defaultModel: 'deepseek/deepseek-chat-v3.1:free',
     models: [
-      // Free models (work out of the box, all support tool calling)
-      { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 (Free)' },
-      { id: 'google/gemini-2.5-flash:free', label: 'Gemini 2.5 Flash (Free)' },
-      { id: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (Free)' },
-      { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen 3 235B (Free)' },
-      // Paid models (require your own OpenRouter key — pennies per conversation)
-      { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
-      { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-      { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
-      { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
-      { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-      { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
+      // ── Free models (no key required, all support tool calling) ──
+      { id: 'deepseek/deepseek-chat-v3.1:free', label: '🆓 DeepSeek V3.1' },
+      { id: 'meta-llama/llama-4-maverick:free', label: '🆓 Llama 4 Maverick' },
+      { id: 'qwen/qwen3-235b-a22b:free', label: '🆓 Qwen 3 235B' },
+      { id: 'qwen/qwen3-coder:free', label: '🆓 Qwen 3 Coder 480B' },
+      // ── Best value (pennies per conversation) ──
+      { id: 'google/gemini-2.5-flash', label: '⚡ Gemini 2.5 Flash (Recommended)' },
+      { id: 'google/gemini-2.5-flash-lite', label: '⚡ Gemini 2.5 Flash Lite' },
+      { id: 'deepseek/deepseek-chat-v3.1', label: '⚡ DeepSeek V3.1' },
+      { id: 'anthropic/claude-haiku-4.5', label: '⚡ Claude Haiku 4.5' },
+      // ── Premium models ──
+      { id: 'anthropic/claude-sonnet-4.6', label: '💎 Claude Sonnet 4.6' },
+      { id: 'anthropic/claude-opus-4.6', label: '💎 Claude Opus 4.6' },
+      { id: 'google/gemini-3-pro-preview', label: '💎 Gemini 3 Pro' },
+      { id: 'openai/gpt-4.1', label: '💎 GPT-4.1' },
+      // ── Experimental / cutting edge ──
+      { id: 'deepseek/deepseek-v3.2', label: '🧪 DeepSeek V3.2' },
+      { id: 'deepseek/deepseek-v3.2-speciale', label: '🧪 DeepSeek V3.2 Speciale' },
+      { id: 'deepseek/deepseek-r1', label: '🧪 DeepSeek R1 (Reasoning)' },
+      { id: 'google/gemini-3-flash-preview', label: '🧪 Gemini 3 Flash' },
     ],
   },
 };
