@@ -1885,7 +1885,7 @@ function analyzeLayoutTool(
 
   // ---------- Spacing analysis ----------
 
-  const MIN_SPACING = 100; // px — minimum distance between table centers
+  const MIN_SPACING = 120; // px — minimum distance between table centers
   const spacingIssues: SpacingIssue[] = [];
 
   for (let i = 0; i < tables.length; i++) {
@@ -1936,6 +1936,21 @@ function analyzeLayoutTool(
   for (const t of tables) {
     if (t.x < 0 || t.y < 0 || t.x + t.width > canvasWidth || t.y + t.height > canvasHeight) {
       outOfBounds.push(t.tableNumber != null ? `Table ${t.tableNumber}` : t.name);
+    }
+  }
+
+  // ---------- Tables near edges ----------
+
+  const EDGE_MARGIN = 40; // px — tables closer than this to the edge may cause access issues
+  const nearEdge: string[] = [];
+  for (const t of tables) {
+    const tooClose =
+      t.x < EDGE_MARGIN ||
+      t.y < EDGE_MARGIN ||
+      t.x + t.width > canvasWidth - EDGE_MARGIN ||
+      t.y + t.height > canvasHeight - EDGE_MARGIN;
+    if (tooClose && !outOfBounds.includes(t.tableNumber != null ? `Table ${t.tableNumber}` : t.name)) {
+      nearEdge.push(t.tableNumber != null ? `Table ${t.tableNumber}` : t.name);
     }
   }
 
@@ -2002,6 +2017,9 @@ function analyzeLayoutTool(
   for (const eq of emptyQuadrants) {
     suggestions.push(`The ${eq} area of the venue has no tables — consider using that space`);
   }
+  if (nearEdge.length > 0) {
+    suggestions.push(`${nearEdge.join(', ')} ${nearEdge.length === 1 ? 'is' : 'are'} very close to the venue edge — consider moving inward for better access`);
+  }
   if (spacingNote) {
     suggestions.push(spacingNote);
   }
@@ -2027,6 +2045,7 @@ function analyzeLayoutTool(
     spacingIssues,
     overlaps,
     outOfBounds,
+    nearEdge,
     emptyQuadrants,
     capacityCheck: {
       totalCapacity,
