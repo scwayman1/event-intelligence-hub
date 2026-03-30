@@ -141,7 +141,10 @@ const WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    'Bonjour! I am Franck Eggelhoffer, and I am HERE to make your event absolutely MAGNIFIQUE! 🎩✨ Ask me anything about your guests, seating, or I can take care of things for you. Franck lives to serve the art of the perfect event!',
+    'Bonjour! I am Franck Eggelhoffer, and I am HERE to make your event absolutely MAGNIFIQUE! 🎩✨\n\n' +
+    'I\'m powered by **Gemini 2.5 Flash** via OpenRouter — completely free, no setup needed. ' +
+    'Want even more power? Bring your own OpenRouter or Anthropic API key in Settings (gear icon above) to unlock premium models like Claude or GPT-4.\n\n' +
+    'Ask me anything about your guests, seating, or I can take care of things for you!',
   timestamp: Date.now(),
 };
 
@@ -775,7 +778,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
                         {modelJustChanged
                           ? 'Model updated successfully'
                           : usingFreeDefault
-                            ? 'Free tier · upgrade with your own API key'
+                            ? 'Free via OpenRouter · no key needed'
                             : 'Locked and ready'}
                       </p>
                     </div>
@@ -892,6 +895,12 @@ export function FranckChat({ eventId }: FranckChatProps) {
                   {/* OpenRouter onboarding */}
                   {selectedProvider === 'openrouter' && (
                     <div className="space-y-2">
+                      <div className="rounded-md bg-muted/30 border border-border/50 px-3 py-2">
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          <span className="font-semibold text-emerald-500">Free models work out of the box</span> — no key needed.
+                          For premium models (Claude, GPT-4), get your own OpenRouter key:
+                        </p>
+                      </div>
                       <a
                         href="https://openrouter.ai/keys"
                         target="_blank"
@@ -903,7 +912,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
                         )}
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Get a free OpenRouter key
+                        Get your own OpenRouter key
                       </a>
                       <p className="text-[10px] text-muted-foreground leading-relaxed text-center">
                         One key, 100+ models, pay only for what you use.
