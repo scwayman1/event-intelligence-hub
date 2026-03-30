@@ -13,6 +13,7 @@ import {
   fetchCollaborators,
 } from "@/services/supabase-db";
 import { useEventStore } from "@/data/store";
+import { setOrgLLMConfig } from "@/services/llm-providers";
 
 export function useSupabaseSync() {
   const [loading, setLoading] = useState(false);
@@ -93,6 +94,10 @@ export function useSupabaseSync() {
         collaborators,
         hasCompletedOnboarding: organizations.length > 0,
       });
+
+      // Push org-level LLM config into the provider layer
+      const activeOrg = organizations.find((o) => o.id === activeOrgId);
+      setOrgLLMConfig(activeOrg?.llmConfig);
 
       console.log(
         `[supabase-sync] Loaded: ${organizations.length} org(s), ` +

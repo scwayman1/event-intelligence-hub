@@ -239,7 +239,14 @@ export const useEventStore = create<EventStore>()(
   getEventCollaborators: (eventId) => get().collaborators.filter((c) => c.eventId === eventId),
 
   // ── Organization actions ──
-  setActiveOrg: (orgId) => set({ activeOrgId: orgId }),
+  setActiveOrg: (orgId) => {
+    set({ activeOrgId: orgId });
+    // Push org LLM config to the provider layer so all team members share it
+    const org = get().organizations.find((o) => o.id === orgId);
+    import('@/services/llm-providers').then(({ setOrgLLMConfig }) => {
+      setOrgLLMConfig(org?.llmConfig);
+    });
+  },
   addOrganization: (org) => {
     const userId = get().userProfile?.id;
     const ownerMember: OrgMember | null = userId ? {
@@ -270,7 +277,15 @@ export const useEventStore = create<EventStore>()(
       organizations: s.organizations.map((o) => o.id === id ? { ...o, ...updates } : o),
     }));
     const fullOrg = get().organizations.find((o) => o.id === id);
-    if (fullOrg) dbSync(() => db.upsertOrganization(fullOrg));
+    if (fullOrg) {
+      dbSync(() => db.upsertOrganization(fullOrg));
+      // If updating the active org's LLM config, push it to the provider layer immediately
+      if (updates.llmConfig !== undefined && id === get().activeOrgId) {
+        import('@/services/llm-providers').then(({ setOrgLLMConfig }) => {
+          setOrgLLMConfig(fullOrg.llmConfig);
+        });
+      }
+    }
   },
 
   // ── Team Invites ──
