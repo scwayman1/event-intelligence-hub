@@ -1008,7 +1008,11 @@ function clearAllSeatingTool(
   if (!ctx) return eventNotFoundError(eventId);
 
   if (ctx.assignments.length === 0) {
-    return errorResult('No seating assignments to clear.');
+    return json({
+      summary: 'No seating assignments to clear — starting fresh.',
+      cleared: 0,
+      note: 'No existing assignments found for this version. Ready for seating.',
+    });
   }
 
   const store = useEventStore.getState();
