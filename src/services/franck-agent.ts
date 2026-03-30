@@ -866,8 +866,48 @@ const MAX_RAW_MESSAGES = 20;
  */
 function trimConversationHistory(messages: RawMessage[]): RawMessage[] {
   if (messages.length <= MAX_RAW_MESSAGES) return messages;
+
+  // We must be careful not to orphan tool results. A tool_result message
+  // (user role with tool_result content blocks) MUST be preceded by the
+  // assistant message that contains the corresponding tool_use blocks.
+  // Find a safe cut point: keep the first 2 messages and as many recent
+  // messages as we can, but ensure we don't start the tail on a tool_result.
   const head = messages.slice(0, 2);
-  const tail = messages.slice(-(MAX_RAW_MESSAGES - 2));
+  let tailStart = messages.length - (MAX_RAW_MESSAGES - 2);
+
+  // Walk forward from tailStart until we find a message that is NOT a
+  // tool_result (i.e., not a user message containing tool_result blocks).
+  // This ensures we don't include orphaned tool results without their
+  // preceding assistant tool_use message.
+  while (tailStart < messages.length) {
+    const msg = messages[tailStart];
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      const hasToolResult = msg.content.some(
+        (b: { type: string }) => b.type === 'tool_result',
+      );
+      if (hasToolResult) {
+        tailStart++;
+        continue;
+      }
+    }
+    // Also skip assistant messages that only contain tool_use blocks
+    // (they'd be orphaned without their following tool_result)
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      const hasToolUse = msg.content.some(
+        (b: { type: string }) => b.type === 'tool_use',
+      );
+      const hasText = msg.content.some(
+        (b: { type: string }) => b.type === 'text',
+      );
+      if (hasToolUse && !hasText) {
+        tailStart++;
+        continue;
+      }
+    }
+    break;
+  }
+
+  const tail = messages.slice(tailStart);
   return [...head, ...tail];
 }
 
