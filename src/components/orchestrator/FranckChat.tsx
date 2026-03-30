@@ -745,7 +745,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
           </Badge>
         )}
 
-        <div className="flex flex-col max-w-[80%]">
+        <div className="flex flex-col max-w-[80%] min-w-0 overflow-hidden">
           {/* Workflow/Chain badge above the message */}
           {!isUser && msg.workflowName && (
             <div className="mb-1 ml-1">
@@ -764,7 +764,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
           <div
             className={cn(
-              'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+              'rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words overflow-hidden',
               isUser
                 ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-br-md whitespace-pre-wrap'
                 : 'bg-muted/60 text-foreground rounded-bl-md franck-markdown'
@@ -775,7 +775,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             ) : (
               <div
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                style={{ whiteSpace: 'pre-wrap' }}
+                style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
               />
             )}
           </div>
@@ -848,7 +848,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
       {/* ── Chat Panel ──────────────────────────────────────────────────── */}
       <div
         className={cn(
-          'fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] max-w-full',
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] sm:max-w-[420px] max-w-full overflow-hidden',
           'flex flex-col',
           'bg-background/80 backdrop-blur-xl border-l border-border/50',
           'shadow-2xl shadow-black/20',
