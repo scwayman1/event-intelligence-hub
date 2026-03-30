@@ -1,8 +1,36 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppEvent, Guest, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership, TeamInvite, OrgMember, InviteRole } from '@/types/events';
+import { AppEvent, Guest, GuestCategory, RSVPStatus, LayoutObject, EventVersion, SeatingAssignment, SeatingRule, Organization, UserProfile, UserAccount, EventCollaborator, RelationshipGroup, RelationshipMembership, TeamInvite, OrgMember, InviteRole } from '@/types/events';
 import { mockEvents, mockGuests, mockVersions, mockLayoutObjects, mockSeatingAssignments, mockSeatingRules, mockOrganizations } from './mock-data';
 import { seedDonors, seedRecipients, seedAllGuests, seedRelationshipGroups, seedRelationshipMemberships } from './scholarship-seed-data';
+
+// ── Guest data normalization ──────────────────────────────────────────────
+// Ensures category and rsvpStatus are always valid lowercase enum values,
+// regardless of how they enter the system (CSV, LLM tool, API, etc.)
+
+const VALID_CATEGORIES: Set<string> = new Set([
+  'donor', 'scholarship_recipient', 'family', 'board_member',
+  'vip', 'staff', 'sponsor', 'volunteer', 'other',
+]);
+
+const CATEGORY_ALIASES: Record<string, GuestCategory> = {
+  donors: 'donor', scholar: 'scholarship_recipient', scholarship: 'scholarship_recipient',
+  recipient: 'scholarship_recipient', student: 'scholarship_recipient',
+  board: 'board_member', boardmember: 'board_member',
+};
+
+const VALID_RSVP: Set<string> = new Set([
+  'invited', 'confirmed', 'declined', 'waitlist', 'checked_in',
+]);
+
+function normalizeGuest(guest: Guest): Guest {
+  const rawCat = (guest.category ?? 'other').toLowerCase().replace(/\s+/g, '_');
+  const category = CATEGORY_ALIASES[rawCat] ?? (VALID_CATEGORIES.has(rawCat) ? rawCat as GuestCategory : 'other');
+  const rawRsvp = (guest.rsvpStatus ?? 'invited').toLowerCase().replace(/\s+/g, '_');
+  const rsvpStatus = VALID_RSVP.has(rawRsvp) ? rawRsvp as RSVPStatus : 'invited';
+  if (category === guest.category && rsvpStatus === guest.rsvpStatus) return guest;
+  return { ...guest, category, rsvpStatus };
+}
 import { MESSAGING_DEFAULTS, createMessagingActions, type MessagingState, type MessagingActions } from './messaging-store';
 import * as db from '@/services/supabase-db';
 
@@ -396,11 +424,12 @@ export const useEventStore = create<EventStore>()(
   },
 
   addGuest: (guest) => {
-    set((s) => ({ guests: [...s.guests, guest] }));
-    dbSync(() => db.upsertGuest(guest));
+    const normalized = normalizeGuest(guest);
+    set((s) => ({ guests: [...s.guests, normalized] }));
+    dbSync(() => db.upsertGuest(normalized));
   },
   updateGuest: (id, updates) => {
-    set((s) => ({ guests: s.guests.map((g) => g.id === id ? { ...g, ...updates } : g) }));
+    set((s) => ({ guests: s.guests.map((g) => g.id === id ? normalizeGuest({ ...g, ...updates }) : g) }));
     const fullGuest = get().guests.find((g) => g.id === id);
     if (fullGuest) dbSync(() => db.upsertGuest(fullGuest));
   },
@@ -813,10 +842,15 @@ export const useEventStore = create<EventStore>()(
       // always present even if the stored version predates them
       merge: (persisted, current) => {
         const saved = persisted as Partial<PersistedState>;
-        return {
+        const merged = {
           ...current,
           ...saved,
         };
+        // Normalize guest categories/RSVP loaded from localStorage
+        if (Array.isArray(merged.guests)) {
+          merged.guests = merged.guests.map(normalizeGuest);
+        }
+        return merged;
       },
     }
   )

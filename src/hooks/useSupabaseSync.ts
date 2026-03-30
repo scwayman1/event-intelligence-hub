@@ -80,11 +80,21 @@ export function useSupabaseSync() {
         await fetchRelationshipMemberships(groupIds);
 
       // Hydrate the Zustand store — REPLACES all data with server truth
+      // Normalize guest categories/RSVP on load to prevent UI crashes from mixed-case data
+      const normalizedGuests = guests.map((g) => {
+        const rawCat = (g.category ?? 'other').toLowerCase().replace(/\s+/g, '_');
+        const rawRsvp = (g.rsvpStatus ?? 'invited').toLowerCase().replace(/\s+/g, '_');
+        const CATS = new Set(['donor','scholarship_recipient','family','board_member','vip','staff','sponsor','volunteer','other']);
+        const RSVPS = new Set(['invited','confirmed','declined','waitlist','checked_in']);
+        const cat = CATS.has(rawCat) ? rawCat : 'other';
+        const rsvp = RSVPS.has(rawRsvp) ? rawRsvp : 'invited';
+        return (cat !== g.category || rsvp !== g.rsvpStatus) ? { ...g, category: cat, rsvpStatus: rsvp } : g;
+      });
       useEventStore.setState({
         organizations,
         activeOrgId,
         events,
-        guests,
+        guests: normalizedGuests,
         versions,
         layoutObjects,
         seatingAssignments,
