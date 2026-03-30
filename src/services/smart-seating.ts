@@ -253,6 +253,79 @@ export function generateSeatingProposal(params: ProposalParams): SeatingProposal
     membershipsByGuest.get(m.guestId)!.push(m);
   }
 
+  // ── Pre-pass: Build implicit groups from shared relationship tags ──
+  // Guests imported via CSV may have tags like "thornton-scholar", "thornton-family"
+  // but no explicit RelationshipGroup records. Extract shared prefixes to create
+  // implicit groupings so donors and their recipients sit together.
+  const tagGroupMap = new Map<string, Set<string>>(); // tagPrefix → Set<guestId>
+  for (const guest of guests) {
+    if (!guest.relationshipTags || guest.relationshipTags.length === 0) continue;
+    for (const tag of guest.relationshipTags) {
+      const normalizedTag = tag.toLowerCase().trim();
+      if (!normalizedTag) continue;
+      // Extract prefix before last hyphen (e.g., "thornton" from "thornton-scholar")
+      const hyphenIdx = normalizedTag.lastIndexOf('-');
+      const prefix = hyphenIdx > 0 ? normalizedTag.slice(0, hyphenIdx) : normalizedTag;
+      if (!tagGroupMap.has(prefix)) {
+        tagGroupMap.set(prefix, new Set());
+      }
+      tagGroupMap.get(prefix)!.add(guest.id);
+    }
+  }
+
+  // Convert tag groups with 2+ members into synthetic relationship groups/memberships
+  let syntheticGroupCount = 0;
+  for (const [prefix, memberIds] of tagGroupMap) {
+    if (memberIds.size < 2) continue;
+    // Skip if all members are already in an explicit relationship group together
+    const alreadyGrouped = [...memberIds].every((id) => membershipsByGuest.has(id));
+    if (alreadyGrouped) continue;
+
+    const syntheticGroupId = `tag-group-${prefix}`;
+    const syntheticGroup: RelationshipGroup = {
+      id: syntheticGroupId,
+      orgId: guests[0]?.orgId ?? '',
+      eventId: guests[0]?.eventId ?? '',
+      name: `${prefix} connection`,
+      type: 'scholarship' as any,
+      description: `Auto-generated from shared "${prefix}" tags`,
+    };
+    relationshipGroups.push(syntheticGroup);
+
+    for (const guestId of memberIds) {
+      const guest = guestById.get(guestId);
+      if (!guest) continue;
+      // Determine role from tags: if tag contains "donor", "family", "sponsor" → anchor role
+      const guestTags = (guest.relationshipTags ?? []).filter((t) => t.toLowerCase().startsWith(prefix));
+      const tagSuffix = guestTags.map((t) => t.toLowerCase().split('-').pop()).join(',');
+      const isAnchor = /donor|family|sponsor|host|mentor|board/.test(tagSuffix)
+        || ANCHOR_CATEGORIES.includes(normalizeGuestCategory(guest.category) as GuestCategory);
+      const role = isAnchor ? 'donor' : 'recipient';
+
+      const membership: RelationshipMembership = {
+        id: `tag-member-${prefix}-${guestId.slice(-6)}`,
+        groupId: syntheticGroupId,
+        guestId,
+        role,
+      };
+
+      if (!membershipsByGroup.has(syntheticGroupId)) {
+        membershipsByGroup.set(syntheticGroupId, []);
+      }
+      membershipsByGroup.get(syntheticGroupId)!.push(membership);
+
+      if (!membershipsByGuest.has(guestId)) {
+        membershipsByGuest.set(guestId, []);
+      }
+      membershipsByGuest.get(guestId)!.push(membership);
+    }
+    syntheticGroupCount++;
+  }
+
+  if (syntheticGroupCount > 0) {
+    log.push(`Created ${syntheticGroupCount} implicit groups from shared relationship tags.`);
+  }
+
   // Helper to place a guest
   function placeGuest(guestId: string, tableState: TableState, reason: string): boolean {
     if (!unseatedSet.has(guestId)) return false;
