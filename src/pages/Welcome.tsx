@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useEventStore } from '@/data/store';
+import { toast } from 'sonner';
 
 const PRESET_COLORS = [
   'hsl(152 55% 48%)', // green (default)
@@ -27,19 +28,26 @@ export default function Welcome() {
   const [orgName, setOrgName] = useState('');
   const [shortName, setShortName] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
+  const [saving, setSaving] = useState(false);
 
-  function handleCreateOrg() {
-    if (!orgName.trim()) return;
+  async function handleCreateOrg() {
+    if (!orgName.trim() || saving) return;
+    setSaving(true);
     const id = `org-${crypto.randomUUID().slice(0, 8)}`;
-    addOrganization({
-      id,
-      name: orgName.trim(),
-      shortName: shortName.trim() || orgName.trim().slice(0, 3).toUpperCase(),
-      primaryColor: selectedColor,
-      createdAt: new Date().toISOString(),
-    });
-    setActiveOrg(id);
-    navigate('/');
+    try {
+      await addOrganization({
+        id,
+        name: orgName.trim(),
+        shortName: shortName.trim() || orgName.trim().slice(0, 3).toUpperCase(),
+        primaryColor: selectedColor,
+        createdAt: new Date().toISOString(),
+      });
+      setActiveOrg(id);
+      navigate('/');
+    } catch {
+      toast.error('Failed to save organization. Please try again.');
+      setSaving(false);
+    }
   }
 
   function handleLoadSample() {
@@ -164,9 +172,9 @@ export default function Welcome() {
               <Button variant="outline" onClick={() => setStep('choose')} className="flex-1">
                 Back
               </Button>
-              <Button onClick={handleCreateOrg} disabled={!orgName.trim()} className="flex-1 gap-2">
-                Create & get started
-                <ArrowRight className="w-4 h-4" />
+              <Button onClick={handleCreateOrg} disabled={!orgName.trim() || saving} className="flex-1 gap-2">
+                {saving ? 'Creating...' : 'Create & get started'}
+                {!saving && <ArrowRight className="w-4 h-4" />}
               </Button>
             </div>
           </div>

@@ -83,7 +83,7 @@ interface EventStore extends PersistedState, MessagingActions {
 
   // Organization actions
   setActiveOrg: (orgId: string) => void;
-  addOrganization: (org: Organization) => void;
+  addOrganization: (org: Organization) => Promise<void>;
   updateOrganization: (id: string, updates: Partial<Organization>) => void;
 
   // Team Invite actions
@@ -247,7 +247,7 @@ export const useEventStore = create<EventStore>()(
       setOrgLLMConfig(org?.llmConfig);
     });
   },
-  addOrganization: (org) => {
+  addOrganization: async (org) => {
     const userId = get().userProfile?.id;
     const ownerMember: OrgMember | null = userId ? {
       id: `member-${crypto.randomUUID().slice(0, 8)}`,
@@ -261,15 +261,17 @@ export const useEventStore = create<EventStore>()(
       hasCompletedOnboarding: true,
       orgMembers: ownerMember ? [...s.orgMembers, ownerMember] : s.orgMembers,
     }));
-    // Critical write — log failures loudly so we know data isn't reaching Supabase
+    // Await the Supabase write — callers need to know if this fails
     if (userId) {
-      db.createOrgWithMember(org, userId)
-        .then(() => console.log('[supabase-sync] Org + member created in Supabase'))
-        .catch((err) => {
-          console.error('[supabase-sync] CRITICAL: Failed to create org in Supabase:', err);
-          _dbSyncFailures++;
-          _dbSyncLastError = err instanceof Error ? err.message : String(err);
-        });
+      try {
+        await db.createOrgWithMember(org, userId);
+        console.log('[supabase-sync] Org + member created in Supabase');
+      } catch (err) {
+        console.error('[supabase-sync] CRITICAL: Failed to create org in Supabase:', err);
+        _dbSyncFailures++;
+        _dbSyncLastError = err instanceof Error ? err.message : String(err);
+        throw err; // Re-throw so the UI can show an error
+      }
     }
   },
   updateOrganization: (id, updates) => {

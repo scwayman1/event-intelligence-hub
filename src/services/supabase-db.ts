@@ -78,7 +78,9 @@ export async function createOrgWithMember(org: Organization, userId: string): Pr
   const orgResult = await supabase.from('organizations').insert(row as any);
   throwOnError(orgResult, 'createOrgWithMember (insert org)');
 
+  const memberId = `member-${crypto.randomUUID().slice(0, 8)}`;
   const memberResult = await supabase.from('org_members').insert({
+    id: memberId,
     org_id: org.id,
     user_id: userId,
     role: 'owner',
