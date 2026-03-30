@@ -968,6 +968,67 @@ function trimConversationHistory(messages: RawMessage[]): RawMessage[] {
 }
 
 // ──────────────────────────────────────────────
+// 5b. Sanitize raw messages for API compatibility
+// ──────────────────────────────────────────────
+
+/**
+ * Fix common issues in persisted rawMessages that cause API errors:
+ * 1. Consecutive messages with the same role (merge or drop)
+ * 2. Orphaned tool_result messages without preceding tool_use
+ * 3. Empty messages
+ * 4. Ensure conversation ends with a valid state for appending a user message
+ */
+function sanitizeRawMessages(messages: RawMessage[]): RawMessage[] {
+  if (messages.length === 0) return [];
+
+  const result: RawMessage[] = [];
+
+  for (const msg of messages) {
+    // Skip empty messages
+    if (!msg.content || (typeof msg.content === 'string' && !msg.content.trim())) {
+      continue;
+    }
+    if (Array.isArray(msg.content) && msg.content.length === 0) {
+      continue;
+    }
+
+    const prev = result[result.length - 1];
+
+    // If same role as previous, handle the conflict
+    if (prev && prev.role === msg.role) {
+      if (msg.role === 'user') {
+        // Two user messages in a row — the second might be tool_result
+        // from an interrupted session. Drop the orphaned tool_result.
+        if (Array.isArray(msg.content) && msg.content.some((b: { type: string }) => b.type === 'tool_result')) {
+          continue; // drop orphaned tool results
+        }
+        // Two plain user messages — merge them
+        if (typeof prev.content === 'string' && typeof msg.content === 'string') {
+          prev.content = prev.content + '\n\n' + msg.content;
+          continue;
+        }
+      }
+      if (msg.role === 'assistant') {
+        // Two assistant messages — the first might be a tool_use-only message
+        // from an interrupted loop. Keep the newer one.
+        result[result.length - 1] = msg;
+        continue;
+      }
+    }
+
+    result.push(msg);
+  }
+
+  // Ensure the last message is from the assistant (so we can append a user message)
+  // If it ends with a user message, it was likely an interrupted session.
+  while (result.length > 0 && result[result.length - 1].role === 'user') {
+    result.pop();
+  }
+
+  return result;
+}
+
+// ──────────────────────────────────────────────
 // 6. Core Function: sendMessage
 // ──────────────────────────────────────────────
 
@@ -1193,7 +1254,9 @@ export async function sendMessage(
 
   // ── 4. Prepare raw message history ─────────────────────────────
   // Trim to avoid context overflow, then append the new user message.
-  const rawMessages: RawMessage[] = trimConversationHistory([...conversation.rawMessages]);
+  const rawMessages: RawMessage[] = sanitizeRawMessages(
+    trimConversationHistory([...conversation.rawMessages]),
+  );
   const allToolCalls: { name: string; result: string }[] = [];
   rawMessages.push({ role: 'user', content: userMessage });
 

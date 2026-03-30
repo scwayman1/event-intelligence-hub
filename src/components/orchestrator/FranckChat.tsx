@@ -556,6 +556,22 @@ export function FranckChat({ eventId }: FranckChatProps) {
         } else {
           displayMessage = `Mon dieu! Something went wrong: ${errMessage}. Try a workflow action like "event readiness check" or "auto seat" — those don't require an API call.`;
         }
+
+        // Auto-recovery: if conversation history might be corrupted, reset it
+        // so the next message starts fresh
+        if (
+          errMessage.includes('messages: roles must alternate') ||
+          errMessage.includes('tool_use_id') ||
+          errMessage.includes('tool_result') ||
+          errMessage.includes('unexpected response shape') ||
+          errMessage.includes('content') && errMessage.includes('array')
+        ) {
+          console.warn('[Franck] Resetting conversation due to likely corrupted history');
+          const freshConv = createConversation(eventId);
+          setConversation(freshConv);
+          displayMessage += '\n\n_Franck has reset the conversation to recover from a data issue. Please try again._';
+        }
+
         const errorMsg: ChatMessage = {
           id: `error-${Date.now()}`,
           role: 'assistant',

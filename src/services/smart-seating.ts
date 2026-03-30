@@ -851,7 +851,7 @@ function computeScore(
   );
 
   log.push(`Relationship satisfaction: ${relationshipSatisfaction}% (${groupCount} groups evaluated).`);
-  log.push(`Category clustering: ${categoryClustering}% (${categoryCount} categories evaluated).`);
+  log.push(`Category clustering: ${categoryClustering}% (${tablesWithGuests} tables evaluated).`);
   log.push(`Utilization balance: ${utilizationBalance}% (avg ${Math.round(avgUtil * 100)}%).`);
   log.push(`Preference satisfaction: ${preferenceSatisfaction}% (${prefSatisfied}/${prefTotal} satisfied).`);
 
