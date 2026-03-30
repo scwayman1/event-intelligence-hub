@@ -563,6 +563,7 @@ function autoSeatGuests(
     score: proposal.score,
     proposalSummary: proposal.summary,
     summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.`,
+    instruction: 'IMPORTANT: Report these results to the user NOW. Show the summary, highlight notable placements (donors with scholars), and give the score. Do NOT describe a plan — the seating is DONE.',
   });
 }
 
