@@ -108,9 +108,11 @@ interface ProposalParams {
 // Internal Helpers
 // ---------------------------------------------------------------------------
 
-function buildTableStates(tables: LayoutObject[], versionId: string): TableState[] {
+function buildTableStates(tables: LayoutObject[], _versionId: string): TableState[] {
+  // Tables are pre-filtered by versionId in the caller (getEventContext).
+  // Only filter for table types here.
   return tables
-    .filter((t) => isTable(t) && t.versionId === versionId)
+    .filter((t) => isTable(t))
     .map((t) => ({
       tableId: t.id,
       tableName: t.name,
