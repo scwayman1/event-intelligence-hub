@@ -87,12 +87,15 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'deepseek/deepseek-r1': { toolUse: false },
 };
 
-const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: false };
+const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: true };
 
 /**
  * Check whether a model supports tool use.
- * Claude and GPT models are known to support tools well.
- * Other models default to no tool support unless explicitly listed.
+ * Claude, GPT, and Gemini models are known to support tools well.
+ * Unknown models default to tool support enabled (better to try and
+ * gracefully degrade than silently disable tools). Models that are
+ * known to NOT support tools (e.g. reasoning-only models) are
+ * explicitly listed with `toolUse: false`.
  */
 export function modelSupportsTools(modelId: string): boolean {
   // Exact match first
@@ -369,7 +372,7 @@ function anthropicMessagesToOpenAI(
 // Retry & Timeout Helpers
 // ──────────────────────────────────────────────
 
-const API_TIMEOUT_MS = 15_000;
+const API_TIMEOUT_MS = 60_000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
 const MAX_RETRIES = 2;
 const BACKOFF_MS = [1000, 2000];

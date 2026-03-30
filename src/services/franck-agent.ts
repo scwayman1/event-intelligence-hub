@@ -27,6 +27,7 @@ import {
   DEFAULT_FREE_CONFIG,
   PROVIDERS,
   RECOMMENDED_PAID_MODEL,
+  modelSupportsTools,
   type ProviderConfig,
   type ProviderType,
   type ConfigSource,
@@ -695,6 +696,16 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
       required: [],
     },
   },
+  {
+    name: 'analyze_layout',
+    description:
+      'Analyze the venue layout: table arrangement, spacing between tables, canvas utilization, potential issues (tables too close, overlapping, outside bounds), and capacity vs confirmed guests. Use when the user asks about the layout, table arrangement, spacing, or venue setup.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ──────────────────────────────────────────────
@@ -889,23 +900,12 @@ function buildEventContextBlock(eventId: string): string {
 }
 
 /**
- * Check whether a model is known to NOT support tool/function calling.
- * If `modelSupportsTools` is exported from llm-providers we defer to it;
- * otherwise we maintain a small local deny-list.
+ * Check whether the configured model supports tool/function calling.
+ * Delegates to the canonical `modelSupportsTools` from llm-providers so
+ * the agent loop and the provider layer agree on whether tools are sent.
  */
 function modelSupportsToolUse(config: ProviderConfig): boolean {
-  // Try the canonical check if it exists in llm-providers (future-proof).
-  try {
-    // Dynamic import would be async — just use a local heuristic instead.
-    // Models known to lack tool support:
-    const noToolModels = [
-      'stepfun/step-1.5-flash:free',
-      'nvidia/llama-3.3-nemotron-super-49b-v1:free',
-    ];
-    return !noToolModels.some((m) => config.model === m);
-  } catch {
-    return true; // assume tools work by default
-  }
+  return modelSupportsTools(config.model);
 }
 
 /** Maximum raw messages before we trim for context window safety. */
