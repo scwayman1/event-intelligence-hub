@@ -26,23 +26,12 @@ export function useSupabaseSync() {
       // Fetch org memberships for the user
       const orgIds = await fetchOrgMemberships(userId);
 
-      // New user with no memberships — nothing to sync, but mark as synced
+      // New user with no memberships — nothing to sync
+      // IMPORTANT: Do NOT clear localStorage here. The user may have local
+      // data that hasn't been written to Supabase yet (e.g. due to RLS
+      // policy issues or network failures). Only clear on explicit sign-out.
       if (orgIds.length === 0) {
-        // Clear any stale data from a previous user's localStorage
-        useEventStore.setState({
-          organizations: [],
-          activeOrgId: null,
-          events: [],
-          guests: [],
-          versions: [],
-          layoutObjects: [],
-          seatingAssignments: [],
-          seatingRules: [],
-          relationshipGroups: [],
-          relationshipMemberships: [],
-          collaborators: [],
-          hasCompletedOnboarding: false,
-        });
+        console.log('[supabase-sync] No org memberships found — keeping local data');
         setLoading(false);
         return;
       }
