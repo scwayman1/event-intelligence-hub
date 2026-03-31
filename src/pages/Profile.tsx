@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User,
@@ -39,9 +39,13 @@ export default function Profile() {
   const userProfile = useEventStore((s) => s.userProfile);
   const setUserProfile = useEventStore((s) => s.setUserProfile);
 
-  // Profile fields
+  // Profile fields — sync from store when userProfile loads async
   const [firstName, setFirstName] = useState(userProfile?.firstName ?? '');
   const [lastName, setLastName] = useState(userProfile?.lastName ?? '');
+  useEffect(() => {
+    if (userProfile?.firstName && !firstName) setFirstName(userProfile.firstName);
+    if (userProfile?.lastName && !lastName) setLastName(userProfile.lastName);
+  }, [userProfile?.firstName, userProfile?.lastName]); // eslint-disable-line react-hooks/exhaustive-deps
   const [savingProfile, setSavingProfile] = useState(false);
 
   // Password fields
@@ -90,23 +94,27 @@ export default function Profile() {
     }
 
     setSavingProfile(true);
-    const { error } = await supabase.auth.updateUser({
-      data: { first_name: firstName.trim(), last_name: lastName.trim() },
-    });
-    setSavingProfile(false);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: { first_name: firstName.trim(), last_name: lastName.trim() },
+      });
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      // Update the Zustand store
-      if (userProfile) {
-        setUserProfile({
-          ...userProfile,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-        });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        if (userProfile) {
+          setUserProfile({
+            ...userProfile,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+          });
+        }
+        toast.success('Profile updated successfully.');
       }
-      toast.success('Profile updated successfully.');
+    } catch {
+      toast.error('Failed to update profile. Please try again.');
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -124,23 +132,33 @@ export default function Profile() {
     }
 
     setSavingPassword(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setSavingPassword(false);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      toast.success('Password updated successfully.');
+      if (error) {
+        toast.error(error.message);
+      } else {
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        toast.success('Password updated successfully.');
+      }
+    } catch {
+      toast.error('Failed to update password. Please try again.');
+    } finally {
+      setSavingPassword(false);
     }
   }
 
   async function handleSignOut() {
     setSigningOut(true);
-    await signOut();
-    navigate('/sign-in');
+    try {
+      await signOut();
+      navigate('/sign-in');
+    } catch {
+      toast.error('Sign out failed. Please try again.');
+      setSigningOut(false);
+    }
   }
 
   async function handleSignOutAll() {

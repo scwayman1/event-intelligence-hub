@@ -52,6 +52,17 @@ export default function EventSeating() {
   const autoAssignByRelationshipGroup = useEventStore((s) => s.autoAssignByRelationshipGroup);
   const getGuestRelationships = useEventStore((s) => s.getGuestRelationships);
 
+  const [search, setSearch] = useState('');
+  const [rsvpTab, setRsvpTab] = useState<RsvpFilterTab>('confirmed');
+  const [showRules, setShowRules] = useState(false);
+  const [showCreateRule, setShowCreateRule] = useState(false);
+  const [autoAssignedIds, setAutoAssignedIds] = useState<Set<string>>(new Set());
+
+  // ── Seat finder search ───────────────────────────────────────────────────
+  const [seatSearch, setSeatSearch] = useState('');
+  const [seatSearchFocused, setSeatSearchFocused] = useState(false);
+  const seatSearchRef = useRef<HTMLInputElement>(null);
+
   const event = events.find((item) => item.id === eventId);
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
@@ -71,17 +82,6 @@ export default function EventSeating() {
   const rules = analytics.rules;
 
   const assignedGuestIds = new Set(assignments.map((a) => a.guestId));
-
-  const [search, setSearch] = useState('');
-  const [rsvpTab, setRsvpTab] = useState<RsvpFilterTab>('confirmed');
-  const [showRules, setShowRules] = useState(false);
-  const [showCreateRule, setShowCreateRule] = useState(false);
-  const [autoAssignedIds, setAutoAssignedIds] = useState<Set<string>>(new Set());
-
-  // ── Seat finder search ───────────────────────────────────────────────────
-  const [seatSearch, setSeatSearch] = useState('');
-  const [seatSearchFocused, setSeatSearchFocused] = useState(false);
-  const seatSearchRef = useRef<HTMLInputElement>(null);
 
   // Find guests matching the seat search (both seated and unseated)
   const seatSearchResults = useMemo(() => {

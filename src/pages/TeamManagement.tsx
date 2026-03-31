@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useEventStore } from '@/data/store';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -56,14 +57,20 @@ export default function TeamManagement() {
 
   function handleCreateInvite() {
     if (!activeOrgId) return;
-    const invite = createTeamInvite(activeOrgId, inviteRole);
-    const link = `${window.location.origin}/join/${invite.inviteCode}`;
-    setGeneratedLink(link);
-    setCopied(false);
+    try {
+      const invite = createTeamInvite(activeOrgId, inviteRole);
+      const link = `${window.location.origin}/join/${invite.inviteCode}`;
+      setGeneratedLink(link);
+      setCopied(false);
+    } catch {
+      toast.error('Failed to create invite. Please try again.');
+    }
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(generatedLink);
+    navigator.clipboard.writeText(generatedLink).catch(() => {
+      toast.error('Failed to copy to clipboard.');
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

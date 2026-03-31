@@ -1546,7 +1546,7 @@ function addGuestTool(
   if (existing) {
     const emailMatch = input.email && existing.email && (input.email as string).toLowerCase() === existing.email.toLowerCase();
     return json({
-      summary: `Duplicate detected: "${existing.displayName}" already exists (ID: ${existing.id})${emailMatch ? ' with matching email' : ''}. Use update_guest to modify the existing record, or pass force: true to add anyway.`,
+      summary: `Duplicate detected: "${existing.displayName}" already exists (ID: ${existing.id})${emailMatch ? ' with matching email' : ''}. Use update_guest to modify the existing record instead.`,
       duplicate: true,
       existingGuestId: existing.id,
       existingDisplayName: existing.displayName,
@@ -2406,7 +2406,7 @@ function deduplicateGuestsTool(
         if (updates.firstName || updates.lastName) {
           mergedGuest.displayName = `${mergedGuest.firstName} ${mergedGuest.lastName}`;
         }
-        store.updateGuest(mergedGuest);
+        store.updateGuest(survivor.id, updates);
       }
 
       // Transfer relationship memberships from duplicates to survivor

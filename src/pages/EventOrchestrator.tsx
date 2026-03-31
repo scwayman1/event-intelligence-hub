@@ -198,6 +198,10 @@ export default function EventOrchestrator() {
     const occupied = assignments.filter((a) => a.tableId === tableId).map((a) => a.seatNumber ?? 0);
     let seat = 1;
     while (occupied.includes(seat) && seat <= table.capacity) seat++;
+    if (seat > table.capacity) {
+      toast.error(`${table.name} is full — no available seats.`);
+      return;
+    }
     store.assignGuestToSeat(guestId, tableId, seat, versionId);
     const guest = eventGuests.find((g) => g.id === guestId);
     toast.success(`Seated ${guest?.firstName ?? 'Guest'} at ${table.name}`);

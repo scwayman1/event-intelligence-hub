@@ -1618,7 +1618,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
                     ? 'Ask Franck anything about your event...'
                     : 'Configure provider first'
               }
-              disabled={!keyStored || isLoading}
+              disabled={(!keyStored && !DEFAULT_FREE_CONFIG) || isLoading}
               rows={1}
               className={cn(
                 'flex-1 resize-none bg-transparent text-sm',
