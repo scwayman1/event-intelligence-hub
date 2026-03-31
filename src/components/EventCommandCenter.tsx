@@ -19,7 +19,7 @@ function SeverityPill({ severity }: { severity: 'critical' | 'warning' | 'info' 
 export function EventCommandCenter({ analytics }: { analytics: EventAnalytics }) {
   const seatedRate = analytics.confirmedGuests.length
     ? Math.round((analytics.assignedConfirmed / analytics.confirmedGuests.length) * 100)
-    : 100;
+    : 0;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">

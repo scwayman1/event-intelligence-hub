@@ -248,6 +248,8 @@ export default function EventLayout() {
   const guests = useEventStore((s) => s.guests);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
+  const relationshipGroups = useEventStore((s) => s.relationshipGroups);
+  const relationshipMemberships = useEventStore((s) => s.relationshipMemberships);
   const getTableGuests = useEventStore((s) => s.getTableGuests);
 
   const event = events.find((e) => e.id === eventId);
@@ -348,6 +350,8 @@ export default function EventLayout() {
     layoutObjects,
     seatingAssignments,
     seatingRules,
+    relationshipGroups,
+    relationshipMemberships,
   }) : null;
 
   const selected = objects.find((o) => o.id === selectedId);

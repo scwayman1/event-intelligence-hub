@@ -1,4 +1,4 @@
-import type { AppEvent, EventVersion, Guest, LayoutObject, SeatingAssignment, SeatingRule } from '@/types/events';
+import type { AppEvent, EventVersion, Guest, LayoutObject, RelationshipGroup, RelationshipMembership, SeatingAssignment, SeatingRule } from '@/types/events';
 
 const TABLE_TYPES = new Set(['round_table', 'rect_table']);
 const FRONT_OF_HOUSE_TYPES = new Set(['checkin', 'registration']);
@@ -73,8 +73,10 @@ export function buildEventAnalytics(params: {
   layoutObjects: LayoutObject[];
   seatingAssignments: SeatingAssignment[];
   seatingRules: SeatingRule[];
+  relationshipGroups?: RelationshipGroup[];
+  relationshipMemberships?: RelationshipMembership[];
 }): EventAnalytics {
-  const { event, guests, versions, layoutObjects, seatingAssignments, seatingRules } = params;
+  const { event, guests, versions, layoutObjects, seatingAssignments, seatingRules, relationshipGroups = [], relationshipMemberships = [] } = params;
 
   const eventGuests = guests.filter((guest) => guest.eventId === event.id);
   const activeVersion = versions.find((version) => version.id === event.activeVersionId);
@@ -166,11 +168,23 @@ export function buildEventAnalytics(params: {
     if (tableIds.size > 1) householdsSplitCount += 1;
   });
 
-  const donorScholarPairs = [
-    ['g-001', 'g-006'],
-    ['g-004', 'g-007'],
-    ['g-003', 'g-008'],
-  ];
+  // Build donor-scholar pairs dynamically from scholarship relationship groups.
+  // Each scholarship group should have donor(s) and recipient(s); we pair every
+  // donor with every recipient within the same group for same-table checking.
+  const donorScholarPairs: [string, string][] = [];
+  const scholarshipGroups = relationshipGroups.filter(
+    (g) => g.type === 'scholarship' && g.eventId === event.id,
+  );
+  for (const group of scholarshipGroups) {
+    const members = relationshipMemberships.filter((m) => m.groupId === group.id);
+    const donorIds = members.filter((m) => m.role === 'Donor').map((m) => m.guestId);
+    const recipientIds = members.filter((m) => m.role === 'Recipient').map((m) => m.guestId);
+    for (const donorId of donorIds) {
+      for (const recipientId of recipientIds) {
+        donorScholarPairs.push([donorId, recipientId]);
+      }
+    }
+  }
   const donorScholarPairsSeated = donorScholarPairs.filter(([donorId, scholarId]) => {
     const donorTable = tableIdByGuest.get(donorId);
     const scholarTable = tableIdByGuest.get(scholarId);

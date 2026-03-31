@@ -54,6 +54,23 @@ export default function MessagingHub() {
   // Default to first event if no eventId for guest comms
   const guestEventId = eventId ?? events[0]?.id ?? '';
 
+  // If there are no events and no eventId param, prompt user to create one
+  if (events.length === 0 && !eventId) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center space-y-3">
+          <div className="w-16 h-16 rounded-2xl bg-violet-600/10 flex items-center justify-center mx-auto">
+            <MessageSquare className="w-7 h-7 text-violet-400" />
+          </div>
+          <p className="text-sm font-medium text-foreground">No events yet</p>
+          <p className="text-sm text-muted-foreground">
+            Create an event first to use messaging.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Top header */}
@@ -130,9 +147,20 @@ export default function MessagingHub() {
                     <div className="w-16 h-16 rounded-2xl bg-violet-600/10 flex items-center justify-center mx-auto">
                       <MessageSquare className="w-7 h-7 text-violet-400" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Select a conversation or start a new one
-                    </p>
+                    {conversations.length === 0 ? (
+                      <>
+                        <p className="text-sm font-medium text-foreground">
+                          No conversations yet
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Start a new conversation to begin messaging your team.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Select a conversation or start a new one
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

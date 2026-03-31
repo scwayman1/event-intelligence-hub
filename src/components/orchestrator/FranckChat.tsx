@@ -245,10 +245,20 @@ function loadMessages(eventId: string): ChatMessage[] {
   return [WELCOME_MESSAGE];
 }
 
+let _quotaWarned = false;
+
+function warnQuotaExceeded(context: string, err: unknown) {
+  console.warn(`[FranckChat] Failed to save ${context} to localStorage:`, err);
+  if (!_quotaWarned) {
+    _quotaWarned = true;
+    toast.warning('Storage is full — your chat history may not be saved. Free up space or clear old data.');
+  }
+}
+
 function saveMessages(eventId: string, messages: ChatMessage[]) {
   try {
     localStorage.setItem(`${STORAGE_PREFIX}-msgs-${eventId}`, JSON.stringify(messages));
-  } catch { /* quota exceeded — silently drop */ }
+  } catch (err) { warnQuotaExceeded('messages', err); }
 }
 
 function loadConversation(eventId: string): FranckConversation | null {
@@ -262,7 +272,7 @@ function loadConversation(eventId: string): FranckConversation | null {
 function saveConversation(eventId: string, conv: FranckConversation) {
   try {
     localStorage.setItem(`${STORAGE_PREFIX}-conv-${eventId}`, JSON.stringify(conv));
-  } catch { /* quota exceeded */ }
+  } catch (err) { warnQuotaExceeded('conversation', err); }
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────

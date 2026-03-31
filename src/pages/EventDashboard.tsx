@@ -135,20 +135,24 @@ export default function EventDashboard() {
         <div className="glass-panel p-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Priority seating pressure</h3>
           <div className="space-y-3">
-            {analytics.tableSummaries.slice(0, 4).map((table) => (
-              <div key={table.tableId} className="rounded-lg border border-border/70 bg-muted/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{table.name}</p>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">{table.zone} zone</p>
+            {analytics.tableSummaries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tables yet. Add tables in the Layout editor.</p>
+            ) : (
+              analytics.tableSummaries.slice(0, 4).map((table) => (
+                <div key={table.tableId} className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground truncate">{table.name}</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">{table.zone} zone</p>
+                    </div>
+                    <p className="text-sm font-mono text-foreground">{table.assigned}/{table.capacity}</p>
                   </div>
-                  <p className="text-sm font-mono text-foreground">{table.assigned}/{table.capacity}</p>
+                  <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(table.occupancyRate * 100, 100)}%` }} />
+                  </div>
                 </div>
-                <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(table.occupancyRate * 100, 100)}%` }} />
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

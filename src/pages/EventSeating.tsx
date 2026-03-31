@@ -62,6 +62,8 @@ export default function EventSeating() {
     layoutObjects,
     seatingAssignments,
     seatingRules,
+    relationshipGroups,
+    relationshipMemberships,
   });
   const versionId = event.activeVersionId;
   const tables = analytics.tables;
