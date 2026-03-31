@@ -45,9 +45,13 @@ export default function SignIn() {
 
   async function handleGoogleSignIn() {
     setError('');
-    const { error: authError } = await signInWithGoogle();
-    if (authError) {
-      setError(authError.message);
+    try {
+      const { error: authError } = await signInWithGoogle();
+      if (authError) {
+        setError(authError.message);
+      }
+    } catch {
+      setError('Google sign-in failed. Please try again.');
     }
   }
 

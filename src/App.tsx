@@ -79,13 +79,13 @@ function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
 const AppRoutes = () => (
   <Routes>
     {/* Auth pages — accessible without signing in */}
-    <Route path="/sign-in" element={<RedirectIfSignedIn><SignIn /></RedirectIfSignedIn>} />
-    <Route path="/sign-up" element={<RedirectIfSignedIn><SignUp /></RedirectIfSignedIn>} />
-    <Route path="/forgot-password" element={<RedirectIfSignedIn><ForgotPassword /></RedirectIfSignedIn>} />
-    <Route path="/reset-password" element={<ResetPassword />} />
+    <Route path="/sign-in" element={<RedirectIfSignedIn><ErrorBoundary><SignIn /></ErrorBoundary></RedirectIfSignedIn>} />
+    <Route path="/sign-up" element={<RedirectIfSignedIn><ErrorBoundary><SignUp /></ErrorBoundary></RedirectIfSignedIn>} />
+    <Route path="/forgot-password" element={<RedirectIfSignedIn><ErrorBoundary><ForgotPassword /></ErrorBoundary></RedirectIfSignedIn>} />
+    <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
 
     {/* Invite join — accessible to anyone; handles auth redirect internally */}
-    <Route path="/join/:inviteCode" element={<JoinInvite />} />
+    <Route path="/join/:inviteCode" element={<ErrorBoundary><JoinInvite /></ErrorBoundary>} />
 
     {/* Onboarding — requires auth but not onboarding complete */}
     <Route path="/welcome" element={<RequireAuth><RedirectIfOnboarded><Welcome /></RedirectIfOnboarded></RequireAuth>} />

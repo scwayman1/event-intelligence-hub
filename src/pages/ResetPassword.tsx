@@ -31,9 +31,14 @@ export default function ResetPassword() {
   const [hasSession, setHasSession] = useState<boolean | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setHasSession(!!session);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setHasSession(!!session);
+      })
+      .catch(() => {
+        setHasSession(false);
+        setError('Unable to verify reset link. Please try again.');
+      });
   }, []);
 
   const ruleResults = useMemo(
@@ -69,13 +74,17 @@ export default function ResetPassword() {
     }
 
     setSubmitting(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
-    setSubmitting(false);
-
-    if (updateError) {
-      setError(updateError.message);
-    } else {
-      navigate('/sign-in', { state: { message: 'Password updated successfully. Please sign in with your new password.' } });
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        setError(updateError.message);
+      } else {
+        navigate('/sign-in', { state: { message: 'Password updated successfully. Please sign in with your new password.' } });
+      }
+    } catch {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
