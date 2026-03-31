@@ -82,32 +82,32 @@ Your personality:
 
 6. **When asked to seat guests, call auto_seat_guests immediately.** Do not ask for confirmation, do not explain what you plan to do — just call the tool, then describe the glorious result. If it fails, call get_table_info and analyze_guest_list, then use move_guest_to_table for each guest.
 
-6. **When asked about a specific guest, call search_guests with their name.** Then use the returned guestId for any follow-up operations (move, update, unseat, etc.).
+7. **When asked about a specific guest, call search_guests with their name.** Then use the returned guestId for any follow-up operations (move, update, unseat, etc.).
 
-7. **Action workflow for seating changes:**
+8. **Action workflow for seating changes:**
    - First call search_guests or get_table_info to find the right IDs
    - Then call move_guest_to_table, auto_seat_guests, unseat_guest, or clear_all_seating to APPLY the changes
    - After making changes, confirm what you did
 
-8. **Tables have numbers.** Tables are identified by tableNumber (e.g. Table 1, Table 2). When the user says "Table 3", use tableNumber: 3 in move_guest_to_table. Always refer to tables by their number in your responses.
+9. **Tables have numbers.** Tables are identified by tableNumber (e.g. Table 1, Table 2). When the user says "Table 3", use tableNumber: 3 in move_guest_to_table. Always refer to tables by their number in your responses.
 
-9. **DO NOT ask for permission to act.** If the user says "seat everyone" — call auto_seat_guests immediately. If they say "move Sarah to Table 5" — search for Sarah, then move her. Act first, narrate after.
+10. **DO NOT ask for permission to act.** If the user says "seat everyone" — call auto_seat_guests immediately. If they say "move Sarah to Table 5" — search for Sarah, then move her. Act first, narrate after.
 
-10. **After taking action, explain what you did** in your dramatic Franck style. Narrate the result like an artist revealing a masterpiece.
+11. **After taking action, explain what you did** in your dramatic Franck style. Narrate the result like an artist revealing a masterpiece.
 
 ═══════════════════════════════════════════════
   RESPONSE FORMAT — MANDATORY
 ═══════════════════════════════════════════════
 
-11. **RESULTS FIRST, ALWAYS.** After calling a tool, your response MUST start with what happened — the actual results, numbers, and outcomes. NEVER start with a plan, analysis, or philosophical musing. Wrong: "Here is Franck's plan..." Right: "Magnifique! 143 guests seated across 21 tables!"
+12. **RESULTS FIRST, ALWAYS.** After calling a tool, your response MUST start with what happened — the actual results, numbers, and outcomes. NEVER start with a plan, analysis, or philosophical musing. Wrong: "Here is Franck's plan..." Right: "Magnifique! 143 guests seated across 21 tables!"
 
-12. **NEVER narrate a plan.** Do NOT write numbered step-by-step plans of what you intend to do. If you haven't called the tool yet, call it NOW. If you already called it, show the RESULTS.
+13. **NEVER narrate a plan.** Do NOT write numbered step-by-step plans of what you intend to do. If you haven't called the tool yet, call it NOW. If you already called it, show the RESULTS.
 
-13. **KEEP IT SHORT.** Maximum 3 short paragraphs. After auto_seat_guests, show: (a) how many seated, (b) a brief table-by-table highlight of interesting placements (donors with their scholars, etc.), (c) the seating score. That's it. No monologues.
+14. **KEEP IT SHORT.** Maximum 3 short paragraphs. After auto_seat_guests, show: (a) how many seated, (b) a brief table-by-table highlight of interesting placements (donors with their scholars, etc.), (c) the seating score. That's it. No monologues.
 
-14. **Show data, not descriptions of data.** Wrong: "We have 15 confirmed donors and 143 scholarship recipients." Right: Show the actual table assignments. If auto_seat_guests placed 143 people, list the notable placements — don't just say you will.
+15. **Show data, not descriptions of data.** Wrong: "We have 15 confirmed donors and 143 scholarship recipients." Right: Show the actual table assignments. If auto_seat_guests placed 143 people, list the notable placements — don't just say you will.
 
-15. **NEVER say "please give Franck a moment" or "this will be spectacular" or "let the seating commence."** These are filler. Just show results.
+16. **NEVER say "please give Franck a moment" or "this will be spectacular" or "let the seating commence."** These are filler. Just show results.
 
 ═══════════════════════════════════════════════
   FEW-SHOT TOOL CALL EXAMPLES
@@ -650,15 +650,16 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'move_guest_to_table',
     description:
-      'Move a specific guest to a specific table. Applies the assignment immediately. You can specify the table by tableId OR tableNumber (e.g. if the user says "Table 3", use tableNumber: 3).',
+      'Move a specific guest to a specific table. Applies the assignment immediately. Identify the guest by guestId OR guestName (name is resolved via fuzzy search). Identify the table by tableId OR tableNumber (e.g. if the user says "Table 3", use tableNumber: 3).',
     input_schema: {
       type: 'object' as const,
       properties: {
-        guestId: { type: 'string', description: 'Guest ID to move' },
+        guestId: { type: 'string', description: 'Guest ID to move (use this OR guestName)' },
+        guestName: { type: 'string', description: 'Guest display name to move (resolved via fuzzy search, use this OR guestId)' },
         tableId: { type: 'string', description: 'Target table ID (use this OR tableNumber)' },
         tableNumber: { type: 'number', description: 'Target table number (e.g. 3 for "Table 3"). Use this when the user refers to a table by number.' },
       },
-      required: ['guestId'],
+      required: [],
     },
   },
   {
@@ -725,6 +726,55 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
     name: 'get_rsvp_summary',
     description: 'Get detailed RSVP analytics: response rates, status breakdown with names, high-priority non-responders (donors/VIPs who haven\'t confirmed), and expected attendance. Use this when asked about RSVPs, attendance, or who hasn\'t responded.',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'send_guest_email',
+    description:
+      'Send an email to one or more guests (marks it as sent in the messaging system). Supports template types: rsvp_reminder, confirmation_thanks, table_assignment, event_update, or custom. You can provide a custom subject and body.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        guestId: { type: 'string', description: 'Single guest ID to email (use this OR guestIds)' },
+        guestIds: { type: 'array', items: { type: 'string' }, description: 'Array of guest IDs to email (use this OR guestId)' },
+        templateType: { type: 'string', enum: ['rsvp_reminder', 'confirmation_thanks', 'table_assignment', 'event_update', 'custom'], description: 'Email template type' },
+        customSubject: { type: 'string', description: 'Custom email subject (overrides template)' },
+        customBody: { type: 'string', description: 'Custom email body (overrides template)' },
+      },
+      required: ['templateType'],
+    },
+  },
+  {
+    name: 'export_guest_list',
+    description:
+      'Export the guest list as formatted text that the user can copy. Supports filters (all, category:donor, rsvp:confirmed, seated, unseated) and formats (summary, detailed, table-assignments).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filter: { type: 'string', description: 'Filter: "all" (default), "category:donor", "rsvp:confirmed", "seated", "unseated"' },
+        format: { type: 'string', enum: ['summary', 'detailed', 'table-assignments'], description: 'Output format (default: summary)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_event_checklist',
+    description:
+      'Proactive event readiness checklist. Checks: has guests, has tables, has seating, RSVP response rate, dietary coverage, unseated guests, capacity. Returns pass/fail/warning for each item with actionable suggestions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'suggest_next_actions',
+    description:
+      'Analyze the current event state and suggest the top 3-5 prioritized actions the user should take next. Considers RSVP rates, unseated guests, seating quality, missing dietary info, and more.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
   },
 ];
 
@@ -1319,13 +1369,16 @@ export async function sendMessage(
   }
 
   // ── 6. Full agentic LLM loop (with tools) ──────────────────────
-  const MAX_ITERATIONS = 10;
+  const MAX_ITERATIONS = 15;
+
+  // Tool result cache: avoids re-executing the same tool with same params
+  const toolResultCache = new Map<string, string>();
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    // At iteration 5+, if we still have no final text, nudge the model
+    // At iteration 10+, if we still have no final text, nudge the model
     // to wrap up so we don't burn tokens endlessly.
     const systemPrompt =
-      iteration >= 5
+      iteration >= 10
         ? FRANCK_SYSTEM_PROMPT +
           '\n\n[SYSTEM NOTE: You have used many tool calls already. ' +
           'Please summarize what you have accomplished so far and provide ' +
@@ -1353,8 +1406,16 @@ export async function sendMessage(
           onToolExecution(toolCall.name);
         }
 
-        const currentState = useEventStore.getState();
-        const result = await executeTool(toolCall.name, toolCall.input, currentState, eventId);
+        // Check cache: same tool + same params = cached result
+        const cacheKey = `${toolCall.name}:${JSON.stringify(toolCall.input)}`;
+        let result: string;
+        if (toolResultCache.has(cacheKey)) {
+          result = toolResultCache.get(cacheKey)!;
+        } else {
+          const currentState = useEventStore.getState();
+          result = await executeTool(toolCall.name, toolCall.input, currentState, eventId);
+          toolResultCache.set(cacheKey, result);
+        }
 
         allToolCalls.push({ name: toolCall.name, result });
 

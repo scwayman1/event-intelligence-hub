@@ -83,6 +83,10 @@ const SYNONYM_MAP: Record<string, string[]> = {
   improve: ['optimize', 'enhance', 'refine'],
   change: ['modify', 'alter', 'rearrange'],
   arrange: ['organize', 'set up', 'plan'],
+  ready: ['prepared', 'set', 'good'],
+  next: ['upcoming', 'following'],
+  help: ['assist', 'guide'],
+  steps: ['actions', 'tasks', 'todos'],
 };
 
 // ---------------------------------------------------------------------------
@@ -676,6 +680,83 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       },
     ],
   },
+  {
+    id: 'event-readiness',
+    name: 'Event Readiness',
+    icon: '\uD83D\uDCCB',  // clipboard emoji
+    description: 'Check if your event is ready with a full checklist and issue scan',
+    triggerPhrases: [
+      'is my event ready',
+      'event checklist',
+      'readiness check',
+      'am i ready',
+      'is everything set',
+      'pre-event checklist',
+      'run the readiness check',
+      'check readiness',
+      'readiness report',
+    ],
+    buildSteps: (_params, _eventId) => [
+      {
+        id: 'er-1',
+        label: 'Get event summary',
+        toolName: 'get_event_summary',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'er-2',
+        label: 'Run event checklist',
+        toolName: 'get_event_checklist',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'er-3',
+        label: 'Flag issues',
+        toolName: 'flag_issues',
+        toolInput: {},
+        status: 'pending',
+      },
+    ],
+  },
+  {
+    id: 'what-should-i-do-next',
+    name: 'What Should I Do Next',
+    icon: '\uD83E\uDDE0',  // brain emoji
+    description: 'Analyze your event and suggest prioritized next steps',
+    triggerPhrases: [
+      'what should i do',
+      'what should i do next',
+      'next steps',
+      'whats next',
+      'what do i do now',
+      'help me',
+      'what now',
+      'what are my next steps',
+      'suggest next actions',
+      'what should i focus on',
+      'where do i start',
+      'guide me',
+      'what needs attention',
+    ],
+    buildSteps: (_params, _eventId) => [
+      {
+        id: 'ns-1',
+        label: 'Get event summary',
+        toolName: 'get_event_summary',
+        toolInput: {},
+        status: 'pending',
+      },
+      {
+        id: 'ns-2',
+        label: 'Suggest next actions',
+        toolName: 'suggest_next_actions',
+        toolInput: {},
+        status: 'pending',
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -875,6 +956,14 @@ function summarizeToolResult(toolName: string, resultStr: string): string {
         return data.summary ?? `Updated guest`;
       case 'add_guest':
         return `Added **${data.displayName ?? 'guest'}**`;
+      case 'get_event_checklist':
+        return `Checklist: **${data.passCount ?? 0}** pass, **${data.failCount ?? 0}** fail, **${data.warningCount ?? 0}** warning`;
+      case 'suggest_next_actions':
+        return `**${data.suggestions?.length ?? 0}** suggested next action${(data.suggestions?.length ?? 0) === 1 ? '' : 's'}`;
+      case 'send_guest_email':
+        return `Sent email to **${data.recipientCount ?? 0}** guest${(data.recipientCount ?? 0) === 1 ? '' : 's'}`;
+      case 'export_guest_list':
+        return `Exported **${data.count ?? 0}** guests in ${data.format ?? 'summary'} format`;
       default:
         // Generic: show a few key fields
         const keys = Object.keys(data).filter(k => k !== 'error');
