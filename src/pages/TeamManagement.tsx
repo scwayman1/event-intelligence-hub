@@ -75,8 +75,15 @@ export default function TeamManagement() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handleRevokeInvite(inviteId: string) {
-    revokeTeamInvite(inviteId);
+  async function handleRevokeInvite(inviteId: string) {
+    if (!window.confirm('Revoke this invite link?')) return;
+    try {
+      await revokeTeamInvite(inviteId);
+      toast.success('Invite link revoked.');
+    } catch (err) {
+      toast.error('Failed to revoke invite. Please try again.');
+      console.error('[team-invite] Revoke failed:', err);
+    }
   }
 
   function handleRemoveMember(memberId: string) {

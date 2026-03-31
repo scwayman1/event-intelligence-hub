@@ -116,7 +116,7 @@ interface EventStore extends PersistedState, MessagingActions {
 
   // Team Invite actions
   createTeamInvite: (orgId: string, role: InviteRole) => TeamInvite;
-  revokeTeamInvite: (inviteId: string) => void;
+  revokeTeamInvite: (inviteId: string) => Promise<void>;
   getOrgInvites: (orgId: string) => TeamInvite[];
   findInviteByCode: (code: string) => TeamInvite | undefined;
   redeemInvite: (inviteCode: string) => { success: boolean; error?: string; orgId?: string };
@@ -351,9 +351,18 @@ export const useEventStore = create<EventStore>()(
       });
     return invite;
   },
-  revokeTeamInvite: (inviteId) => {
+  revokeTeamInvite: async (inviteId) => {
+    const oldInvite = get().teamInvites.find((i) => i.id === inviteId);
     set((s) => ({ teamInvites: s.teamInvites.filter((i) => i.id !== inviteId) }));
-    dbSync(() => db.deleteTeamInvite(inviteId));
+    try {
+      await db.deleteTeamInvite(inviteId);
+    } catch (err) {
+      // Revert the optimistic update so the invite reappears in the UI
+      if (oldInvite) {
+        set((s) => ({ teamInvites: [...s.teamInvites, oldInvite] }));
+      }
+      throw err;
+    }
   },
   getOrgInvites: (orgId) => get().teamInvites.filter((i) => i.orgId === orgId),
   findInviteByCode: (code) => get().teamInvites.find((i) => i.inviteCode === code),

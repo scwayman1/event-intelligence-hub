@@ -327,9 +327,18 @@ export default function EventLayout() {
     undoRedo.pushState([...objects]);
   }, [objects, undoRedo]);
   const snapHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const renumberRafRef = useRef<number | null>(null);
   const [tablePopoverId, setTablePopoverId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cleanup timers and rAF on unmount
+  useEffect(() => {
+    return () => {
+      if (snapHighlightTimer.current) clearTimeout(snapHighlightTimer.current);
+      if (renumberRafRef.current) cancelAnimationFrame(renumberRafRef.current);
+    };
+  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1392,15 +1401,18 @@ export default function EventLayout() {
                     </PopoverTrigger>
                     <PopoverContent
                       className="w-80 p-3 z-[100]"
-                      side="right"
                       align="start"
                       sideOffset={12}
+                      avoidCollisions={true}
+                      collisionPadding={16}
                       onPointerDownOutside={() => setTablePopoverId(null)}
                     >
                       <TableDetailPopover
                         table={obj}
                         guests={tableGuests}
                         capacity={obj.capacity}
+                        relationshipGroups={relationshipGroups}
+                        relationshipMemberships={relationshipMemberships}
                       />
                     </PopoverContent>
                   </Popover>

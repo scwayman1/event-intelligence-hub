@@ -75,12 +75,14 @@ export function TableHoverCard({
 }: TableHoverCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+  const [leftOffset, setLeftOffset] = useState<number | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const enterTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const capacity = Math.max(table.capacity, 1);
+  const cardWidth = 340;
 
   // Build relationship map for this table's guests
   const tableGuestIds = new Set(guests.map((g) => g.id));
@@ -106,7 +108,22 @@ export function TableHoverCard({
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceRight = window.innerWidth - rect.right;
     setPosition(spaceBelow < 360 ? 'top' : 'bottom');
+
+    // Calculate horizontal offset to keep card within viewport
+    const triggerCenterX = rect.left + rect.width / 2;
+    const halfCard = cardWidth / 2;
+    const padding = 16;
+    if (triggerCenterX - halfCard < padding) {
+      // Overflows left: shift right
+      setLeftOffset(padding - (triggerCenterX - halfCard));
+    } else if (triggerCenterX + halfCard > window.innerWidth - padding) {
+      // Overflows right: shift left
+      setLeftOffset(window.innerWidth - padding - (triggerCenterX + halfCard));
+    } else {
+      setLeftOffset(null);
+    }
   }, []);
 
   const handleEnter = useCallback(() => {
@@ -153,7 +170,7 @@ export function TableHoverCard({
         onMouseLeave={handleLeave}
         className={cn(
           'absolute z-[100] w-[340px] max-h-[420px]',
-          'left-1/2 -translate-x-1/2',
+          leftOffset == null && 'left-1/2 -translate-x-1/2',
           position === 'bottom' ? 'top-full mt-3' : 'bottom-full mb-3',
           // Liquid glass styling
           'rounded-2xl overflow-hidden',
@@ -172,6 +189,7 @@ export function TableHoverCard({
           backdropFilter: 'blur(24px) saturate(1.8)',
           WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
           background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)',
+          ...(leftOffset != null ? { left: '50%', transform: `translateX(calc(-50% + ${leftOffset}px))` } : {}),
         }}
       >
         {/* Inner glow border */}

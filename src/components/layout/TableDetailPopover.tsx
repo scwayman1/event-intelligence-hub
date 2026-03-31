@@ -1,6 +1,7 @@
-import type { Guest, LayoutObject, GuestCategory, RSVPStatus } from '@/types/events';
+import type { Guest, LayoutObject, GuestCategory, RSVPStatus, RelationshipGroup, RelationshipMembership } from '@/types/events';
+import { RELATIONSHIP_TYPE_COLORS } from '@/types/events';
 import { cn } from '@/lib/utils';
-import { Users, Utensils, Accessibility, Tag, Building2, Mail, Phone } from 'lucide-react';
+import { Users, Utensils, Accessibility, Tag, Building2, Mail, Phone, Link2 } from 'lucide-react';
 
 const categoryStyles: Record<GuestCategory, { label: string; color: string }> = {
   donor: { label: 'Donor', color: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -26,10 +27,23 @@ interface TableDetailPopoverProps {
   table: LayoutObject;
   guests: Guest[];
   capacity: number;
+  relationshipGroups: RelationshipGroup[];
+  relationshipMemberships: RelationshipMembership[];
 }
 
-export function TableDetailPopover({ table, guests, capacity }: TableDetailPopoverProps) {
+export function TableDetailPopover({ table, guests, capacity, relationshipGroups, relationshipMemberships }: TableDetailPopoverProps) {
   const openSeats = capacity - guests.length;
+
+  // Build per-guest relationship group lookup
+  const guestGroupMap = new Map<string, { group: RelationshipGroup; role: string }[]>();
+  for (const m of relationshipMemberships) {
+    const group = relationshipGroups.find((g) => g.id === m.groupId);
+    if (!group) continue;
+    if (!guestGroupMap.has(m.guestId)) {
+      guestGroupMap.set(m.guestId, []);
+    }
+    guestGroupMap.get(m.guestId)!.push({ group, role: m.role });
+  }
 
   return (
     <div className="space-y-3 max-h-[400px] overflow-y-auto">
@@ -121,6 +135,19 @@ export function TableDetailPopover({ table, guests, capacity }: TableDetailPopov
                       <Tag className="w-2.5 h-2.5" /> {tag}
                     </span>
                   ))}
+                  {(guestGroupMap.get(guest.id) ?? []).map(({ group, role }) => {
+                    const c = group.color ?? RELATIONSHIP_TYPE_COLORS[group.type] ?? 'hsl(200 15% 55%)';
+                    return (
+                      <span
+                        key={group.id}
+                        className="inline-flex items-center gap-0.5 text-[10px] font-medium rounded-full px-1.5 py-0.5"
+                        style={{ background: `${c}18`, color: c, border: `1px solid ${c}30` }}
+                      >
+                        <Link2 className="w-2.5 h-2.5" />
+                        {role ?? group.name}
+                      </span>
+                    );
+                  })}
                 </div>
 
                 {/* Contact info (collapsed) */}
