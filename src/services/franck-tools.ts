@@ -7,6 +7,7 @@
  */
 
 import { useEventStore } from '@/data/store';
+import type { GuestMessage, DeliveryResult } from '@/types/messaging';
 
 import {
   computeEventHealth,
@@ -1197,10 +1198,25 @@ function moveGuestToTableTool(
   const ctx = getEventContext(state, eventId);
   if (!ctx) return eventNotFoundError(eventId);
 
-  const reqErr = validateRequired(input, 'guestId');
-  if (reqErr) return errorResult(reqErr);
+  // Accept either guestId or guestName — resolve guestName to guestId via fuzzy search
+  let guestId = input.guestId as string | undefined;
+  const guestName = input.guestName as string | undefined;
 
-  const guestId = input.guestId as string;
+  if (!guestId && guestName) {
+    const needle = guestName.toLowerCase();
+    const match = ctx.guests.find((g) => g.displayName.toLowerCase() === needle)
+      ?? ctx.guests.find((g) => g.displayName.toLowerCase().includes(needle));
+    if (!match) {
+      return errorResult(
+        `No guest found matching name "${guestName}". Use search_guests to find the correct guest first.`,
+      );
+    }
+    guestId = match.id;
+  }
+
+  if (!guestId) {
+    return errorResult("Either 'guestId' or 'guestName' is required.");
+  }
   let tableId = input.tableId as string | undefined;
   const tableNumber = coerceNumber(input.tableNumber) as number | undefined;
 
@@ -2467,6 +2483,401 @@ function deduplicateGuestsTool(
   }
 
   return errorResult(`Unknown action "${action}". Use "scan" (default) or "merge".`);
+}
+
+// ---------------------------------------------------------------------------
+// SEND GUEST EMAIL tool
+// ---------------------------------------------------------------------------
+
+function sendGuestEmailTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  // Accept guestId (single) or guestIds (array)
+  let guestIds: string[] = [];
+  if (Array.isArray(input.guestIds)) {
+    guestIds = input.guestIds as string[];
+  } else if (typeof input.guestId === 'string') {
+    guestIds = [input.guestId];
+  }
+
+  if (guestIds.length === 0) {
+    return errorResult("Either 'guestId' or 'guestIds' is required.");
+  }
+
+  const templateType = (input.templateType as string) ?? 'custom';
+  const customSubject = input.customSubject as string | undefined;
+  const customBody = input.customBody as string | undefined;
+
+  // Resolve guests
+  const resolvedGuests = guestIds
+    .map((id) => ctx.guests.find((g) => g.id === id))
+    .filter((g): g is Guest => g != null);
+
+  if (resolvedGuests.length === 0) {
+    return errorResult('No valid guests found for the provided IDs.');
+  }
+
+  // Generate subject and body from template if not custom
+  let subject = customSubject ?? '';
+  let body = customBody ?? '';
+
+  if (!customSubject || !customBody) {
+    const templates = getDefaultCommTemplates();
+    const template = templates.find((t) => t.type === templateType) ?? templates[0];
+    if (template && resolvedGuests.length > 0) {
+      const rendered = renderTemplate(template, resolvedGuests[0], ctx.event);
+      if (!customSubject) subject = rendered.subject;
+      if (!customBody) body = rendered.body;
+    }
+  }
+
+  // Create sent message via messaging store
+  const store = useEventStore.getState();
+  const now = new Date().toISOString();
+  const messageId = `gm-${crypto.randomUUID()}`;
+
+  const deliveryResults: DeliveryResult[] = resolvedGuests.map((g) => ({
+    guestId: g.id,
+    status: 'sent' as const,
+    sentAt: now,
+  }));
+
+  const guestMessage: GuestMessage = {
+    id: messageId,
+    orgId: ctx.event.orgId,
+    eventId,
+    senderId: 'franck-agent',
+    senderName: 'Franck Eggelhoffer',
+    recipientGuestIds: resolvedGuests.map((g) => g.id),
+    subject,
+    content: body,
+    sentAt: now,
+    status: 'sent',
+    deliveryResults,
+    isNote: false,
+    createdAt: now,
+  };
+
+  store.addGuestMessage(guestMessage);
+
+  const recipientNames = resolvedGuests.map((g) => g.displayName);
+  return json({
+    summary: `Sent "${subject}" email to ${resolvedGuests.length} guest${resolvedGuests.length === 1 ? '' : 's'}: ${recipientNames.slice(0, 5).join(', ')}${recipientNames.length > 5 ? ` and ${recipientNames.length - 5} more` : ''}`,
+    sent: true,
+    messageId,
+    templateType,
+    recipientCount: resolvedGuests.length,
+    recipientNames: recipientNames.slice(0, 20),
+    subject,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// EXPORT GUEST LIST tool
+// ---------------------------------------------------------------------------
+
+function exportGuestListTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const filter = (input.filter as string) ?? 'all';
+  const format = (input.format as string) ?? 'summary';
+
+  // Apply filter
+  let filtered = ctx.guests;
+  const filterLower = filter.toLowerCase();
+
+  if (filterLower.startsWith('category:')) {
+    const cat = normalizeCategory(filterLower.replace('category:', '').trim());
+    filtered = filtered.filter((g) => g.category === cat);
+  } else if (filterLower.startsWith('rsvp:') || filterLower.startsWith('rsvpstatus:')) {
+    const rsvp = normalizeRsvp(filterLower.replace(/^(rsvp|rsvpstatus):/, '').trim());
+    filtered = filtered.filter((g) => g.rsvpStatus === rsvp);
+  } else if (filterLower === 'seated') {
+    const seatedIds = new Set(ctx.assignments.map((a) => a.guestId));
+    filtered = filtered.filter((g) => seatedIds.has(g.id));
+  } else if (filterLower === 'unseated') {
+    const seatedIds = new Set(ctx.assignments.map((a) => a.guestId));
+    filtered = filtered.filter((g) => !seatedIds.has(g.id));
+  }
+  // else 'all' — no filter
+
+  if (filtered.length === 0) {
+    return json({
+      summary: `No guests match filter "${filter}".`,
+      text: 'No guests found.',
+      count: 0,
+    });
+  }
+
+  let text = '';
+
+  if (format === 'summary') {
+    text = `GUEST LIST — ${ctx.event.name} (${filtered.length} guests)\n`;
+    text += '='.repeat(50) + '\n\n';
+    for (const g of filtered) {
+      const assignment = ctx.assignments.find((a) => a.guestId === g.id);
+      const table = assignment ? ctx.tables.find((t) => t.id === assignment.tableId) : null;
+      const tableLabel = table ? (table.tableNumber != null ? `Table ${table.tableNumber}` : table.name) : 'Unseated';
+      text += `${g.displayName} | ${g.category} | ${g.rsvpStatus} | ${tableLabel}\n`;
+    }
+  } else if (format === 'detailed') {
+    text = `DETAILED GUEST LIST — ${ctx.event.name} (${filtered.length} guests)\n`;
+    text += '='.repeat(60) + '\n\n';
+    for (const g of filtered) {
+      const assignment = ctx.assignments.find((a) => a.guestId === g.id);
+      const table = assignment ? ctx.tables.find((t) => t.id === assignment.tableId) : null;
+      const tableLabel = table ? (table.tableNumber != null ? `Table ${table.tableNumber}` : table.name) : 'Unseated';
+      text += `${g.displayName}\n`;
+      text += `  Category: ${g.category} | RSVP: ${g.rsvpStatus} | Party: ${g.partySize}\n`;
+      if (g.email) text += `  Email: ${g.email}\n`;
+      if (g.organization) text += `  Org: ${g.organization}\n`;
+      if (g.dietaryRestrictions) text += `  Dietary: ${g.dietaryRestrictions}\n`;
+      if (g.accessibilityNeeds) text += `  Accessibility: ${g.accessibilityNeeds}\n`;
+      text += `  Seating: ${tableLabel}\n`;
+      text += '\n';
+    }
+  } else if (format === 'table-assignments') {
+    text = `TABLE ASSIGNMENTS — ${ctx.event.name}\n`;
+    text += '='.repeat(50) + '\n\n';
+
+    // Group guests by table
+    const tableMap = new Map<string, { label: string; guests: string[] }>();
+    const unseated: string[] = [];
+
+    for (const g of filtered) {
+      const assignment = ctx.assignments.find((a) => a.guestId === g.id);
+      if (assignment) {
+        const table = ctx.tables.find((t) => t.id === assignment.tableId);
+        const tableKey = assignment.tableId;
+        const tableLabel = table ? (table.tableNumber != null ? `Table ${table.tableNumber}` : table.name) : 'Unknown Table';
+        if (!tableMap.has(tableKey)) tableMap.set(tableKey, { label: tableLabel, guests: [] });
+        tableMap.get(tableKey)!.guests.push(g.displayName);
+      } else {
+        unseated.push(g.displayName);
+      }
+    }
+
+    for (const [, { label, guests }] of tableMap) {
+      text += `${label} (${guests.length} guests):\n`;
+      for (const name of guests) {
+        text += `  - ${name}\n`;
+      }
+      text += '\n';
+    }
+
+    if (unseated.length > 0) {
+      text += `UNSEATED (${unseated.length}):\n`;
+      for (const name of unseated) {
+        text += `  - ${name}\n`;
+      }
+    }
+  } else {
+    return errorResult(`Unknown format "${format}". Use "summary", "detailed", or "table-assignments".`);
+  }
+
+  return json({
+    summary: `Exported ${filtered.length} guests in "${format}" format (filter: ${filter})`,
+    count: filtered.length,
+    filter,
+    format,
+    text,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// GET EVENT CHECKLIST tool
+// ---------------------------------------------------------------------------
+
+function getEventChecklistTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const { guests, tables, assignments, groups, memberships } = ctx;
+
+  interface ChecklistItem {
+    item: string;
+    status: 'pass' | 'fail' | 'warning';
+    detail: string;
+    suggestion?: string;
+  }
+
+  const checklist: ChecklistItem[] = [];
+
+  // 1. Has guests?
+  if (guests.length === 0) {
+    checklist.push({ item: 'Guest list', status: 'fail', detail: '0 guests added', suggestion: 'Add guests using add_guest or import a CSV.' });
+  } else {
+    checklist.push({ item: 'Guest list', status: 'pass', detail: `${guests.length} guests in the event` });
+  }
+
+  // 2. Has tables?
+  if (tables.length === 0) {
+    checklist.push({ item: 'Tables', status: 'fail', detail: '0 tables created', suggestion: 'Add tables using add_table (e.g. add_table with capacity 8).' });
+  } else {
+    const totalCapacity = tables.reduce((sum, t) => sum + t.capacity, 0);
+    checklist.push({ item: 'Tables', status: 'pass', detail: `${tables.length} tables with total capacity ${totalCapacity}` });
+  }
+
+  // 3. Has seating?
+  if (assignments.length === 0 && guests.length > 0) {
+    checklist.push({ item: 'Seating assignments', status: 'fail', detail: 'No guests are seated', suggestion: 'Run auto_seat_guests to seat everyone.' });
+  } else if (assignments.length > 0) {
+    checklist.push({ item: 'Seating assignments', status: 'pass', detail: `${assignments.length} guests seated` });
+  }
+
+  // 4. RSVP response rate
+  const responded = guests.filter((g) => g.rsvpStatus !== 'invited').length;
+  const responseRate = guests.length > 0 ? Math.round((responded / guests.length) * 100) : 0;
+  if (guests.length > 0 && responseRate < 50) {
+    checklist.push({ item: 'RSVP response rate', status: 'warning', detail: `${responseRate}% (${responded}/${guests.length})`, suggestion: 'Send RSVP reminders to non-responders using send_guest_email.' });
+  } else if (guests.length > 0 && responseRate < 80) {
+    checklist.push({ item: 'RSVP response rate', status: 'warning', detail: `${responseRate}% (${responded}/${guests.length})`, suggestion: 'Consider sending reminders to improve response rate.' });
+  } else if (guests.length > 0) {
+    checklist.push({ item: 'RSVP response rate', status: 'pass', detail: `${responseRate}% (${responded}/${guests.length})` });
+  }
+
+  // 5. Dietary info coverage
+  const withDietary = guests.filter((g) => g.dietaryRestrictions && g.dietaryRestrictions.trim() !== '').length;
+  const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in');
+  const confirmedWithoutDietary = confirmed.filter((g) => !g.dietaryRestrictions || g.dietaryRestrictions.trim() === '').length;
+  if (confirmed.length > 0 && confirmedWithoutDietary > confirmed.length * 0.5) {
+    checklist.push({ item: 'Dietary info', status: 'warning', detail: `${confirmedWithoutDietary} confirmed guests have no dietary info recorded`, suggestion: 'Send a follow-up to gather dietary requirements.' });
+  } else {
+    checklist.push({ item: 'Dietary info', status: 'pass', detail: `${withDietary} guests have dietary info recorded` });
+  }
+
+  // 6. Unseated guests
+  const seatedIds = new Set(assignments.map((a) => a.guestId));
+  const unseatedConfirmed = guests.filter(
+    (g) => (g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in') && !seatedIds.has(g.id),
+  );
+  if (unseatedConfirmed.length > 0) {
+    checklist.push({ item: 'Unseated confirmed guests', status: 'fail', detail: `${unseatedConfirmed.length} confirmed guests have no seat`, suggestion: `Run auto_seat_guests to fix ${unseatedConfirmed.length} unseated guests.` });
+  } else if (guests.length > 0 && assignments.length > 0) {
+    checklist.push({ item: 'Unseated confirmed guests', status: 'pass', detail: 'All confirmed guests are seated' });
+  }
+
+  // 7. Capacity check
+  if (tables.length > 0 && guests.length > 0) {
+    const totalCapacity = tables.reduce((sum, t) => sum + t.capacity, 0);
+    const confirmedCount = confirmed.length;
+    if (totalCapacity < confirmedCount) {
+      checklist.push({ item: 'Capacity', status: 'fail', detail: `${totalCapacity} seats for ${confirmedCount} confirmed guests`, suggestion: 'Add more tables or increase table capacities.' });
+    } else {
+      checklist.push({ item: 'Capacity', status: 'pass', detail: `${totalCapacity} seats for ${confirmedCount} confirmed guests (${totalCapacity - confirmedCount} surplus)` });
+    }
+  }
+
+  const passCount = checklist.filter((c) => c.status === 'pass').length;
+  const failCount = checklist.filter((c) => c.status === 'fail').length;
+  const warnCount = checklist.filter((c) => c.status === 'warning').length;
+
+  return json({
+    summary: `Event checklist: ${passCount} pass, ${failCount} fail, ${warnCount} warning out of ${checklist.length} items`,
+    passCount,
+    failCount,
+    warningCount: warnCount,
+    totalItems: checklist.length,
+    checklist,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SUGGEST NEXT ACTIONS tool
+// ---------------------------------------------------------------------------
+
+function suggestNextActionsTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const { guests, tables, assignments, groups } = ctx;
+
+  interface Suggestion {
+    priority: number;
+    action: string;
+    reason: string;
+    tool?: string;
+  }
+
+  const suggestions: Suggestion[] = [];
+
+  // No guests
+  if (guests.length === 0) {
+    suggestions.push({ priority: 1, action: 'Add guests to your event', reason: 'Your event has no guests yet.', tool: 'add_guest or add_guests_bulk' });
+    return json({
+      summary: 'Your event needs guests! Start by adding your guest list.',
+      suggestions: suggestions.slice(0, 5),
+    });
+  }
+
+  // No tables
+  if (tables.length === 0) {
+    suggestions.push({ priority: 1, action: 'Create tables for your venue', reason: 'No tables exist yet — you need tables before seating guests.', tool: 'add_table' });
+  }
+
+  // Low RSVP response rate
+  const responded = guests.filter((g) => g.rsvpStatus !== 'invited').length;
+  const responseRate = guests.length > 0 ? Math.round((responded / guests.length) * 100) : 0;
+  const nonResponders = guests.filter((g) => g.rsvpStatus === 'invited');
+  if (responseRate < 60 && nonResponders.length > 0) {
+    suggestions.push({ priority: 2, action: `Send RSVP reminders to ${nonResponders.length} non-responders`, reason: `Only ${responseRate}% response rate — many guests haven't replied.`, tool: 'send_guest_email with templateType "rsvp_reminder"' });
+  }
+
+  // Many unseated guests
+  const seatedIds = new Set(assignments.map((a) => a.guestId));
+  const unseatedConfirmed = guests.filter(
+    (g) => (g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in') && !seatedIds.has(g.id),
+  );
+  if (unseatedConfirmed.length > 5) {
+    suggestions.push({ priority: 2, action: `Seat ${unseatedConfirmed.length} unseated confirmed guests`, reason: 'These guests are confirmed but have no table assignment.', tool: 'auto_seat_guests' });
+  } else if (unseatedConfirmed.length > 0) {
+    suggestions.push({ priority: 3, action: `Seat ${unseatedConfirmed.length} remaining unseated guest${unseatedConfirmed.length === 1 ? '' : 's'}`, reason: 'A few confirmed guests still need seats.', tool: 'auto_seat_guests or move_guest_to_table' });
+  }
+
+  // Seating exists but may need optimization
+  if (assignments.length > 10) {
+    suggestions.push({ priority: 4, action: 'Run seating optimization', reason: 'Optimize the current arrangement for better relationship satisfaction.', tool: 'run_refinement_loop' });
+  }
+
+  // No relationship groups
+  if (groups.length === 0 && guests.length > 5) {
+    suggestions.push({ priority: 5, action: 'Create relationship groups', reason: 'Defining donor-recipient or family groups helps the seating algorithm place people together.', tool: 'create_relationship_group' });
+  }
+
+  // Missing dietary info on confirmed guests
+  const confirmedGuests = guests.filter((g) => g.rsvpStatus === 'confirmed' || g.rsvpStatus === 'checked_in');
+  const confirmedWithoutDietary = confirmedGuests.filter((g) => !g.dietaryRestrictions || g.dietaryRestrictions.trim() === '').length;
+  if (confirmedGuests.length > 0 && confirmedWithoutDietary > confirmedGuests.length * 0.5) {
+    suggestions.push({ priority: 4, action: `Gather dietary info for ${confirmedWithoutDietary} confirmed guests`, reason: 'More than half of confirmed guests have no dietary information recorded.', tool: 'send_guest_email with templateType "event_update"' });
+  }
+
+  // Sort by priority
+  suggestions.sort((a, b) => a.priority - b.priority);
+
+  const top = suggestions.slice(0, 5);
+
+  return json({
+    summary: `${top.length} suggested next action${top.length === 1 ? '' : 's'} for your event`,
+    suggestions: top,
+  });
 }
 
 // ---------------------------------------------------------------------------

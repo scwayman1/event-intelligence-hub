@@ -510,9 +510,14 @@ export default function EventLayout() {
       pushUndoSnapshot();
       // Re-number tables by spatial position after move/resize
       if (dragging) {
-        const draggedObj = objects.find((o) => o.id === dragging.id);
+        const freshObjects = useEventStore.getState().layoutObjects;
+        const draggedObj = freshObjects.find((o) => o.id === dragging.id);
         if (draggedObj && (draggedObj.type === 'round_table' || draggedObj.type === 'rect_table')) {
-          requestAnimationFrame(() => renumberTablesByPosition(versionId));
+          if (renumberRafRef.current) cancelAnimationFrame(renumberRafRef.current);
+          renumberRafRef.current = requestAnimationFrame(() => {
+            renumberTablesByPosition(versionId);
+            renumberRafRef.current = null;
+          });
         }
       }
     }
@@ -527,6 +532,7 @@ export default function EventLayout() {
       const w = Math.abs(drawing.currentX - drawing.startX);
       const h = Math.abs(drawing.currentY - drawing.startY);
       if (w > 5 && h > 5) {
+        const freshObjects = useEventStore.getState().layoutObjects;
         const id = `lo-${crypto.randomUUID()}`;
         addLayoutObject({
           id,
@@ -543,14 +549,14 @@ export default function EventLayout() {
           category: 'layout',
           locked: false,
           visible: true,
-          zIndex: objects.length,
+          zIndex: freshObjects.filter((o) => o.versionId === versionId).length,
         });
         setSelectedId(id);
       }
       setDrawing(null);
       setDrawingTool(null);
     }
-  }, [drawing, drawingTool, versionId, objects, addLayoutObject, snapValue, dragging, pushUndoSnapshot, renumberTablesByPosition]);
+  }, [drawing, drawingTool, versionId, addLayoutObject, snapValue, dragging, pushUndoSnapshot, renumberTablesByPosition]);
 
   // Canvas mousedown for drawing mode
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
@@ -621,7 +627,11 @@ export default function EventLayout() {
         removeLayoutObject(selectedId);
         setSelectedId(null);
         if (wasTable) {
-          requestAnimationFrame(() => renumberTablesByPosition(versionId));
+          if (renumberRafRef.current) cancelAnimationFrame(renumberRafRef.current);
+          renumberRafRef.current = requestAnimationFrame(() => {
+            renumberTablesByPosition(versionId);
+            renumberRafRef.current = null;
+          });
         }
       }
     };
@@ -702,7 +712,11 @@ export default function EventLayout() {
 
     // Renumber all tables by spatial position after adding
     if (isTable) {
-      requestAnimationFrame(() => renumberTablesByPosition(versionId));
+      if (renumberRafRef.current) cancelAnimationFrame(renumberRafRef.current);
+      renumberRafRef.current = requestAnimationFrame(() => {
+        renumberTablesByPosition(versionId);
+        renumberRafRef.current = null;
+      });
     }
   };
 
@@ -1130,7 +1144,7 @@ export default function EventLayout() {
           onMouseMove={handleCanvasMouseMove}
           onMouseDown={handleCanvasMouseDown}
           onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onMouseLeave={() => { if (!drawing && !drawingTool) handleMouseUp(); }}
           onWheel={(e) => {
             if (!e.ctrlKey && !e.metaKey) return; // only zoom on Ctrl/Cmd + scroll
             e.preventDefault();
