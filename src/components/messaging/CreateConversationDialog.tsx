@@ -86,7 +86,7 @@ export function CreateConversationDialog({
     };
 
     addConversation(conv);
-    onCreated(conv);
+    onCreated?.(conv);
     onOpenChange(false);
 
     // Reset form

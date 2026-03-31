@@ -174,7 +174,7 @@ export function InviteCollaboratorDialog({ open, onOpenChange, eventId }: Invite
               </select>
             </div>
 
-            <Button onClick={handleInvite} disabled={!name.trim() || !email.trim()} size="sm" className="gap-2">
+            <Button onClick={handleInvite} disabled={!userProfile || !name.trim() || !email.trim()} size="sm" className="gap-2">
               <UserPlus className="w-3.5 h-3.5" />
               Send invite
             </Button>

@@ -575,7 +575,7 @@ export function SeatingBoard({
         const tableAssignments = assignments.filter((a) => a.tableId === table.id);
         const tableGuests = tableAssignments
           .map((a) => guests.find((g) => g.id === a.guestId))
-          .filter(Boolean) as Guest[];
+          .filter((g): g is Guest => g !== undefined);
         const isHighlighted = highlightedTableId === table.id;
 
         return (

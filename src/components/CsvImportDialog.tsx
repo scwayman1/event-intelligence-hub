@@ -286,44 +286,51 @@ export function CsvImportDialog({ eventId, orgId, open, onOpenChange }: CsvImpor
 
   async function handleImport() {
     setImporting(true);
-    let added = 0;
-    let updated = 0;
+    try {
+      let added = 0;
+      let updated = 0;
 
-    // Build lookup of existing guests by email (lowercase) for this event
-    const emailIndex = new Map<string, string>();
-    for (const g of existingGuests) {
-      if (g.eventId === eventId && g.email) {
-        emailIndex.set(g.email.toLowerCase(), g.id);
+      // Build lookup of existing guests by email (lowercase) for this event
+      const emailIndex = new Map<string, string>();
+      for (const g of existingGuests) {
+        if (g.eventId === eventId && g.email) {
+          emailIndex.set(g.email.toLowerCase(), g.id);
+        }
       }
-    }
 
-    for (const row of validRows) {
-      if (!row.guest) continue;
+      for (const row of validRows) {
+        if (!row.guest) continue;
 
-      // Check if guest already exists by email match
-      const existingId = row.guest.email
-        ? emailIndex.get(row.guest.email.toLowerCase())
-        : undefined;
+        // Check if guest already exists by email match
+        const existingId = row.guest.email
+          ? emailIndex.get(row.guest.email.toLowerCase())
+          : undefined;
 
-      if (existingId) {
-        // Update existing guest with CSV data (preserves their ID)
-        const { id: _id, ...updates } = row.guest;
-        updateGuest(existingId, updates);
-        updated++;
-      } else {
-        addGuest(row.guest);
-        added++;
+        if (existingId) {
+          // Update existing guest with CSV data (preserves their ID)
+          const { id: _id, ...updates } = row.guest;
+          updateGuest(existingId, updates);
+          updated++;
+        } else {
+          addGuest(row.guest);
+          added++;
+        }
       }
-    }
 
-    setImporting(false);
-    const parts = [];
-    if (added > 0) parts.push(`${added} new`);
-    if (updated > 0) parts.push(`${updated} updated`);
-    toast.success(`Import complete: ${parts.join(', ')} guests!`);
-    setParsed([]);
-    setFileName('');
-    onOpenChange(false);
+      const parts = [];
+      if (added > 0) parts.push(`${added} new`);
+      if (updated > 0) parts.push(`${updated} updated`);
+      toast.success(`Import complete: ${parts.join(', ')} guests!`);
+      setParsed([]);
+      setFileName('');
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(
+        `Import failed: ${error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'}`
+      );
+    } finally {
+      setImporting(false);
+    }
   }
 
   if (!open) return null;

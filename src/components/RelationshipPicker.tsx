@@ -137,7 +137,7 @@ export function RelationshipPicker({ eventId, orgId, selectedMemberships, onMemb
               placeholder="Or type a custom role..."
               value={roleInput}
               onChange={(e) => setRoleInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddToGroup(addingToGroupId, roleInput); } }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!roleInput.trim()) return; handleAddToGroup(addingToGroupId, roleInput); } }}
               className="h-7 text-xs"
             />
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs shrink-0" onClick={() => { setAddingToGroupId(null); setRoleInput(''); }}>

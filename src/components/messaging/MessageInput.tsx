@@ -87,11 +87,16 @@ export function MessageInput({
     if (!files) return;
     for (const file of Array.from(files)) {
       if (file.size > 5 * 1024 * 1024) continue; // Skip >5MB
-      const dataUrl = await new Promise<string>((resolve) => {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => {
+          console.error(`Failed to read file: ${file.name}`, reader.error);
+          reject(reader.error);
+        };
         reader.readAsDataURL(file);
-      });
+      }).catch(() => null);
+      if (!dataUrl) continue;
       setAttachments((prev) => [
         ...prev,
         {
