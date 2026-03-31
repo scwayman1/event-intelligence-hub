@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -12,15 +12,16 @@ export default function JoinInvite() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
 
-  const findInviteByCode = useEventStore((s) => s.findInviteByCode);
   const redeemInvite = useEventStore((s) => s.redeemInvite);
   const setPendingInviteCode = useEventStore((s) => s.setPendingInviteCode);
-  const organizations = useEventStore((s) => s.organizations);
 
   const [status, setStatus] = useState<'loading' | 'not-found' | 'expired' | 'used' | 'already-member' | 'ready' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [orgName, setOrgName] = useState('');
-  const [remoteInvite, setRemoteInvite] = useState<Awaited<ReturnType<typeof fetchTeamInviteByCode>> | undefined>(undefined);
+
+  // Use a ref to prevent the effect from re-running when store data changes
+  // (hydrating org/invite into the store was causing an infinite loop)
+  const resolvedRef = useRef(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -30,14 +31,9 @@ export default function JoinInvite() {
       return;
     }
 
-    // If not logged in:
-    // - If there's already a pendingInviteCode, the user just came from sign-up/sign-in
-    //   and auth state is still propagating. Wait instead of redirecting back.
-    // - Otherwise, store the invite code and redirect to sign-up.
     if (!user) {
       const existingPending = useEventStore.getState().pendingInviteCode;
       if (existingPending === inviteCode) {
-        // Auth is still loading after sign-up — stay on loading screen
         return;
       }
       setPendingInviteCode(inviteCode);
@@ -45,8 +41,12 @@ export default function JoinInvite() {
       return;
     }
 
+    // Only resolve the invite once per mount
+    if (resolvedRef.current) return;
+    resolvedRef.current = true;
+
     // Try local store first, then fall back to Supabase
-    const localInvite = findInviteByCode(inviteCode);
+    const localInvite = useEventStore.getState().findInviteByCode(inviteCode);
     if (localInvite) {
       applyInvite(localInvite);
       return;
@@ -64,14 +64,14 @@ export default function JoinInvite() {
         }
         console.log('[JoinInvite] Found invite in Supabase:', dbInvite.id, 'orgId:', dbInvite.orgId);
         // Hydrate invite into local store so redeemInvite can find it
-        setRemoteInvite(dbInvite);
         useEventStore.setState((s) => {
           const exists = s.teamInvites.some((i) => i.id === dbInvite.id);
           if (exists) return {};
           return { teamInvites: [...s.teamInvites, dbInvite] };
         });
         // Also hydrate the org if not in local store
-        let name = organizations.find((o) => o.id === dbInvite.orgId)?.name;
+        const orgs = useEventStore.getState().organizations;
+        let name = orgs.find((o) => o.id === dbInvite.orgId)?.name;
         if (!name) {
           const { data: orgRow, error: orgError } = await supabase
             .from('organizations')
@@ -82,7 +82,6 @@ export default function JoinInvite() {
             console.error('[JoinInvite] Failed to fetch org:', orgError);
           }
           name = orgRow?.name ?? 'Unknown Organization';
-          // Hydrate org into store so redeemInvite's "already a member" check works
           if (orgRow) {
             const org = {
               id: orgRow.id,
@@ -111,7 +110,7 @@ export default function JoinInvite() {
       });
     return () => { cancelled = true; };
 
-    function applyInvite(invite: NonNullable<typeof localInvite>, overrideName?: string) {
+    function applyInvite(invite: { usedBy?: string | null; expiresAt: string; orgId: string }, overrideName?: string) {
       if (invite.usedBy) {
         setStatus('used');
         return;
@@ -120,11 +119,11 @@ export default function JoinInvite() {
         setStatus('expired');
         return;
       }
-      const org = organizations.find((o) => o.id === invite.orgId);
+      const org = useEventStore.getState().organizations.find((o) => o.id === invite.orgId);
       setOrgName(overrideName ?? org?.name ?? 'Unknown Organization');
       setStatus('ready');
     }
-  }, [authLoading, user, inviteCode, findInviteByCode, organizations, navigate, setPendingInviteCode]);
+  }, [authLoading, user, inviteCode, navigate, setPendingInviteCode]); // removed organizations & findInviteByCode — use getState() instead
 
   function handleJoin() {
     if (!inviteCode) return;
