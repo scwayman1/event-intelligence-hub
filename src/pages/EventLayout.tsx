@@ -463,24 +463,34 @@ export default function EventLayout() {
     const snappedX = snapValue(x);
     const snappedY = snapValue(y);
 
+    // Use fresh state to avoid stale closure during drag
+    const freshObjects = useEventStore.getState().layoutObjects;
+    const draggedObj = freshObjects.find((o) => o.id === dragging.id);
+
     // Smart object-to-object snapping
-    const draggedObj = objects.find((o) => o.id === dragging.id);
     if (draggedObj && snapMode !== 'free') {
       const movingRect = { ...draggedObj, x: snappedX, y: snappedY };
-      const others = objects.filter((o) => o.id !== dragging.id);
+      const others = freshObjects.filter((o) => o.id !== dragging.id && o.versionId === versionId);
       const snapResult = snapToObjects(movingRect, others, 8);
       const finalX = snapResult.guides.find((g) => g.axis === 'x')?.snappedValue ?? snappedX;
       const finalY = snapResult.guides.find((g) => g.axis === 'y')?.snappedValue ?? snappedY;
       updateLayoutObject(dragging.id, { x: finalX, y: finalY });
       setActiveSnapGuides(computeSnapGuides(snapResult));
 
-      // Move contained objects if dragging a tent
+      // Move contained objects if dragging a tent — batch update to avoid cascading re-renders
       if (['tent', 'stage', 'dance_floor'].includes(draggedObj.type)) {
         const dx = finalX - draggedObj.x;
         const dy = finalY - draggedObj.y;
         if (dx !== 0 || dy !== 0) {
-          const moved = moveContainedObjects(draggedObj, dx, dy, objects);
-          moved.forEach((m) => updateLayoutObject(m.id, { x: m.x, y: m.y }));
+          const moved = moveContainedObjects(draggedObj, dx, dy, freshObjects);
+          if (moved.length > 0) {
+            useEventStore.setState((s) => ({
+              layoutObjects: s.layoutObjects.map((o) => {
+                const update = moved.find((m) => m.id === o.id);
+                return update ? { ...o, x: update.x, y: update.y } : o;
+              }),
+            }));
+          }
         }
       }
     } else {
@@ -493,7 +503,7 @@ export default function EventLayout() {
       if (snapHighlightTimer.current) clearTimeout(snapHighlightTimer.current);
       snapHighlightTimer.current = setTimeout(() => setSnappedGridLines({ x: null, y: null }), 300);
     }
-  }, [dragging, resizing, zoom, snapValue, updateLayoutObject, snapMode, showGrid, metersPerPixel, objects]);
+  }, [dragging, resizing, zoom, snapValue, updateLayoutObject, snapMode, showGrid, metersPerPixel, versionId]);
 
   const handleMouseUp = useCallback(() => {
     if (dragging || resizing) {
