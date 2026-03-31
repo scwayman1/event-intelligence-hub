@@ -200,6 +200,7 @@ export function ArrangementPanel({
             <input
               type="number"
               min={0}
+              max={100}
               value={spacing}
               onChange={(e) => {
                 setSpacing(Number(e.target.value));
@@ -218,6 +219,7 @@ export function ArrangementPanel({
               <input
                 type="number"
                 min={0}
+                max={20}
                 value={columns}
                 onChange={(e) => {
                   setColumns(Number(e.target.value));
@@ -237,6 +239,7 @@ export function ArrangementPanel({
               <input
                 type="number"
                 min={0}
+                max={500}
                 value={radius}
                 onChange={(e) => {
                   setRadius(Number(e.target.value));

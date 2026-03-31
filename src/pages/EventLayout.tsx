@@ -1631,7 +1631,7 @@ export default function EventLayout() {
                     {selected.visible ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
                     {selected.visible ? 'Visible' : 'Hidden'}
                   </Button>
-                  <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { removeLayoutObject(selected.id); setSelectedId(null); }}>
+                  <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { if (window.confirm('Delete this layout object?')) { removeLayoutObject(selected.id); setSelectedId(null); } }}>
                     <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
                   </Button>
                 </div>
@@ -1663,7 +1663,7 @@ export default function EventLayout() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={(e) => { e.stopPropagation(); removeLayoutObject(obj.id); if (selectedId === obj.id) setSelectedId(null); }}
+                    onClick={(e) => { e.stopPropagation(); if (window.confirm('Delete this layout object?')) { removeLayoutObject(obj.id); if (selectedId === obj.id) setSelectedId(null); } }}
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>

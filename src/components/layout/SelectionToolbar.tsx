@@ -106,7 +106,7 @@ export function SelectionToolbar({
     {
       label: 'Delete',
       icon: <Trash2 className="h-4 w-4" />,
-      onClick: onDelete,
+      onClick: () => { if (window.confirm('Delete selected objects?')) onDelete(); },
       variant: 'destructive' as const,
     },
   ];

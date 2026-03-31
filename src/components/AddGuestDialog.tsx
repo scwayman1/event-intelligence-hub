@@ -176,7 +176,7 @@ export function AddGuestDialog({ open, onOpenChange, eventId, orgId }: AddGuestD
             </div>
             <div className="space-y-2">
               <Label htmlFor="guest-party">Party size</Label>
-              <Input id="guest-party" type="number" min="1" value={partySize} onChange={(e) => setPartySize(e.target.value)} />
+              <Input id="guest-party" type="number" min="1" max={50} value={partySize} onChange={(e) => setPartySize(e.target.value)} />
             </div>
           </div>
 

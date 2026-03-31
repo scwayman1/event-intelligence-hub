@@ -502,7 +502,7 @@ export default function EventSeating() {
                           />
                         </button>
                         <button
-                          onClick={() => removeSeatingRule(rule.id)}
+                          onClick={() => { if (window.confirm('Remove this seating rule?')) removeSeatingRule(rule.id); }}
                           className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

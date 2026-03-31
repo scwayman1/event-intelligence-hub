@@ -123,6 +123,8 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
               <Input
                 id="evt-attendance"
                 type="number"
+                min={1}
+                max={10000}
                 placeholder="e.g. 200"
                 value={estimatedAttendance}
                 onChange={(e) => setEstimatedAttendance(e.target.value)}

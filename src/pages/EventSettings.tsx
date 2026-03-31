@@ -166,7 +166,7 @@ export default function EventSettings() {
                   {c.status}
                 </span>
                 <button
-                  onClick={() => removeCollaborator(c.id)}
+                  onClick={() => { if (window.confirm('Remove this collaborator?')) removeCollaborator(c.id); }}
                   className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

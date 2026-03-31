@@ -64,9 +64,10 @@ export function CreateConversationDialog({
       (type === 'role_channel' && selectedRole
         ? ROLE_CHANNEL_PRESETS.find((p) => p.role === selectedRole)?.name ?? selectedRole
         : type === 'dm' && selectedParticipants.size === 1
-          ? accounts.find((a) => a.id === [...selectedParticipants][0])
-              ? `${accounts.find((a) => a.id === [...selectedParticipants][0])!.firstName} ${accounts.find((a) => a.id === [...selectedParticipants][0])!.lastName}`
-              : 'Direct Message'
+          ? (() => {
+              const acct = accounts.find((a) => a.id === [...selectedParticipants][0]);
+              return acct ? `${acct.firstName} ${acct.lastName}` : 'Direct Message';
+            })()
           : 'New Conversation');
 
     const now = new Date().toISOString();
