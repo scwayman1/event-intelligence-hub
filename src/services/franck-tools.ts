@@ -2931,6 +2931,10 @@ const TOOL_MAP: Record<
   clear_all_seating: clearAllSeatingTool,
   run_refinement_loop: runRefinementLoopTool,
   analyze_layout: analyzeLayoutTool,
+  send_guest_email: sendGuestEmailTool,
+  export_guest_list: exportGuestListTool,
+  get_event_checklist: getEventChecklistTool,
+  suggest_next_actions: suggestNextActionsTool,
 };
 
 /**
@@ -3049,6 +3053,14 @@ export function summarizeToolResult(toolName: string, result: string): string {
         return `${data.totalWithRestrictions ?? 0} guests with dietary restrictions`;
       case 'update_table':
         return `Updated table: ${(data.fieldsChanged ?? []).join(', ')}`;
+      case 'send_guest_email':
+        return `Sent email to ${data.recipientCount ?? 0} guest${(data.recipientCount ?? 0) === 1 ? '' : 's'}`;
+      case 'export_guest_list':
+        return `Exported ${data.count ?? 0} guests (${data.format ?? 'summary'})`;
+      case 'get_event_checklist':
+        return `Checklist: ${data.passCount ?? 0} pass, ${data.failCount ?? 0} fail, ${data.warningCount ?? 0} warning`;
+      case 'suggest_next_actions':
+        return `${data.suggestions?.length ?? 0} suggested actions`;
       default:
         return `${toolName} completed`;
     }
