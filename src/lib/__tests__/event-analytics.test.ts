@@ -151,6 +151,8 @@ function buildAnalytics(overrides: {
   layoutObjects?: LayoutObject[];
   seatingAssignments?: SeatingAssignment[];
   seatingRules?: SeatingRule[];
+  relationshipGroups?: { id: string; orgId: string; eventId: string; name: string; type: string; createdAt: string }[];
+  relationshipMemberships?: { id: string; groupId: string; guestId: string; role: string }[];
 } = {}): EventAnalytics {
   const event = makeEvent({ id: 'evt-default', activeVersionId: 'ver-default', ...overrides.event });
   return buildEventAnalytics({
@@ -160,6 +162,8 @@ function buildAnalytics(overrides: {
     layoutObjects: overrides.layoutObjects ?? [],
     seatingAssignments: overrides.seatingAssignments ?? [],
     seatingRules: overrides.seatingRules ?? [],
+    relationshipGroups: overrides.relationshipGroups ?? [],
+    relationshipMemberships: overrides.relationshipMemberships ?? [],
   });
 }
 
@@ -801,34 +805,55 @@ describe('buildEventAnalytics', () => {
 
   describe('donor-scholar pairs', () => {
     it('counts donor-scholar pairs seated at the same table', () => {
-      // The hardcoded pairs are: ['g-001','g-006'], ['g-004','g-007'], ['g-003','g-008']
       const guests = [
-        makeGuest({ id: 'g-001', eventId: 'evt-default' }),
-        makeGuest({ id: 'g-006', eventId: 'evt-default' }),
-        makeGuest({ id: 'g-004', eventId: 'evt-default' }),
-        makeGuest({ id: 'g-007', eventId: 'evt-default' }),
+        makeGuest({ id: 'g-001', eventId: 'evt-default', category: 'donor' }),
+        makeGuest({ id: 'g-006', eventId: 'evt-default', category: 'scholarship_recipient' }),
+        makeGuest({ id: 'g-004', eventId: 'evt-default', category: 'donor' }),
+        makeGuest({ id: 'g-007', eventId: 'evt-default', category: 'scholarship_recipient' }),
       ];
       const table = makeTable({ id: 'tbl-pair', versionId: 'ver-default' });
       const assignments = guests.map((g) =>
         makeAssignment({ guestId: g.id, tableId: 'tbl-pair', versionId: 'ver-default' }),
       );
+      // Create a scholarship relationship group with donors and recipients
+      const relationshipGroups = [
+        { id: 'rg-1', orgId: 'org-default', eventId: 'evt-default', name: 'Test Scholarship', type: 'scholarship' as const, createdAt: '2024-01-01' },
+        { id: 'rg-2', orgId: 'org-default', eventId: 'evt-default', name: 'Other Scholarship', type: 'scholarship' as const, createdAt: '2024-01-01' },
+      ];
+      const relationshipMemberships = [
+        { id: 'rm-1', groupId: 'rg-1', guestId: 'g-001', role: 'Donor' },
+        { id: 'rm-2', groupId: 'rg-1', guestId: 'g-006', role: 'Recipient' },
+        { id: 'rm-3', groupId: 'rg-2', guestId: 'g-004', role: 'Donor' },
+        { id: 'rm-4', groupId: 'rg-2', guestId: 'g-007', role: 'Recipient' },
+        // Third group with no seating (for targets count)
+        { id: 'rm-5', groupId: 'rg-1', guestId: 'g-004', role: 'Donor' },
+      ];
       const result = buildAnalytics({
         guests,
         layoutObjects: [table],
         seatingAssignments: assignments,
+        relationshipGroups,
+        relationshipMemberships,
       });
-      expect(result.donorScholarPairsSeated).toBe(2);
+      expect(result.donorScholarPairsSeated).toBe(3);
       expect(result.donorScholarPairTargets).toBe(3);
     });
 
     it('returns 0 when donors and scholars are at different tables', () => {
       const guests = [
-        makeGuest({ id: 'g-001', eventId: 'evt-default' }),
-        makeGuest({ id: 'g-006', eventId: 'evt-default' }),
+        makeGuest({ id: 'g-001', eventId: 'evt-default', category: 'donor' }),
+        makeGuest({ id: 'g-006', eventId: 'evt-default', category: 'scholarship_recipient' }),
       ];
       const tables = [
         makeTable({ id: 'tbl-d1', versionId: 'ver-default' }),
         makeTable({ id: 'tbl-d2', versionId: 'ver-default' }),
+      ];
+      const relationshipGroups = [
+        { id: 'rg-1', orgId: 'org-default', eventId: 'evt-default', name: 'Test Scholarship', type: 'scholarship' as const, createdAt: '2024-01-01' },
+      ];
+      const relationshipMemberships = [
+        { id: 'rm-1', groupId: 'rg-1', guestId: 'g-001', role: 'Donor' },
+        { id: 'rm-2', groupId: 'rg-1', guestId: 'g-006', role: 'Recipient' },
       ];
       const assignments = [
         makeAssignment({ guestId: 'g-001', tableId: 'tbl-d1', versionId: 'ver-default' }),
@@ -838,6 +863,8 @@ describe('buildEventAnalytics', () => {
         guests,
         layoutObjects: tables,
         seatingAssignments: assignments,
+        relationshipGroups,
+        relationshipMemberships,
       });
       expect(result.donorScholarPairsSeated).toBe(0);
     });
