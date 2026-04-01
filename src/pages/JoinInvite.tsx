@@ -63,11 +63,12 @@ export default function JoinInvite() {
           return;
         }
         console.log('[JoinInvite] Found invite in Supabase:', dbInvite.id, 'orgId:', dbInvite.orgId);
-        // Hydrate invite into local store so redeemInvite can find it
+        // Hydrate invite into local store so redeemInvite can find it.
+        // Always replace with fresh DB data in case a prior attempt left
+        // the invite marked as used locally but the DB write failed.
         useEventStore.setState((s) => {
-          const exists = s.teamInvites.some((i) => i.id === dbInvite.id);
-          if (exists) return {};
-          return { teamInvites: [...s.teamInvites, dbInvite] };
+          const filtered = s.teamInvites.filter((i) => i.id !== dbInvite.id);
+          return { teamInvites: [...filtered, dbInvite] };
         });
         // Also hydrate the org if not in local store
         const orgs = useEventStore.getState().organizations;
@@ -130,15 +131,15 @@ export default function JoinInvite() {
     const result = redeemInvite(inviteCode);
     if (result.success) {
       setStatus('success');
-      // Redirect to dashboard after brief delay
       setTimeout(() => navigate('/', { replace: true }), 1500);
+    } else if (result.error?.includes('already a member')) {
+      // Already a member — ensure onboarding is complete and redirect
+      useEventStore.setState({ hasCompletedOnboarding: true, pendingInviteCode: null });
+      setStatus('already-member');
+      setTimeout(() => navigate('/', { replace: true }), 2000);
     } else {
-      if (result.error?.includes('already a member')) {
-        setStatus('already-member');
-      } else {
-        setStatus('error');
-        setErrorMessage(result.error ?? 'Something went wrong.');
-      }
+      setStatus('error');
+      setErrorMessage(result.error ?? 'Something went wrong.');
     }
   }
 

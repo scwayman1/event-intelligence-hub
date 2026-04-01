@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Sprout, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,6 @@ const ROLE_OPTIONS = [
 ];
 
 export default function SignUp() {
-  const navigate = useNavigate();
   const { signUp, signInWithGoogle } = useAuthContext();
   const pendingInviteCode = useEventStore((s) => s.pendingInviteCode);
 
@@ -68,16 +67,9 @@ export default function SignUp() {
       return;
     }
 
-    if (pendingInviteCode) {
-      // After signup, Supabase's onAuthStateChange needs a moment to fire
-      // and propagate the user state. Delay navigation so JoinInvite sees
-      // the authenticated user instead of redirecting back to sign-up.
-      setTimeout(() => {
-        navigate(`/join/${pendingInviteCode}`, { replace: true });
-      }, 600);
-    } else {
-      navigate('/welcome');
-    }
+    // Navigation is handled by RedirectIfSignedIn — it checks pendingInviteCode
+    // and redirects to /join/:code or /welcome as appropriate.
+    // No manual navigation needed here; onAuthStateChange will trigger re-render.
   }
 
   async function handleGoogleSignUp() {

@@ -48,7 +48,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 /** Redirects to /welcome if the user hasn't completed onboarding */
 function RequireOnboarding({ children }: { children: React.ReactNode }) {
   const hasCompletedOnboarding = useEventStore((s) => s.hasCompletedOnboarding);
-  if (!hasCompletedOnboarding) return <Navigate to="/welcome" replace />;
+  const pendingInviteCode = useEventStore((s) => s.pendingInviteCode);
+  // If there's a pending invite, redirect there instead of /welcome
+  if (!hasCompletedOnboarding) {
+    if (pendingInviteCode) return <Navigate to={`/join/${pendingInviteCode}`} replace />;
+    return <Navigate to="/welcome" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -63,6 +68,7 @@ function RedirectIfOnboarded({ children }: { children: React.ReactNode }) {
 function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
   const { user, loading, syncing } = useAuthContext();
   const hasCompletedOnboarding = useEventStore((s) => s.hasCompletedOnboarding);
+  const pendingInviteCode = useEventStore((s) => s.pendingInviteCode);
   if (loading || syncing) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -71,6 +77,10 @@ function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
     );
   }
   if (user) {
+    // If there's a pending invite, redirect to the invite page first
+    if (pendingInviteCode) {
+      return <Navigate to={`/join/${pendingInviteCode}`} replace />;
+    }
     return <Navigate to={hasCompletedOnboarding ? "/" : "/welcome"} replace />;
   }
   return <>{children}</>;

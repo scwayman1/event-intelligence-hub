@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Sprout, LogIn, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,6 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useEventStore } from '@/data/store';
 
 export default function SignIn() {
-  const navigate = useNavigate();
   const { signIn, signInWithGoogle } = useAuthContext();
   const pendingInviteCode = useEventStore((s) => s.pendingInviteCode);
 
@@ -33,14 +32,9 @@ export default function SignIn() {
 
     if (authError) {
       setError(authError.message);
-    } else if (pendingInviteCode) {
-      // Delay to let onAuthStateChange propagate user state
-      setTimeout(() => {
-        navigate(`/join/${pendingInviteCode}`, { replace: true });
-      }, 600);
-    } else {
-      navigate('/');
     }
+    // Navigation is handled by RedirectIfSignedIn — it checks pendingInviteCode
+    // and redirects to /join/:code or / as appropriate.
   }
 
   async function handleGoogleSignIn() {

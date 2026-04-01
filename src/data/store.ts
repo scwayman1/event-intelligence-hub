@@ -403,8 +403,13 @@ export const useEventStore = create<EventStore>()(
       pendingInviteCode: null,
       hasCompletedOnboarding: true,
     });
-    dbSync(() => db.upsertTeamInvite(usedInvite));
-    dbSync(() => db.upsertOrgMember(newMember));
+    // IMPORTANT: Insert org member FIRST, then update invite.
+    // The team_invites UPDATE RLS policy requires is_org_member(org_id),
+    // so the membership must exist before the invite can be marked as used.
+    dbSync(async () => {
+      await db.upsertOrgMember(newMember);
+      await db.upsertTeamInvite(usedInvite);
+    });
 
     return { success: true, orgId: invite.orgId };
   },
