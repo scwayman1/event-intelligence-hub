@@ -15,14 +15,14 @@ const statusConfig: Record<string, { color: string; icon: React.ElementType }> =
 
 export default function EventVersions() {
   const { eventId } = useParams();
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const versions = useEventStore((s) => s.versions);
   const addVersion = useEventStore((s) => s.addVersion);
   const updateEvent = useEventStore((s) => s.updateEvent);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
 
-  const event = events.find((e) => e.id === eventId);
+  const event = getOrgEvents().find((e) => e.id === eventId);
   const eventVersions = versions.filter((v) => v.eventId === eventId);
 
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;

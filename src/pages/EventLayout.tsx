@@ -237,7 +237,7 @@ const objectPalette: { type: LayoutObjectType; label: string }[] = [
 export default function EventLayout() {
   const { eventId } = useParams();
   const { showInspector } = useOutletContext<LayoutOutletContext>();
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const versions = useEventStore((s) => s.versions);
   const updateVersion = useEventStore((s) => s.updateVersion);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
@@ -252,7 +252,7 @@ export default function EventLayout() {
   const relationshipMemberships = useEventStore((s) => s.relationshipMemberships);
   const getTableGuests = useEventStore((s) => s.getTableGuests);
 
-  const event = events.find((e) => e.id === eventId);
+  const event = getOrgEvents().find((e) => e.id === eventId);
   const versionId = event?.activeVersionId || '';
   const activeVersion = versions.find((v) => v.id === versionId);
   const objects = layoutObjects.filter((o) => o.versionId === versionId);

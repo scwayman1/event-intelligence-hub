@@ -41,7 +41,7 @@ const rsvpColors: Record<RSVPStatus, string> = {
 
 export default function EventGuests() {
   const { eventId } = useParams();
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const guests = useEventStore((s) => s.guests);
   const versions = useEventStore((s) => s.versions);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
@@ -49,7 +49,7 @@ export default function EventGuests() {
   const seatingRules = useEventStore((s) => s.seatingRules);
   const getGuestRelationships = useEventStore((s) => s.getGuestRelationships);
 
-  const event = events.find((item) => item.id === eventId);
+  const event = getOrgEvents().find((item) => item.id === eventId);
   const analytics = event
     ? buildEventAnalytics({ event, guests, versions, layoutObjects, seatingAssignments, seatingRules })
     : null;

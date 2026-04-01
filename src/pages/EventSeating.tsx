@@ -37,7 +37,7 @@ const RSVP_TABS: { key: RsvpFilterTab; label: string }[] = [
 
 export default function EventSeating() {
   const { eventId } = useParams();
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const guests = useEventStore((s) => s.guests);
   const versions = useEventStore((s) => s.versions);
   const layoutObjects = useEventStore((s) => s.layoutObjects);
@@ -63,7 +63,7 @@ export default function EventSeating() {
   const [seatSearchFocused, setSeatSearchFocused] = useState(false);
   const seatSearchRef = useRef<HTMLInputElement>(null);
 
-  const event = events.find((item) => item.id === eventId);
+  const event = getOrgEvents().find((item) => item.id === eventId);
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
   const analytics = buildEventAnalytics({

@@ -18,7 +18,7 @@ function MetricCard({ label, value, icon: Icon, accent }: { label: string; value
 
 export default function EventDashboard() {
   const { eventId } = useParams();
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const getOrgGuests = useEventStore((s) => s.getOrgGuests);
   const guests = getOrgGuests();
   const versions = useEventStore((s) => s.versions);
@@ -26,7 +26,7 @@ export default function EventDashboard() {
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
 
-  const event = events.find((e) => e.id === eventId);
+  const event = getOrgEvents().find((e) => e.id === eventId);
   if (!event) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
   const analytics = buildEventAnalytics({ event, guests, versions, layoutObjects, seatingAssignments, seatingRules });

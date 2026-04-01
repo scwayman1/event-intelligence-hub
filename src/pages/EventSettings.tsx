@@ -24,12 +24,12 @@ const roleLabels: Record<CollaboratorRole, string> = {
 
 export default function EventSettings() {
   const { eventId } = useParams();
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const updateEvent = useEventStore((s) => s.updateEvent);
   const userProfile = useEventStore((s) => s.userProfile);
   const getEventCollaborators = useEventStore((s) => s.getEventCollaborators);
   const removeCollaborator = useEventStore((s) => s.removeCollaborator);
-  const event = events.find((e) => e.id === eventId);
+  const event = getOrgEvents().find((e) => e.id === eventId);
   const collaborators = eventId ? getEventCollaborators(eventId) : [];
 
   const [showInvite, setShowInvite] = useState(false);

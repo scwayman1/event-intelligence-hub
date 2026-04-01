@@ -62,7 +62,7 @@ export default function EventOrchestrator() {
   const navigate = useNavigate();
   const store = useEventStore();
 
-  const event = store.events.find((e) => e.id === eventId);
+  const event = store.getOrgEvents().find((e) => e.id === eventId);
   const eventGuests = useMemo(
     () => store.guests.filter((g) => g.eventId === eventId),
     [store.guests, eventId],

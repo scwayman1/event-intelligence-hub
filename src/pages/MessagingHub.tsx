@@ -29,7 +29,7 @@ const STREAM_TABS: { key: StreamTab; label: string; icon: React.ReactNode }[] = 
 export default function MessagingHub() {
   const { eventId } = useParams();
   const userProfile = useEventStore((s) => s.userProfile);
-  const events = useEventStore((s) => s.events);
+  const getOrgEvents = useEventStore((s) => s.getOrgEvents);
   const getUserConversations = useEventStore((s) => s.getUserConversations);
   const getEventConversations = useEventStore((s) => s.getEventConversations);
   const getUnreadAlerts = useEventStore((s) => s.getUnreadAlerts);
@@ -41,7 +41,8 @@ export default function MessagingHub() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   const userId = userProfile?.id ?? '';
-  const event = events.find((e) => e.id === eventId);
+  const orgEvents = getOrgEvents();
+  const event = orgEvents.find((e) => e.id === eventId);
 
   // Get conversations — scoped to event if we have one, otherwise all user convos
   const conversations = eventId
@@ -52,10 +53,10 @@ export default function MessagingHub() {
   const unreadMessages = getTotalUnreadCount(userId);
 
   // Default to first event if no eventId for guest comms
-  const guestEventId = eventId ?? events[0]?.id ?? '';
+  const guestEventId = eventId ?? orgEvents[0]?.id ?? '';
 
   // If there are no events and no eventId param, prompt user to create one
-  if (events.length === 0 && !eventId) {
+  if (orgEvents.length === 0 && !eventId) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center space-y-3">
