@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { UserPlus, Trash2, Shield, Eye, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import type { CollaboratorRole } from '@/types/events';
 
 const roleOptions: { value: CollaboratorRole; label: string; description: string; icon: React.ReactNode }[] = [
@@ -33,22 +34,31 @@ export function InviteCollaboratorDialog({ open, onOpenChange, eventId }: Invite
   const selectClasses = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
   function handleInvite() {
-    if (!name.trim() || !email.trim() || !userProfile) return;
+    if (!userProfile) return;
+    if (!name.trim() || !email.trim()) {
+      toast.error('Name and email are required.');
+      return;
+    }
 
-    addCollaborator({
-      id: `collab-${crypto.randomUUID().slice(0, 8)}`,
-      eventId,
-      email: email.trim().toLowerCase(),
-      name: name.trim(),
-      role,
-      invitedBy: userProfile.id,
-      invitedAt: new Date().toISOString(),
-      status: 'pending',
-    });
+    try {
+      addCollaborator({
+        id: `collab-${crypto.randomUUID().slice(0, 8)}`,
+        eventId,
+        email: email.trim().toLowerCase(),
+        name: name.trim(),
+        role,
+        invitedBy: userProfile.id,
+        invitedAt: new Date().toISOString(),
+        status: 'pending',
+      });
 
-    setName('');
-    setEmail('');
-    setRole('coordinator');
+      toast.success(`Invited ${name.trim()}`);
+      setName('');
+      setEmail('');
+      setRole('coordinator');
+    } catch {
+      toast.error('Failed to send invite');
+    }
   }
 
   const roleLabels: Record<CollaboratorRole, string> = {

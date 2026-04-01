@@ -394,7 +394,7 @@ export default function EventOrchestrator() {
                         <p className="text-sm font-medium">{g.firstName} {g.lastName}</p>
                         <p className="text-xs text-muted-foreground capitalize">{g.category.replace(/_/g, ' ')}{g.organization ? ` · ${g.organization}` : ''}</p>
                       </div>
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => toast.info(`Reminder for ${g.firstName} — email integration coming soon`)}>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled title="Email integration coming soon">
                         <Send className="w-3 h-3" />
                         Remind
                       </Button>

@@ -35,7 +35,7 @@ export default function EventIntegrations() {
       {/* Quick actions */}
       <div className="flex gap-3 mb-8">
         <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate(`/events/${eventId}/guests`)}><Upload className="w-3.5 h-3.5" />Import Guests</Button>
-        <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Export seating coming soon')}><Download className="w-3.5 h-3.5" />Export Seating</Button>
+        <Button variant="outline" size="sm" className="gap-2" disabled title="Export seating coming soon"><Download className="w-3.5 h-3.5" />Export Seating</Button>
       </div>
 
       {/* Integration cards */}

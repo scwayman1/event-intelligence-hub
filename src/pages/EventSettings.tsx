@@ -50,8 +50,12 @@ export default function EventSettings() {
 
   function handleSave() {
     if (!eventId || !hasChanges) return;
-    updateEvent(eventId, { name, date, time, venue, venueAddress });
-    toast.success('Event settings saved!');
+    try {
+      updateEvent(eventId, { name, date, time, venue, venueAddress });
+      toast.success('Event settings saved!');
+    } catch {
+      toast.error('Failed to save event settings');
+    }
   }
 
   function handleExportGuestCSV() {
@@ -187,7 +191,7 @@ export default function EventSettings() {
           <h3 className="text-sm font-semibold text-foreground mb-4">Export</h3>
           <div className="flex gap-3">
             <Button variant="outline" size="sm" onClick={handleExportGuestCSV}>Export Guest List (CSV)</Button>
-            <Button variant="outline" size="sm" onClick={() => toast.info('PDF export coming soon')}>Export Seating Chart (PDF)</Button>
+            <Button variant="outline" size="sm" disabled title="PDF export coming soon">Export Seating Chart (PDF)</Button>
             <Button variant="outline" size="sm" onClick={() => window.print()}>Print Layout</Button>
           </div>
         </section>

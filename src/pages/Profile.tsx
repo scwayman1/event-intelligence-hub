@@ -163,13 +163,17 @@ export default function Profile() {
 
   async function handleSignOutAll() {
     setSigningOutAll(true);
-    const { error } = await supabase.auth.signOut({ scope: 'global' });
-    setSigningOutAll(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      navigate('/sign-in');
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'global' });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        navigate('/sign-in');
+      }
+    } catch {
+      toast.error('Failed to sign out. Please try again.');
+    } finally {
+      setSigningOutAll(false);
     }
   }
 

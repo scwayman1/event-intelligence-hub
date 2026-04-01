@@ -67,7 +67,7 @@ export default function ForgotPassword() {
         ) : (
           <form onSubmit={handleSubmit} className="glass-panel p-6 space-y-4">
             {error && (
-              <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive">
+              <div role="alert" className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive">
                 {error}
               </div>
             )}

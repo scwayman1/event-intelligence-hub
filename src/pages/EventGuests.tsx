@@ -85,7 +85,7 @@ export default function EventGuests() {
     return result;
   }, [analytics]);
 
-  const allEventGuests = guests.filter((g) => g.eventId === eventId);
+  const allEventGuests = useMemo(() => guests.filter((g) => g.eventId === eventId), [guests, eventId]);
   const stats = {
     total: allEventGuests.length,
     confirmed: allEventGuests.filter((g) => g.rsvpStatus === 'confirmed').length,
@@ -94,8 +94,7 @@ export default function EventGuests() {
     waitlist: allEventGuests.filter((g) => g.rsvpStatus === 'waitlist').length,
   };
 
-  const allEventGuests2 = useMemo(() => guests.filter((g) => g.eventId === eventId), [guests, eventId]);
-  const allTags = useMemo(() => collectAllTags(allEventGuests2), [allEventGuests2]);
+  const allTags = useMemo(() => collectAllTags(allEventGuests), [allEventGuests]);
 
   function addTagToGuest(guestId: string, tag: string) {
     const guest = guests.find((g) => g.id === guestId);

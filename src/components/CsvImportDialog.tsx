@@ -346,7 +346,7 @@ export function CsvImportDialog({ eventId, orgId, open, onOpenChange }: CsvImpor
             <FileSpreadsheet className="w-5 h-5 text-primary" />
             <h2 className="text-lg font-semibold">Import Guests from CSV</h2>
           </div>
-          <button onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-foreground">
+          <button onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>

@@ -36,19 +36,24 @@ export default function EventVersions() {
         </div>
         <Button size="sm" className="gap-2" onClick={() => {
           if (!eventId) return;
-          const versionId = `ver-${crypto.randomUUID().slice(0, 8)}`;
-          const now = new Date().toISOString();
-          const versionNumber = eventVersions.length + 1;
-          addVersion({
-            id: versionId,
-            eventId,
-            name: `Version ${versionNumber}`,
-            status: 'draft',
-            createdAt: now,
-            updatedAt: now,
-            createdBy: 'User',
-            notes: '',
-          });
+          try {
+            const versionId = `ver-${crypto.randomUUID().slice(0, 8)}`;
+            const now = new Date().toISOString();
+            const versionNumber = eventVersions.length + 1;
+            addVersion({
+              id: versionId,
+              eventId,
+              name: `Version ${versionNumber}`,
+              status: 'draft',
+              createdAt: now,
+              updatedAt: now,
+              createdBy: 'User',
+              notes: '',
+            });
+            toast.success(`Created Version ${versionNumber}`);
+          } catch {
+            toast.error('Failed to create version');
+          }
         }}><Plus className="w-4 h-4" />New Version</Button>
       </div>
 
@@ -86,19 +91,23 @@ export default function EventVersions() {
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" className="text-xs" onClick={() => {
                     if (!eventId) return;
-                    const newId = `ver-${crypto.randomUUID().slice(0, 8)}`;
-                    const now = new Date().toISOString();
-                    addVersion({
-                      id: newId,
-                      eventId,
-                      name: `${version.name} (Copy)`,
-                      status: 'draft',
-                      createdAt: now,
-                      updatedAt: now,
-                      createdBy: version.createdBy,
-                      notes: version.notes,
-                    });
-                    toast.success(`Duplicated "${version.name}"`);
+                    try {
+                      const newId = `ver-${crypto.randomUUID().slice(0, 8)}`;
+                      const now = new Date().toISOString();
+                      addVersion({
+                        id: newId,
+                        eventId,
+                        name: `${version.name} (Copy)`,
+                        status: 'draft',
+                        createdAt: now,
+                        updatedAt: now,
+                        createdBy: version.createdBy,
+                        notes: version.notes,
+                      });
+                      toast.success(`Duplicated "${version.name}"`);
+                    } catch {
+                      toast.error('Failed to duplicate version');
+                    }
                   }}><Copy className="w-3.5 h-3.5 mr-1" />Duplicate</Button>
                   {!isActive && <Button variant="outline" size="sm" className="text-xs" onClick={() => {
                     if (!eventId) return;
