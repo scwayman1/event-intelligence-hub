@@ -10,7 +10,7 @@ import { seedDonors, seedRecipients, seedAllGuests, seedRelationshipGroups, seed
 
 const VALID_CATEGORIES: Set<string> = new Set([
   'donor', 'scholarship_recipient', 'family', 'board_member',
-  'vip', 'staff', 'sponsor', 'volunteer', 'other',
+  'vip', 'staff', 'sponsor', 'volunteer', 'dignitary', 'other',
 ]);
 
 const CATEGORY_ALIASES: Record<string, GuestCategory> = {

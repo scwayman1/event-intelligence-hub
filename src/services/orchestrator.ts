@@ -60,6 +60,7 @@ const ALL_GUEST_CATEGORIES: GuestCategory[] = [
   'staff',
   'sponsor',
   'volunteer',
+  'dignitary',
   'other',
 ];
 

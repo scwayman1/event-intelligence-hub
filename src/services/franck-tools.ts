@@ -105,7 +105,7 @@ function validateNumber(
   return null;
 }
 
-const VALID_CATEGORIES: GuestCategory[] = ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'other'];
+const VALID_CATEGORIES: GuestCategory[] = ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'dignitary', 'other'];
 
 const CATEGORY_ALIASES: Record<string, GuestCategory> = {
   donor: 'donor', donors: 'donor',
@@ -118,6 +118,7 @@ const CATEGORY_ALIASES: Record<string, GuestCategory> = {
   staff: 'staff',
   sponsor: 'sponsor',
   volunteer: 'volunteer',
+  dignitary: 'dignitary',
   other: 'other',
 };
 
@@ -978,6 +979,7 @@ function getRsvpSummaryTool(
     staff: 'staff',
     sponsor: 'sponsors',
     volunteer: 'volunteers',
+    dignitary: 'dignitaries',
     other: 'other',
   };
   const categorySummaryByStatus: Record<string, string> = {};

@@ -94,7 +94,7 @@ export function useSupabaseSync() {
       const normalizedGuests = guests.map((g) => {
         const rawCat = (g.category ?? 'other').toLowerCase().replace(/\s+/g, '_');
         const rawRsvp = (g.rsvpStatus ?? 'invited').toLowerCase().replace(/\s+/g, '_');
-        const CATS = new Set(['donor','scholarship_recipient','family','board_member','vip','staff','sponsor','volunteer','other']);
+        const CATS = new Set(['donor','scholarship_recipient','family','board_member','vip','staff','sponsor','volunteer','dignitary','other']);
         const RSVPS = new Set(['invited','confirmed','declined','waitlist','checked_in']);
         const cat = CATS.has(rawCat) ? rawCat : 'other';
         const rsvp = RSVPS.has(rawRsvp) ? rawRsvp : 'invited';

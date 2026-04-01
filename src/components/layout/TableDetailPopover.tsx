@@ -12,6 +12,7 @@ const categoryStyles: Record<GuestCategory, { label: string; color: string }> = 
   staff: { label: 'Staff', color: 'bg-sky-100 text-sky-800 border-sky-300' },
   sponsor: { label: 'Sponsor', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
   volunteer: { label: 'Volunteer', color: 'bg-teal-100 text-teal-800 border-teal-300' },
+  dignitary: { label: 'Dignitary', color: 'bg-purple-100 text-purple-800 border-purple-300' },
   other: { label: 'Guest', color: 'bg-stone-100 text-stone-700 border-stone-300' },
 };
 

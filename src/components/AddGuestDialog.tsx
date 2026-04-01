@@ -18,6 +18,7 @@ const categoryOptions: { value: GuestCategory; label: string }[] = [
   { value: 'staff', label: 'Staff' },
   { value: 'sponsor', label: 'Sponsor' },
   { value: 'volunteer', label: 'Volunteer' },
+  { value: 'dignitary', label: 'Dignitary' },
   { value: 'other', label: 'Other' },
 ];
 
