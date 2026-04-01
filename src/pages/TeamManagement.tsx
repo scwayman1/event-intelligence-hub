@@ -50,6 +50,7 @@ export default function TeamManagement() {
   const members = activeOrgId ? getOrgMembers(activeOrgId) : [];
   const invites = activeOrgId ? getOrgInvites(activeOrgId) : [];
   const pendingInvites = invites.filter((i) => !i.usedBy && new Date(i.expiresAt) > new Date());
+  const expiredOrUsedInvites = invites.filter((i) => i.usedBy || new Date(i.expiresAt) <= new Date());
   const currentUserMember = members.find((m) => m.userId === user?.id);
   const isOwner = currentUserMember?.role === 'owner';
 
@@ -240,6 +241,42 @@ export default function TeamManagement() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Expired / Used Invites */}
+      {isOwner && expiredOrUsedInvites.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Past Invites ({expiredOrUsedInvites.length})
+          </h2>
+          <div className="space-y-2">
+            {expiredOrUsedInvites.map((invite) => (
+              <div key={invite.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card opacity-60">
+                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <Link2 className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {invite.usedBy ? 'Used' : 'Expired'}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-mono truncate">
+                    /join/{invite.inviteCode.slice(0, 8)}...
+                  </p>
+                </div>
+                <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${ROLE_BADGE_COLORS[invite.role]}`}>
+                  {ROLE_LABELS[invite.role]}
+                </span>
+                <button
+                  onClick={() => handleRevokeInvite(invite.id)}
+                  className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                  title="Delete invite"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
