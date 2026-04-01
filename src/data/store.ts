@@ -237,31 +237,36 @@ export const useEventStore = create<EventStore>()(
     return { success: true };
   },
 
-  signOut: () => set({
-    userProfile: null,
-    organizations: [],
-    activeOrgId: null,
-    events: [],
-    guests: [],
-    versions: [],
-    layoutObjects: [],
-    seatingAssignments: [],
-    seatingRules: [],
-    relationshipGroups: [],
-    relationshipMemberships: [],
-    collaborators: [],
-    teamInvites: [],
-    orgMembers: [],
-    pendingInviteCode: null,
-    hasCompletedOnboarding: false,
-    // Clear messaging state
-    conversations: [],
-    messages: [],
-    readReceipts: [],
-    guestMessages: [],
-    messageTemplates: [],
-    systemAlerts: [],
-  }),
+  signOut: () => {
+    // Preserve pendingInviteCode across sign-out so that the invite flow
+    // survives the unauthenticated→authenticated transition.
+    const { pendingInviteCode } = get();
+    set({
+      userProfile: null,
+      organizations: [],
+      activeOrgId: null,
+      events: [],
+      guests: [],
+      versions: [],
+      layoutObjects: [],
+      seatingAssignments: [],
+      seatingRules: [],
+      relationshipGroups: [],
+      relationshipMemberships: [],
+      collaborators: [],
+      teamInvites: [],
+      orgMembers: [],
+      pendingInviteCode,
+      hasCompletedOnboarding: false,
+      // Clear messaging state
+      conversations: [],
+      messages: [],
+      readReceipts: [],
+      guestMessages: [],
+      messageTemplates: [],
+      systemAlerts: [],
+    });
+  },
 
   // ── Collaborators ──
   addCollaborator: (collab) => {
