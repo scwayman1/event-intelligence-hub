@@ -131,12 +131,19 @@ export default function JoinInvite() {
     const result = redeemInvite(inviteCode);
     if (result.success) {
       setStatus('success');
-      setTimeout(() => navigate('/', { replace: true }), 1500);
+      // Force a full page reload so AuthContext re-runs syncAll.
+      // syncAll already ran before the invite was redeemed (and returned
+      // empty because the user wasn't a member yet). A reload triggers
+      // a fresh sync that loads the org's events, guests, etc.
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
     } else if (result.error?.includes('already a member')) {
-      // Already a member — ensure onboarding is complete and redirect
       useEventStore.setState({ hasCompletedOnboarding: true, pendingInviteCode: null });
       setStatus('already-member');
-      setTimeout(() => navigate('/', { replace: true }), 2000);
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
     } else {
       setStatus('error');
       setErrorMessage(result.error ?? 'Something went wrong.');
