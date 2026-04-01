@@ -401,6 +401,7 @@ export const useEventStore = create<EventStore>()(
       orgMembers: [...state.orgMembers, newMember],
       activeOrgId: invite.orgId,
       pendingInviteCode: null,
+      hasCompletedOnboarding: true,
     });
     dbSync(() => db.upsertTeamInvite(usedInvite));
     dbSync(() => db.upsertOrgMember(newMember));
