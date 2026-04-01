@@ -35,6 +35,7 @@ const categoryBadge: Record<GuestCategory, { label: string; bg: string; text: st
   staff:                { label: 'Staff',   bg: 'rgba(14,165,233,0.12)', text: 'rgb(2,132,199)' },
   sponsor:              { label: 'Sponsor', bg: 'rgba(16,185,129,0.15)', text: 'rgb(5,150,105)' },
   volunteer:            { label: 'Volunteer',bg:'rgba(20,184,166,0.12)', text: 'rgb(13,148,136)' },
+  dignitary:            { label: 'Dignitary',bg:'rgba(168,85,247,0.12)', text: 'rgb(147,51,234)' },
   other:                { label: 'Guest',   bg: 'rgba(120,113,108,0.12)',text: 'rgb(87,83,78)' },
 };
 

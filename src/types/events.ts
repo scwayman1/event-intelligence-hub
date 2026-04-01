@@ -1,7 +1,7 @@
 export type EventType = 'ceremony' | 'dinner' | 'gala' | 'reception' | 'banquet' | 'commencement' | 'other';
 export type EventStatus = 'planning' | 'active' | 'completed' | 'archived';
 export type RSVPStatus = 'invited' | 'confirmed' | 'declined' | 'waitlist' | 'checked_in';
-export type GuestCategory = 'donor' | 'scholarship_recipient' | 'family' | 'board_member' | 'vip' | 'staff' | 'sponsor' | 'volunteer' | 'other';
+export type GuestCategory = 'donor' | 'scholarship_recipient' | 'family' | 'board_member' | 'vip' | 'staff' | 'sponsor' | 'volunteer' | 'dignitary' | 'other';
 export type LayoutObjectType = 'tent' | 'round_table' | 'rect_table' | 'chair' | 'stage' | 'podium' | 'checkin' | 'photo_area' | 'registration' | 'vip_area' | 'aisle' | 'dance_floor' | 'catering' | 'bar' | 'signage' | 'custom_zone';
 export type VersionStatus = 'draft' | 'active' | 'archived' | 'approved';
 

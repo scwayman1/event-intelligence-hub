@@ -12,7 +12,7 @@ interface CsvImportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const VALID_CATEGORIES: GuestCategory[] = ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'other'];
+const VALID_CATEGORIES: GuestCategory[] = ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'dignitary', 'other'];
 const VALID_RSVP: RSVPStatus[] = ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
 
 interface ParsedRow {
@@ -117,6 +117,7 @@ function parseRow(
     staff: 'staff',
     sponsor: 'sponsor',
     volunteer: 'volunteer',
+    dignitary: 'dignitary',
     other: 'other',
   };
 

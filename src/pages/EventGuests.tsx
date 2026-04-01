@@ -15,7 +15,7 @@ import type { GuestCategory, RSVPStatus } from '@/types/events';
 const categoryLabels: Record<GuestCategory, string> = {
   donor: 'Donor', scholarship_recipient: 'Scholar', family: 'Family',
   board_member: 'Board', vip: 'VIP', staff: 'Staff', sponsor: 'Sponsor',
-  volunteer: 'Volunteer', other: 'Other',
+  volunteer: 'Volunteer', dignitary: 'Dignitary', other: 'Other',
 };
 
 const categoryColors: Record<GuestCategory, string> = {
@@ -27,6 +27,7 @@ const categoryColors: Record<GuestCategory, string> = {
   staff: 'bg-muted text-muted-foreground border-border',
   sponsor: 'bg-accent/15 text-accent border-accent/20',
   volunteer: 'bg-success/15 text-success border-success/20',
+  dignitary: 'bg-purple-500/15 text-purple-600 border-purple-500/20',
   other: 'bg-muted text-muted-foreground border-border',
 };
 
@@ -110,7 +111,7 @@ export default function EventGuests() {
     updateGuest(guestId, { relationshipTags: guest.relationshipTags.filter((t) => t !== tag) });
   }
 
-  const categories: (GuestCategory | 'all')[] = ['all', 'donor', 'scholarship_recipient', 'board_member', 'vip', 'staff', 'family', 'sponsor', 'volunteer', 'other'];
+  const categories: (GuestCategory | 'all')[] = ['all', 'donor', 'scholarship_recipient', 'board_member', 'vip', 'staff', 'family', 'sponsor', 'volunteer', 'dignitary', 'other'];
   const rsvpStatuses: (RSVPStatus | 'all')[] = ['all', 'invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
 
   if (!event || !analytics) return <div className="p-8 text-muted-foreground">Event not found</div>;

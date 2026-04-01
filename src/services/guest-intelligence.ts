@@ -96,6 +96,7 @@ const CATEGORY_WEIGHTS: Record<GuestCategory, number> = {
   family: 50,
   staff: 40,
   volunteer: 35,
+  dignitary: 75,
   other: 30,
 };
 

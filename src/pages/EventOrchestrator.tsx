@@ -51,6 +51,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   family: 'bg-rose-400',
   staff: 'bg-slate-500',
   volunteer: 'bg-teal-500',
+  dignitary: 'bg-purple-500',
   other: 'bg-gray-400',
 };
 

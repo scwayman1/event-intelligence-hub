@@ -427,7 +427,7 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
         lastName: { type: 'string', description: 'Guest last name' },
         email: { type: 'string', description: 'Guest email address' },
         organization: { type: 'string', description: 'Guest organization/company' },
-        category: { type: 'string', enum: ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'other'], description: 'Guest category' },
+        category: { type: 'string', enum: ['donor', 'scholarship_recipient', 'family', 'board_member', 'vip', 'staff', 'sponsor', 'volunteer', 'dignitary', 'other'], description: 'Guest category' },
         rsvpStatus: { type: 'string', enum: ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'], description: 'RSVP status (default: invited)' },
         phone: { type: 'string', description: 'Phone number' },
         partySize: { type: 'number', description: 'Party size (default: 1)' },
