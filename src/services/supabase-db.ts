@@ -260,6 +260,11 @@ export function rowToVersion(row: any): EventVersion {
     updatedAt: row.updated_at,
     createdBy: row.created_by,
     notes: row.notes,
+    venueImageData: row.venue_image_data ?? undefined,
+    venueImageOpacity: row.venue_image_opacity ?? undefined,
+    metersPerPixel: row.meters_per_pixel ?? undefined,
+    canvasWidth: row.canvas_width ?? undefined,
+    canvasHeight: row.canvas_height ?? undefined,
   };
 }
 
@@ -271,6 +276,11 @@ export function versionToRow(version: Partial<EventVersion>) {
   if (version.status !== undefined) row.status = version.status;
   if (version.createdBy !== undefined) row.created_by = version.createdBy;
   if (version.notes !== undefined) row.notes = version.notes;
+  if (version.venueImageData !== undefined) row.venue_image_data = version.venueImageData || null;
+  if (version.venueImageOpacity !== undefined) row.venue_image_opacity = version.venueImageOpacity;
+  if (version.metersPerPixel !== undefined) row.meters_per_pixel = version.metersPerPixel || null;
+  if (version.canvasWidth !== undefined) row.canvas_width = version.canvasWidth || null;
+  if (version.canvasHeight !== undefined) row.canvas_height = version.canvasHeight || null;
   return row;
 }
 

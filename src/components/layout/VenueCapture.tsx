@@ -226,7 +226,7 @@ export default function VenueCapture({ onCapture, onClose }: VenueCaptureProps) 
           cvs.height,
         );
 
-        const dataUrl = cvs.toDataURL('image/jpeg', 0.95);
+        const dataUrl = cvs.toDataURL('image/jpeg', 0.80);
 
         // Use map.unproject() to compute exact ground distance from Mapbox's projection.
         // This is more reliable than the zoom-based formula which assumes 256px tiles.

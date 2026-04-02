@@ -1,6 +1,6 @@
 import { useParams, useOutletContext } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import {
   ZoomIn, ZoomOut, Lock, Unlock, Eye, EyeOff,
   Plus, Trash2, Grid3X3, Layers, ImageIcon, X, Satellite, Sparkles, Users, Ruler, WandSparkles,
@@ -48,7 +48,7 @@ interface GridOverlayProps {
   snappedLines?: { x: number | null; y: number | null };
 }
 
-function GridOverlay({ metersPerPixel, unitSystem, canvasWidth, canvasHeight, zoom, snappedLines }: GridOverlayProps) {
+const GridOverlay = React.memo(function GridOverlay({ metersPerPixel, unitSystem, canvasWidth, canvasHeight, zoom, snappedLines }: GridOverlayProps) {
   const majorInterval = unitSystem === 'imperial' ? 5 * 0.3048 : 1; // 5ft or 1m
   const minorInterval = unitSystem === 'imperial' ? 1 * 0.3048 : 0.25; // 1ft or 0.25m
   const majorPx = majorInterval / metersPerPixel;
@@ -162,7 +162,7 @@ function GridOverlay({ metersPerPixel, unitSystem, canvasWidth, canvasHeight, zo
       )}
     </div>
   );
-}
+});
 
 const objectColors: Record<string, string> = {
   tent: 'border-sky-400/40 bg-sky-50/30',
@@ -286,6 +286,15 @@ export default function EventLayout() {
     width: activeVersion?.canvasWidth ?? 800,
     height: activeVersion?.canvasHeight ?? 600,
   });
+  // Re-sync local canvas size when the active version changes (e.g. navigating between events)
+  useEffect(() => {
+    if (activeVersion) {
+      setCanvasSizeLocal({
+        width: activeVersion.canvasWidth ?? 800,
+        height: activeVersion.canvasHeight ?? 600,
+      });
+    }
+  }, [activeVersion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Persist canvas size to version so it survives navigation
   const setCanvasSize = useCallback((size: { width: number; height: number }) => {
     setCanvasSizeLocal(size);
@@ -343,10 +352,29 @@ export default function EventLayout() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Convert to data URL so it persists in the store
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === 'string') setVenueImage(reader.result);
+      if (typeof reader.result !== 'string') return;
+      // Compress uploaded images to reduce storage size
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 1200;
+        const scale = img.width > maxW ? maxW / img.width : 1;
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const cvs = document.createElement('canvas');
+        cvs.width = w;
+        cvs.height = h;
+        const ctx = cvs.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          setVenueImage(cvs.toDataURL('image/jpeg', 0.65));
+        } else {
+          setVenueImage(reader.result as string);
+        }
+      };
+      img.onerror = () => setVenueImage(reader.result as string);
+      img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -1718,20 +1746,46 @@ export default function EventLayout() {
         <Suspense fallback={null}>
           <VenueCapture
             onCapture={(imageDataUrl, mppCss, imgW, imgH, cssRegionWidth) => {
-              setVenueImage(imageDataUrl);
+              // Compute canvas dimensions FIRST (before setting the image)
+              // to avoid a render frame where the image exists but canvas is wrong size
               if (imgW && imgH && mppCss && cssRegionWidth) {
-                // Real-world width = CSS region width × meters-per-CSS-pixel
                 const realWidthMeters = cssRegionWidth * mppCss;
-                // Canvas displays the captured image; use up to 1600px wide
                 const maxCanvasW = 1600;
                 const canvasW = Math.min(imgW, maxCanvasW);
                 const canvasH = Math.round(imgH * (canvasW / imgW));
+                const mpp = realWidthMeters / canvasW;
+                // Set scale and canvas size before the image
+                setMetersPerPixel(mpp);
                 setCanvasSize({ width: canvasW, height: canvasH });
-                // Each canvas pixel represents this many real-world meters
-                setMetersPerPixel(realWidthMeters / canvasW);
               } else {
                 setMetersPerPixel(mppCss);
               }
+
+              // Compress the image to reduce storage size (target ~800px wide, JPEG 0.7)
+              const compressImg = new Image();
+              compressImg.onload = () => {
+                const maxW = 1200;
+                const scale = compressImg.width > maxW ? maxW / compressImg.width : 1;
+                const w = Math.round(compressImg.width * scale);
+                const h = Math.round(compressImg.height * scale);
+                const cvs = document.createElement('canvas');
+                cvs.width = w;
+                cvs.height = h;
+                const ctx = cvs.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(compressImg, 0, 0, w, h);
+                  const compressed = cvs.toDataURL('image/jpeg', 0.65);
+                  setVenueImage(compressed);
+                } else {
+                  setVenueImage(imageDataUrl);
+                }
+              };
+              compressImg.onerror = () => {
+                // Fallback: use the original if compression fails
+                setVenueImage(imageDataUrl);
+              };
+              compressImg.src = imageDataUrl;
+
               setShowSatelliteCapture(false);
             }}
             onClose={() => setShowSatelliteCapture(false)}
