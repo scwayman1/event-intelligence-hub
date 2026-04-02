@@ -2981,41 +2981,23 @@ function arrangeTablesTool(
     if (tablesToArrange.length === 0) return errorResult('None of the specified table numbers were found.');
   }
 
-  // STEP 1: Force ALL tables to STANDARD size
-  // Don't trust existing sizes — the LLM may have resized them
-  const isAllRound = tablesToArrange.every((t) => t.type === 'round_table');
-  const isAllRect = tablesToArrange.every((t) => t.type === 'rect_table');
-  const uniformW = isAllRect ? 120 : 80; // standard table sizes
-  const uniformH = isAllRect ? 40 : 80;
-
-  // Force every table to the standard size
-  for (const t of tablesToArrange) {
-    store.updateLayoutObject(t.id, { width: uniformW, height: uniformH });
-  }
-
+  // STEP 1: Compute table size that FITS the bounds
+  // Don't hardcode — calculate from tent size and table count
   const n = tablesToArrange.length;
-
-  // STEP 2: Compute optimal columns and spacing from the bounds
-  // The LLM might pass insane values — we compute what ACTUALLY fits
   let cols = input.columns as number | undefined;
 
+  // First pass: determine columns from requested or best-fit
   if (!cols) {
-    // Try different column counts, pick the one with the best aspect ratio fit
+    // Try column counts, pick best aspect ratio match
     let bestCols = 1;
-    let bestWaste = Infinity;
+    let bestScore = Infinity;
     for (let c = 1; c <= n; c++) {
       const r = Math.ceil(n / c);
-      const gridW = c * uniformW;
-      const gridH = r * uniformH;
-      // Does it fit at all (with minimum 3px spacing)?
-      if (gridW + (c - 1) * 3 > boundsWidth) continue;
-      if (gridH + (r - 1) * 3 > boundsHeight) continue;
-      // Score by how well it fills the bounds (minimize wasted space)
-      const ratioGrid = gridW / gridH;
-      const ratioBounds = boundsWidth / boundsHeight;
-      const waste = Math.abs(ratioGrid - ratioBounds);
-      if (waste < bestWaste) {
-        bestWaste = waste;
+      const aspectGrid = c / r;
+      const aspectBounds = boundsWidth / boundsHeight;
+      const score = Math.abs(aspectGrid - aspectBounds);
+      if (score < bestScore) {
+        bestScore = score;
         bestCols = c;
       }
     }
@@ -3024,7 +3006,37 @@ function arrangeTablesTool(
 
   const rows = Math.ceil(n / cols);
 
-  // Calculate spacing: fill the available space evenly
+  // Calculate the max table size that fits all tables with at least 5px spacing
+  const minSpacing = 5;
+  const maxTableW = Math.floor((boundsWidth - (cols + 1) * minSpacing) / cols);
+  const maxTableH = Math.floor((boundsHeight - (rows + 1) * minSpacing) / rows);
+  // Keep tables square for round tables, use the smaller dimension
+  const isAllRect = tablesToArrange.every((t) => t.type === 'rect_table');
+  let uniformW: number;
+  let uniformH: number;
+
+  if (isAllRect) {
+    // Rect tables: 3:1 aspect ratio
+    uniformW = Math.min(maxTableW, maxTableH * 3);
+    uniformH = Math.floor(uniformW / 3);
+  } else {
+    // Round/square tables: equal w/h
+    const maxDim = Math.min(maxTableW, maxTableH);
+    // Cap at 80px (don't make tables absurdly large either)
+    uniformW = Math.min(maxDim, 80);
+    uniformH = uniformW;
+  }
+
+  // Minimum table size of 25px so they're still visible
+  uniformW = Math.max(25, uniformW);
+  uniformH = Math.max(25, uniformH);
+
+  // Force every table to the computed size
+  for (const t of tablesToArrange) {
+    store.updateLayoutObject(t.id, { width: uniformW, height: uniformH });
+  }
+
+  // STEP 2: Calculate spacing from remaining space
   const spacingX = cols > 1
     ? Math.max(3, Math.floor((boundsWidth - cols * uniformW) / (cols + 1)))
     : 0;
