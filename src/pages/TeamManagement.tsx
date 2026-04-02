@@ -282,7 +282,7 @@ export default function TeamManagement() {
 
       {/* Invite Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="sm:max-w-md bg-card border-border shadow-2xl">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
