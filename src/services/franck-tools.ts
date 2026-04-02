@@ -192,6 +192,7 @@ function getEventContext(state: StoreState, eventId: string) {
     versions,
     activeVersion,
     versionId,
+    allObjects,
     tables,
     assignments,
     groups,
@@ -2952,10 +2953,28 @@ function arrangeTablesTool(
   if (ctx.tables.length === 0) return errorResult('No tables in the layout to arrange.');
 
   const pattern = (input.pattern as string) ?? 'grid';
-  const spacing = (input.spacing as number) ?? 30;
-  const canvasWidth = ctx.activeVersion?.canvasWidth ?? 1200;
-  const canvasHeight = ctx.activeVersion?.canvasHeight ?? 800;
-  const margin = (input.margin as number) ?? 60;
+  const spacing = (input.spacing as number) ?? 20;
+  const internalPadding = 15; // padding inside tent or canvas bounds
+
+  // Detect tents — if a tent exists, arrange tables INSIDE the tent
+  const tents = ctx.allObjects.filter((o) => o.type === 'tent');
+  let boundsX = 0;
+  let boundsY = 0;
+  let boundsWidth = ctx.activeVersion?.canvasWidth ?? 1200;
+  let boundsHeight = ctx.activeVersion?.canvasHeight ?? 800;
+  let insideTent: LayoutObject | null = null;
+
+  if (tents.length > 0) {
+    // Use the largest tent as the arrangement boundary
+    const largest = tents.reduce((a, b) => (a.width * a.height > b.width * b.height ? a : b));
+    boundsX = largest.x + internalPadding;
+    boundsY = largest.y + internalPadding;
+    boundsWidth = largest.width - internalPadding * 2;
+    boundsHeight = largest.height - internalPadding * 2;
+    insideTent = largest;
+  }
+
+  const margin = (input.margin as number) ?? internalPadding;
 
   // Filter to specific tables if tableNumbers provided, otherwise all tables
   const tableNumbers = input.tableNumbers as number[] | undefined;
@@ -2983,15 +3002,15 @@ function arrangeTablesTool(
         spacingY: spacing,
         marginX: margin,
         marginY: margin,
-        boundsWidth: canvasWidth,
-        boundsHeight: canvasHeight,
+        boundsWidth,
+        boundsHeight,
       });
       break;
 
     case 'circle':
       results = arrangeCircle(objects, {
-        centerX: canvasWidth / 2,
-        centerY: canvasHeight / 2,
+        centerX: boundsWidth / 2,
+        centerY: boundsHeight / 2,
         radius: input.radius as number | undefined,
       });
       break;
@@ -3001,7 +3020,7 @@ function arrangeTablesTool(
         spacingX: spacing,
         spacingY: spacing,
         stagger: (input.stagger as boolean) ?? false,
-        boundsWidth: canvasWidth,
+        boundsWidth,
         marginX: margin,
       });
       break;
@@ -3010,7 +3029,23 @@ function arrangeTablesTool(
       return errorResult(`Unknown pattern "${pattern}". Use "grid", "circle", or "rows".`);
   }
 
-  // Apply all position updates
+  // Offset results to the bounds origin (e.g. tent top-left)
+  // The arrangement engine positions relative to (0,0), we need to shift to the actual bounds
+  for (const r of results) {
+    r.x += boundsX;
+    r.y += boundsY;
+  }
+
+  // Clamp all positions inside the bounds to prevent overflow
+  for (const r of results) {
+    const obj = objects.find((o) => o.id === r.id);
+    const w = obj?.width ?? 80;
+    const h = obj?.height ?? 80;
+    r.x = Math.max(boundsX, Math.min(boundsX + boundsWidth - w, r.x));
+    r.y = Math.max(boundsY, Math.min(boundsY + boundsHeight - h, r.y));
+  }
+
+  // Apply all position updates (ONLY x,y — never touch width/height)
   const store = useEventStore.getState();
   const moved: string[] = [];
   for (const r of results) {
@@ -3021,11 +3056,14 @@ function arrangeTablesTool(
     }
   }
 
+  const boundsDesc = insideTent ? `inside tent "${insideTent.name}" (${Math.round(insideTent.width)}×${Math.round(insideTent.height)}px)` : `on canvas (${boundsWidth}×${boundsHeight}px)`;
+
   return json({
-    summary: `Arranged ${moved.length} tables in ${pattern} pattern with ${spacing}px spacing`,
+    summary: `Arranged ${moved.length} tables in ${pattern} pattern with ${spacing}px spacing ${boundsDesc}`,
     pattern,
     tablesArranged: moved.length,
     tables: moved,
+    bounds: boundsDesc,
   });
 }
 
@@ -3039,27 +3077,40 @@ function fixLayoutIssuesTool(
 
   if (ctx.tables.length === 0) return errorResult('No tables in the layout.');
 
-  const canvasWidth = ctx.activeVersion?.canvasWidth ?? 1200;
-  const canvasHeight = ctx.activeVersion?.canvasHeight ?? 800;
-  const MIN_SPACING = 120;
-  const EDGE_MARGIN = 40;
+  // Use tent bounds if a tent exists, otherwise canvas bounds
+  const tents = ctx.allObjects.filter((o) => o.type === 'tent');
+  let boundsX = 0;
+  let boundsY = 0;
+  let boundsRight = ctx.activeVersion?.canvasWidth ?? 1200;
+  let boundsBottom = ctx.activeVersion?.canvasHeight ?? 800;
+  const EDGE_MARGIN = 15;
+
+  if (tents.length > 0) {
+    const largest = tents.reduce((a, b) => (a.width * a.height > b.width * b.height ? a : b));
+    boundsX = largest.x + EDGE_MARGIN;
+    boundsY = largest.y + EDGE_MARGIN;
+    boundsRight = largest.x + largest.width - EDGE_MARGIN;
+    boundsBottom = largest.y + largest.height - EDGE_MARGIN;
+  }
+
+  const MIN_SPACING = 100;
   const store = useEventStore.getState();
 
   const fixes: string[] = [];
 
-  // 1. Fix out-of-bounds tables — push them inside canvas
+  // 1. Fix out-of-bounds tables — push them inside bounds (tent or canvas)
   for (const t of ctx.tables) {
     let x = t.x;
     let y = t.y;
     let moved = false;
-    if (x < EDGE_MARGIN) { x = EDGE_MARGIN; moved = true; }
-    if (y < EDGE_MARGIN) { y = EDGE_MARGIN; moved = true; }
-    if (x + t.width > canvasWidth - EDGE_MARGIN) { x = canvasWidth - EDGE_MARGIN - t.width; moved = true; }
-    if (y + t.height > canvasHeight - EDGE_MARGIN) { y = canvasHeight - EDGE_MARGIN - t.height; moved = true; }
+    if (x < boundsX) { x = boundsX; moved = true; }
+    if (y < boundsY) { y = boundsY; moved = true; }
+    if (x + t.width > boundsRight) { x = boundsRight - t.width; moved = true; }
+    if (y + t.height > boundsBottom) { y = boundsBottom - t.height; moved = true; }
     if (moved) {
       store.updateLayoutObject(t.id, { x: Math.round(x), y: Math.round(y) });
       const name = t.tableNumber != null ? `Table ${t.tableNumber}` : t.name;
-      fixes.push(`Moved ${name} inside canvas bounds`);
+      fixes.push(`Moved ${name} inside bounds`);
     }
   }
 
@@ -3107,9 +3158,9 @@ function fixLayoutIssuesTool(
     const p = positions.get(t.id)!;
     const orig = store.layoutObjects.find((o) => o.id === t.id);
     if (orig && (Math.abs(orig.x - p.x) > 1 || Math.abs(orig.y - p.y) > 1)) {
-      // Clamp to canvas
-      const x = Math.max(EDGE_MARGIN, Math.min(canvasWidth - EDGE_MARGIN - p.w, p.x));
-      const y = Math.max(EDGE_MARGIN, Math.min(canvasHeight - EDGE_MARGIN - p.h, p.y));
+      // Clamp to bounds (tent or canvas)
+      const x = Math.max(boundsX, Math.min(boundsRight - p.w, p.x));
+      const y = Math.max(boundsY, Math.min(boundsBottom - p.h, p.y));
       store.updateLayoutObject(t.id, { x: Math.round(x), y: Math.round(y) });
       spacingFixes++;
     }

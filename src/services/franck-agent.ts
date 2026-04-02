@@ -558,7 +558,7 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'arrange_tables',
     description:
-      'Automatically arrange tables in a pattern: "grid" (rows and columns), "circle" (around center), or "rows" (theater-style rows, optionally staggered). Arranges ALL tables by default, or specific tables if tableNumbers is provided. This is the most powerful layout tool — use it when the user wants tables organized, evenly spaced, or laid out in a specific pattern.',
+      'Automatically arrange tables in a pattern: "grid" (rows and columns), "circle" (around center), or "rows" (theater-style rows, optionally staggered). TENT-AWARE: if a tent exists on the canvas, tables are arranged INSIDE the tent automatically. Arranges ALL tables by default, or specific tables if tableNumbers is provided. This is the most powerful layout tool — use it when the user wants tables organized, evenly spaced, or laid out in a specific pattern.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -576,7 +576,7 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'fix_layout_issues',
     description:
-      'Automatically fix layout problems: pushes out-of-bounds tables back inside the canvas, separates overlapping tables, and enforces minimum spacing between all tables. Call this after analyze_layout finds issues, or when the user says the layout is messy.',
+      'Automatically fix layout problems: pushes out-of-bounds tables back inside the tent (or canvas if no tent), separates overlapping tables, and enforces minimum spacing. TENT-AWARE: respects tent boundaries. Call this after analyze_layout finds issues, or when the user says the layout is messy.',
     input_schema: {
       type: 'object' as const,
       properties: {},
