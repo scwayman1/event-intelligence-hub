@@ -128,7 +128,7 @@ function SeatSlot({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          'relative w-[46px] h-[46px] rounded-full flex items-center justify-center transition-all duration-300 ease-in-out select-none',
+          'relative w-[42px] h-[42px] rounded-full flex items-center justify-center transition-all duration-300 ease-in-out select-none',
           guest
             ? 'border-2'
             : cn(
@@ -139,7 +139,7 @@ function SeatSlot({
               ),
           isAutoAssigned && !guest && 'border-green-500 animate-pulse',
           isAutoAssigned && guest && 'border-green-500 animate-pulse',
-          isHighlighted && 'ring-3 ring-emerald-400 ring-offset-2 ring-offset-background scale-110 shadow-[0_0_16px_rgba(52,211,153,0.4)]',
+          isHighlighted && 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-background shadow-[0_0_12px_rgba(52,211,153,0.4)]',
         )}
         style={
           guest && groupColor
@@ -381,16 +381,18 @@ function RoundTableSeats({
   isAnchored,
 }: SeatArrangementProps) {
   const positions = getCircularSeatPositions(capacity);
-  const radius = Math.max(60, Math.min(100, 44 + capacity * 6));
-  const seatHalf = 23; // half of 46px seat
-  const containerSize = (radius + seatHalf + 4) * 2;
-  const surfaceSize = radius * 2 * 0.5;
+  const seatSize = 42;
+  const seatHalf = seatSize / 2;
+  const radius = Math.max(55, Math.min(90, 40 + capacity * 5));
+  const containerSize = (radius + seatHalf + 6) * 2;
+  const surfaceSize = radius * 2 * 0.48;
 
   return (
-    <div
-      className="relative mx-auto flex-shrink-0"
-      style={{ width: containerSize, height: containerSize }}
-    >
+    <div className="flex items-center justify-center w-full overflow-visible py-1">
+      <div
+        className="relative flex-shrink-0"
+        style={{ width: containerSize, height: containerSize, maxWidth: '100%', aspectRatio: '1' }}
+      >
       {/* Table surface — glows when anchored */}
       <div
         className={cn(
@@ -461,6 +463,7 @@ function RoundTableSeats({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
