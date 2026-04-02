@@ -2981,18 +2981,16 @@ function arrangeTablesTool(
     if (tablesToArrange.length === 0) return errorResult('None of the specified table numbers were found.');
   }
 
-  // STEP 1: Normalize all tables to UNIFORM size (use median dimensions)
-  // This ensures a clean, consistent grid
-  const widths = tablesToArrange.map((t) => t.width).sort((a, b) => a - b);
-  const heights = tablesToArrange.map((t) => t.height).sort((a, b) => a - b);
-  const uniformW = widths[Math.floor(widths.length / 2)]; // median
-  const uniformH = heights[Math.floor(heights.length / 2)];
+  // STEP 1: Force ALL tables to STANDARD size
+  // Don't trust existing sizes — the LLM may have resized them
+  const isAllRound = tablesToArrange.every((t) => t.type === 'round_table');
+  const isAllRect = tablesToArrange.every((t) => t.type === 'rect_table');
+  const uniformW = isAllRect ? 120 : 80; // standard table sizes
+  const uniformH = isAllRect ? 40 : 80;
 
-  // Apply uniform sizes to all tables
+  // Force every table to the standard size
   for (const t of tablesToArrange) {
-    if (t.width !== uniformW || t.height !== uniformH) {
-      store.updateLayoutObject(t.id, { width: uniformW, height: uniformH });
-    }
+    store.updateLayoutObject(t.id, { width: uniformW, height: uniformH });
   }
 
   const n = tablesToArrange.length;
