@@ -558,16 +558,13 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'arrange_tables',
     description:
-      'Automatically arrange tables in a pattern: "grid" (rows and columns), "circle" (around center), or "rows" (theater-style rows, optionally staggered). TENT-AWARE: if a tent exists on the canvas, tables are arranged INSIDE the tent automatically. Arranges ALL tables by default, or specific tables if tableNumbers is provided. This is the most powerful layout tool — use it when the user wants tables organized, evenly spaced, or laid out in a specific pattern.',
+      'Automatically arrange tables in a pattern: "grid" (rows and columns), "circle" (around center), or "rows" (theater-style). TENT-AWARE: if a tent exists, tables are arranged INSIDE the tent. Normalizes all tables to uniform size. Spacing is auto-calculated to fit the available space — do NOT pass spacing, it is computed automatically. Use "columns" to control the number of columns (e.g. columns=3 for 3 tables per row).',
     input_schema: {
       type: 'object' as const,
       properties: {
         pattern: { type: 'string', enum: ['grid', 'circle', 'rows'], description: 'Arrangement pattern (default: grid)' },
-        spacing: { type: 'number', description: 'Spacing between tables in pixels (default: 30)' },
-        columns: { type: 'number', description: 'Number of columns for grid pattern (auto-calculated if omitted)' },
-        stagger: { type: 'boolean', description: 'For "rows" pattern: offset every other row for a staggered look (default: false)' },
-        radius: { type: 'number', description: 'For "circle" pattern: circle radius in pixels (auto-calculated if omitted)' },
-        margin: { type: 'number', description: 'Margin from canvas edges in pixels (default: 60)' },
+        columns: { type: 'number', description: 'Number of columns / tables per row (auto-calculated if omitted for best fit)' },
+        stagger: { type: 'boolean', description: 'For "rows" pattern: offset every other row (default: false)' },
         tableNumbers: { type: 'array', items: { type: 'number' }, description: 'Only arrange these specific tables by number (arranges ALL if omitted)' },
       },
       required: [],
