@@ -2953,8 +2953,7 @@ function arrangeTablesTool(
   if (ctx.tables.length === 0) return errorResult('No tables in the layout to arrange.');
 
   const pattern = (input.pattern as string) ?? 'grid';
-  const spacing = (input.spacing as number) ?? 20;
-  const internalPadding = 15; // padding inside tent or canvas bounds
+  const PAD = 10; // padding inside tent or canvas bounds
 
   // Detect tents — if a tent exists, arrange tables INSIDE the tent
   const tents = ctx.allObjects.filter((o) => o.type === 'tent');
@@ -2965,16 +2964,13 @@ function arrangeTablesTool(
   let insideTent: LayoutObject | null = null;
 
   if (tents.length > 0) {
-    // Use the largest tent as the arrangement boundary
     const largest = tents.reduce((a, b) => (a.width * a.height > b.width * b.height ? a : b));
-    boundsX = largest.x + internalPadding;
-    boundsY = largest.y + internalPadding;
-    boundsWidth = largest.width - internalPadding * 2;
-    boundsHeight = largest.height - internalPadding * 2;
+    boundsX = largest.x + PAD;
+    boundsY = largest.y + PAD;
+    boundsWidth = largest.width - PAD * 2;
+    boundsHeight = largest.height - PAD * 2;
     insideTent = largest;
   }
-
-  const margin = (input.margin as number) ?? internalPadding;
 
   // Filter to specific tables if tableNumbers provided, otherwise all tables
   const tableNumbers = input.tableNumbers as number[] | undefined;
@@ -2985,23 +2981,61 @@ function arrangeTablesTool(
   }
 
   const objects: ArrangeableObject[] = tablesToArrange.map((t) => ({
-    id: t.id,
-    x: t.x,
-    y: t.y,
-    width: t.width,
-    height: t.height,
+    id: t.id, x: t.x, y: t.y, width: t.width, height: t.height,
   }));
+
+  // Compute the maximum table dimensions
+  const maxTableW = Math.max(...objects.map((o) => o.width));
+  const maxTableH = Math.max(...objects.map((o) => o.height));
+  const n = objects.length;
+
+  // Auto-calculate spacing that actually fits within bounds
+  // For grid: cols × tableW + (cols-1) × spacingX ≤ boundsWidth
+  // For rows in that many columns, rows × tableH + (rows-1) × spacingY ≤ boundsHeight
+  let spacing = (input.spacing as number | undefined) ?? undefined;
+  let cols = input.columns as number | undefined;
+
+  if (pattern === 'grid' || pattern === 'rows') {
+    // Auto-calculate columns if not provided: fit as many as possible
+    if (!cols) {
+      // Start with a square-ish layout and check if it fits
+      cols = Math.max(1, Math.floor(Math.sqrt(n * (boundsWidth / boundsHeight))));
+      // Make sure cols don't leave too many rows for the height
+      while (cols > 1) {
+        const rows = Math.ceil(n / cols);
+        const needH = rows * maxTableH + (rows - 1) * 5; // min 5px spacing
+        if (needH <= boundsHeight) break;
+        cols--;
+      }
+    }
+    const rows = Math.ceil(n / cols);
+
+    // Calculate maximum spacing that fits
+    const maxSpacingX = cols > 1 ? Math.floor((boundsWidth - cols * maxTableW) / (cols - 1)) : boundsWidth;
+    const maxSpacingY = rows > 1 ? Math.floor((boundsHeight - rows * maxTableH) / (rows - 1)) : boundsHeight;
+    const maxFitSpacing = Math.max(2, Math.min(maxSpacingX, maxSpacingY));
+
+    if (spacing === undefined) {
+      // Default: use as much spacing as fits, capped at 25px
+      spacing = Math.min(25, maxFitSpacing);
+    } else {
+      // User-provided spacing: clamp to what actually fits
+      spacing = Math.min(spacing, maxFitSpacing);
+    }
+  }
+
+  if (spacing === undefined) spacing = 15;
 
   let results: { id: string; x: number; y: number }[];
 
   switch (pattern) {
     case 'grid':
       results = arrangeGrid(objects, {
-        cols: input.columns as number | undefined,
+        cols,
         spacingX: spacing,
         spacingY: spacing,
-        marginX: margin,
-        marginY: margin,
+        marginX: 0,
+        marginY: 0,
         boundsWidth,
         boundsHeight,
       });
@@ -3021,7 +3055,7 @@ function arrangeTablesTool(
         spacingY: spacing,
         stagger: (input.stagger as boolean) ?? false,
         boundsWidth,
-        marginX: margin,
+        marginX: 0,
       });
       break;
 
@@ -3029,14 +3063,14 @@ function arrangeTablesTool(
       return errorResult(`Unknown pattern "${pattern}". Use "grid", "circle", or "rows".`);
   }
 
-  // Offset results to the bounds origin (e.g. tent top-left)
-  // The arrangement engine positions relative to (0,0), we need to shift to the actual bounds
+  // Offset ALL results to the bounds origin (tent top-left + padding)
+  // The arrangement engine returns positions relative to (0,0)
   for (const r of results) {
     r.x += boundsX;
     r.y += boundsY;
   }
 
-  // Clamp all positions inside the bounds to prevent overflow
+  // Hard clamp every position inside the bounds — nothing escapes the tent
   for (const r of results) {
     const obj = objects.find((o) => o.id === r.id);
     const w = obj?.width ?? 80;
@@ -3045,7 +3079,7 @@ function arrangeTablesTool(
     r.y = Math.max(boundsY, Math.min(boundsY + boundsHeight - h, r.y));
   }
 
-  // Apply all position updates (ONLY x,y — never touch width/height)
+  // Apply position updates (ONLY x,y — never touch width/height/capacity)
   const store = useEventStore.getState();
   const moved: string[] = [];
   for (const r of results) {
@@ -3059,8 +3093,10 @@ function arrangeTablesTool(
   const boundsDesc = insideTent ? `inside tent "${insideTent.name}" (${Math.round(insideTent.width)}×${Math.round(insideTent.height)}px)` : `on canvas (${boundsWidth}×${boundsHeight}px)`;
 
   return json({
-    summary: `Arranged ${moved.length} tables in ${pattern} pattern with ${spacing}px spacing ${boundsDesc}`,
+    summary: `Arranged ${moved.length} tables in ${pattern} pattern (${cols ?? 'auto'} cols, ${spacing}px spacing) ${boundsDesc}`,
     pattern,
+    columns: cols,
+    spacing,
     tablesArranged: moved.length,
     tables: moved,
     bounds: boundsDesc,
