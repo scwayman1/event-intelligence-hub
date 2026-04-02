@@ -36,6 +36,15 @@ import {
   formatRefinementSummary,
 } from '@/services/franck-autopilot';
 
+import {
+  arrangeGrid,
+  arrangeCircle,
+  arrangeRows,
+  distributeEqual,
+  alignObjects,
+  type ArrangeableObject,
+} from '@/lib/arrangement-engine';
+
 import type { Guest, GuestCategory, RSVPStatus, AppEvent, EventVersion, LayoutObject, RelationshipGroup, RelationshipMembership, RelationshipType } from '@/types/events';
 
 // ---------------------------------------------------------------------------
@@ -2886,6 +2895,296 @@ function suggestNextActionsTool(
 // Tool dispatcher
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Layout manipulation tools — move, arrange, fix, align tables
+// ---------------------------------------------------------------------------
+
+function moveTableTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const tableNumber = input.tableNumber as number | undefined;
+  let tableId = input.tableId as string | undefined;
+
+  if (!tableId && tableNumber != null) {
+    const found = ctx.tables.find((t) => t.tableNumber === tableNumber);
+    if (found) tableId = found.id;
+  }
+
+  if (!tableId) return errorResult('Provide tableId or tableNumber to identify the table.');
+
+  const table = ctx.tables.find((t) => t.id === tableId);
+  if (!table) return errorResult(`Table not found.`);
+
+  const x = input.x as number | undefined;
+  const y = input.y as number | undefined;
+
+  if (x === undefined && y === undefined) return errorResult('Provide x and/or y coordinates.');
+
+  const store = useEventStore.getState();
+  const updates: Partial<LayoutObject> = {};
+  if (x !== undefined) updates.x = Math.round(x);
+  if (y !== undefined) updates.y = Math.round(y);
+  store.updateLayoutObject(tableId, updates);
+
+  const name = table.tableNumber != null ? `Table ${table.tableNumber}` : table.name;
+  return json({
+    summary: `Moved ${name} to (${updates.x ?? table.x}, ${updates.y ?? table.y})`,
+    tableId,
+    name,
+    x: updates.x ?? table.x,
+    y: updates.y ?? table.y,
+  });
+}
+
+function arrangeTablesTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  if (ctx.tables.length === 0) return errorResult('No tables in the layout to arrange.');
+
+  const pattern = (input.pattern as string) ?? 'grid';
+  const spacing = (input.spacing as number) ?? 30;
+  const canvasWidth = ctx.activeVersion?.canvasWidth ?? 1200;
+  const canvasHeight = ctx.activeVersion?.canvasHeight ?? 800;
+  const margin = (input.margin as number) ?? 60;
+
+  // Filter to specific tables if tableNumbers provided, otherwise all tables
+  const tableNumbers = input.tableNumbers as number[] | undefined;
+  let tablesToArrange = ctx.tables;
+  if (tableNumbers && tableNumbers.length > 0) {
+    tablesToArrange = ctx.tables.filter((t) => t.tableNumber != null && tableNumbers.includes(t.tableNumber));
+    if (tablesToArrange.length === 0) return errorResult('None of the specified table numbers were found.');
+  }
+
+  const objects: ArrangeableObject[] = tablesToArrange.map((t) => ({
+    id: t.id,
+    x: t.x,
+    y: t.y,
+    width: t.width,
+    height: t.height,
+  }));
+
+  let results: { id: string; x: number; y: number }[];
+
+  switch (pattern) {
+    case 'grid':
+      results = arrangeGrid(objects, {
+        cols: input.columns as number | undefined,
+        spacingX: spacing,
+        spacingY: spacing,
+        marginX: margin,
+        marginY: margin,
+        boundsWidth: canvasWidth,
+        boundsHeight: canvasHeight,
+      });
+      break;
+
+    case 'circle':
+      results = arrangeCircle(objects, {
+        centerX: canvasWidth / 2,
+        centerY: canvasHeight / 2,
+        radius: input.radius as number | undefined,
+      });
+      break;
+
+    case 'rows':
+      results = arrangeRows(objects, {
+        spacingX: spacing,
+        spacingY: spacing,
+        stagger: (input.stagger as boolean) ?? false,
+        boundsWidth: canvasWidth,
+        marginX: margin,
+      });
+      break;
+
+    default:
+      return errorResult(`Unknown pattern "${pattern}". Use "grid", "circle", or "rows".`);
+  }
+
+  // Apply all position updates
+  const store = useEventStore.getState();
+  const moved: string[] = [];
+  for (const r of results) {
+    store.updateLayoutObject(r.id, { x: Math.round(r.x), y: Math.round(r.y) });
+    const table = tablesToArrange.find((t) => t.id === r.id);
+    if (table) {
+      moved.push(table.tableNumber != null ? `Table ${table.tableNumber}` : table.name);
+    }
+  }
+
+  return json({
+    summary: `Arranged ${moved.length} tables in ${pattern} pattern with ${spacing}px spacing`,
+    pattern,
+    tablesArranged: moved.length,
+    tables: moved,
+  });
+}
+
+function fixLayoutIssuesTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  if (ctx.tables.length === 0) return errorResult('No tables in the layout.');
+
+  const canvasWidth = ctx.activeVersion?.canvasWidth ?? 1200;
+  const canvasHeight = ctx.activeVersion?.canvasHeight ?? 800;
+  const MIN_SPACING = 120;
+  const EDGE_MARGIN = 40;
+  const store = useEventStore.getState();
+
+  const fixes: string[] = [];
+
+  // 1. Fix out-of-bounds tables — push them inside canvas
+  for (const t of ctx.tables) {
+    let x = t.x;
+    let y = t.y;
+    let moved = false;
+    if (x < EDGE_MARGIN) { x = EDGE_MARGIN; moved = true; }
+    if (y < EDGE_MARGIN) { y = EDGE_MARGIN; moved = true; }
+    if (x + t.width > canvasWidth - EDGE_MARGIN) { x = canvasWidth - EDGE_MARGIN - t.width; moved = true; }
+    if (y + t.height > canvasHeight - EDGE_MARGIN) { y = canvasHeight - EDGE_MARGIN - t.height; moved = true; }
+    if (moved) {
+      store.updateLayoutObject(t.id, { x: Math.round(x), y: Math.round(y) });
+      const name = t.tableNumber != null ? `Table ${t.tableNumber}` : t.name;
+      fixes.push(`Moved ${name} inside canvas bounds`);
+    }
+  }
+
+  // 2. Fix overlapping/too-close tables — push apart iteratively
+  // Use simple repulsion: for each pair that's too close, push them apart along the vector between centers
+  const positions = new Map(ctx.tables.map((t) => [t.id, { x: t.x, y: t.y, w: t.width, h: t.height }]));
+
+  // Update positions from step 1
+  for (const t of ctx.tables) {
+    const p = positions.get(t.id)!;
+    // Re-read from store in case we already moved it
+    const current = store.layoutObjects.find((o) => o.id === t.id);
+    if (current) { p.x = current.x; p.y = current.y; }
+  }
+
+  // Run 5 iterations of repulsion
+  for (let iter = 0; iter < 5; iter++) {
+    for (let i = 0; i < ctx.tables.length; i++) {
+      for (let j = i + 1; j < ctx.tables.length; j++) {
+        const a = positions.get(ctx.tables[i].id)!;
+        const b = positions.get(ctx.tables[j].id)!;
+        const cx1 = a.x + a.w / 2;
+        const cy1 = a.y + a.h / 2;
+        const cx2 = b.x + b.w / 2;
+        const cy2 = b.y + b.h / 2;
+        const dx = cx2 - cx1;
+        const dy = cy2 - cy1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < MIN_SPACING && dist > 0) {
+          const push = (MIN_SPACING - dist) / 2 + 5;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * push;
+          a.y -= ny * push;
+          b.x += nx * push;
+          b.y += ny * push;
+        }
+      }
+    }
+  }
+
+  // Apply repulsion results
+  let spacingFixes = 0;
+  for (const t of ctx.tables) {
+    const p = positions.get(t.id)!;
+    const orig = store.layoutObjects.find((o) => o.id === t.id);
+    if (orig && (Math.abs(orig.x - p.x) > 1 || Math.abs(orig.y - p.y) > 1)) {
+      // Clamp to canvas
+      const x = Math.max(EDGE_MARGIN, Math.min(canvasWidth - EDGE_MARGIN - p.w, p.x));
+      const y = Math.max(EDGE_MARGIN, Math.min(canvasHeight - EDGE_MARGIN - p.h, p.y));
+      store.updateLayoutObject(t.id, { x: Math.round(x), y: Math.round(y) });
+      spacingFixes++;
+    }
+  }
+  if (spacingFixes > 0) {
+    fixes.push(`Fixed spacing on ${spacingFixes} tables (pushed apart to ${MIN_SPACING}px minimum)`);
+  }
+
+  if (fixes.length === 0) {
+    return json({ summary: 'No layout issues found — everything looks clean!', fixesApplied: 0 });
+  }
+
+  return json({
+    summary: `Fixed ${fixes.length} layout issues: ${fixes.join('; ')}`,
+    fixesApplied: fixes.length,
+    details: fixes,
+  });
+}
+
+function alignTablesTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const action = (input.action as string) ?? 'align';
+  const edge = input.edge as string | undefined;
+  const axis = input.axis as string | undefined;
+
+  // Filter to specific tables if tableNumbers provided
+  const tableNumbers = input.tableNumbers as number[] | undefined;
+  let tablesToProcess = ctx.tables;
+  if (tableNumbers && tableNumbers.length > 0) {
+    tablesToProcess = ctx.tables.filter((t) => t.tableNumber != null && tableNumbers.includes(t.tableNumber));
+    if (tablesToProcess.length === 0) return errorResult('None of the specified table numbers were found.');
+  }
+
+  if (tablesToProcess.length < 2) return errorResult('Need at least 2 tables to align or distribute.');
+
+  const objects: ArrangeableObject[] = tablesToProcess.map((t) => ({
+    id: t.id, x: t.x, y: t.y, width: t.width, height: t.height,
+  }));
+
+  let results: { id: string; x: number; y: number }[];
+
+  if (action === 'distribute') {
+    const distAxis = (axis === 'vertical' ? 'vertical' : 'horizontal') as 'horizontal' | 'vertical';
+    results = distributeEqual(objects, distAxis);
+  } else {
+    // align
+    const validEdges = ['left', 'right', 'top', 'bottom', 'centerH', 'centerV'] as const;
+    const alignEdge = (edge && validEdges.includes(edge as any)) ? edge as typeof validEdges[number] : 'left';
+    results = alignObjects(objects, alignEdge);
+  }
+
+  const store = useEventStore.getState();
+  for (const r of results) {
+    store.updateLayoutObject(r.id, { x: Math.round(r.x), y: Math.round(r.y) });
+  }
+
+  const names = tablesToProcess.map((t) => t.tableNumber != null ? `Table ${t.tableNumber}` : t.name);
+  const desc = action === 'distribute'
+    ? `Distributed ${names.length} tables equally (${axis ?? 'horizontal'})`
+    : `Aligned ${names.length} tables to ${edge ?? 'left'}`;
+
+  return json({
+    summary: desc,
+    action,
+    tablesAffected: names.length,
+    tables: names,
+  });
+}
+
 const TOOL_MAP: Record<
   string,
   (state: StoreState, eventId: string, input: ToolInput) => string | Promise<string>
@@ -2901,6 +3200,10 @@ const TOOL_MAP: Record<
   add_table: addTableTool,
   remove_table: removeTableTool,
   update_table: updateTableTool,
+  move_table: moveTableTool,
+  arrange_tables: arrangeTablesTool,
+  fix_layout_issues: fixLayoutIssuesTool,
+  align_tables: alignTablesTool,
   // Relationship management
   create_relationship_group: createRelationshipGroupTool,
   add_to_relationship_group: addToRelationshipGroupTool,

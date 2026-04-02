@@ -134,6 +134,18 @@ User: "Find Sarah Johnson"
 User: "Seat everyone strategically" or complex seating instructions
 → Call auto_seat_guests with a strategy hint summarizing the user's intent (e.g. strategy: "disperse donors, seat recipients with their donors, spread VIPs for networking"). Then use move_guest_to_table and swap_guests to fine-tune placements. Explain each strategic decision.
 
+User: "Organize the tables" or "Fix the layout" or "Arrange tables in rows"
+→ Call arrange_tables with the requested pattern (grid, circle, or rows). If the user wants specific spacing, pass the spacing parameter.
+
+User: "The layout looks messy" or "Tables are overlapping"
+→ Call fix_layout_issues to auto-fix overlaps, spacing, and out-of-bounds tables.
+
+User: "Move Table 5 to the center" or "Put Table 3 near the stage"
+→ Call move_table with tableNumber and x/y coordinates. Use analyze_layout first if you need to understand the canvas dimensions.
+
+User: "Line up the tables" or "Space them evenly"
+→ Call align_tables with action "align" or "distribute" as appropriate.
+
 ═══════════════════════════════════════════════
   SCHOLARSHIP EVENT SEATING EXPERTISE
 ═══════════════════════════════════════════════
@@ -150,7 +162,22 @@ For scholarship events, Franck knows the art of strategic seating:
 
 After auto-seating, use get_seating_recommendations and score_seating to evaluate, then make targeted swaps to optimize.
 
-You have tools to manage events, guests, seating, and communications. Use them liberally.`;
+═══════════════════════════════════════════════
+  LAYOUT ARRANGEMENT EXPERTISE
+═══════════════════════════════════════════════
+
+Franck can now physically MOVE and ARRANGE tables on the canvas:
+- **arrange_tables** — The power tool. Instantly arranges all tables in grid, circle, or rows patterns with configurable spacing. Use "grid" for formal events, "circle" for galas, "rows" with stagger for ceremonies.
+- **move_table** — Precision placement. Move individual tables to exact coordinates.
+- **fix_layout_issues** — Auto-fix overlaps, spacing violations, and out-of-bounds tables.
+- **align_tables** — Align tables to an edge or distribute with equal spacing.
+
+When the user asks about organizing the layout:
+1. Call analyze_layout FIRST to understand current state and canvas size
+2. Then call arrange_tables or fix_layout_issues to make changes
+3. Report what you did with flair
+
+You have tools to manage events, guests, seating, layout arrangement, and communications. Use them liberally.`;
 
 // ──────────────────────────────────────────────
 // 2. Tool Definitions
@@ -509,6 +536,64 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
         tableNumber: { type: 'number', description: 'Table number to update (e.g. 3 for "Table 3")' },
         name: { type: 'string', description: 'New table name' },
         capacity: { type: 'number', description: 'New table capacity' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'move_table',
+    description:
+      'Move a single table to specific x,y coordinates on the canvas. Use tableNumber (e.g. 3 for "Table 3") or tableId.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        tableNumber: { type: 'number', description: 'Table number to move (e.g. 3 for "Table 3")' },
+        tableId: { type: 'string', description: 'Table ID to move (alternative to tableNumber)' },
+        x: { type: 'number', description: 'New X coordinate (pixels from left edge)' },
+        y: { type: 'number', description: 'New Y coordinate (pixels from top edge)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'arrange_tables',
+    description:
+      'Automatically arrange tables in a pattern: "grid" (rows and columns), "circle" (around center), or "rows" (theater-style rows, optionally staggered). Arranges ALL tables by default, or specific tables if tableNumbers is provided. This is the most powerful layout tool — use it when the user wants tables organized, evenly spaced, or laid out in a specific pattern.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pattern: { type: 'string', enum: ['grid', 'circle', 'rows'], description: 'Arrangement pattern (default: grid)' },
+        spacing: { type: 'number', description: 'Spacing between tables in pixels (default: 30)' },
+        columns: { type: 'number', description: 'Number of columns for grid pattern (auto-calculated if omitted)' },
+        stagger: { type: 'boolean', description: 'For "rows" pattern: offset every other row for a staggered look (default: false)' },
+        radius: { type: 'number', description: 'For "circle" pattern: circle radius in pixels (auto-calculated if omitted)' },
+        margin: { type: 'number', description: 'Margin from canvas edges in pixels (default: 60)' },
+        tableNumbers: { type: 'array', items: { type: 'number' }, description: 'Only arrange these specific tables by number (arranges ALL if omitted)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fix_layout_issues',
+    description:
+      'Automatically fix layout problems: pushes out-of-bounds tables back inside the canvas, separates overlapping tables, and enforces minimum spacing between all tables. Call this after analyze_layout finds issues, or when the user says the layout is messy.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'align_tables',
+    description:
+      'Align tables to an edge (left/right/top/bottom/centerH/centerV) or distribute them with equal spacing along an axis. Use tableNumbers to target specific tables, or omit to align all.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: { type: 'string', enum: ['align', 'distribute'], description: 'Action: "align" to snap to an edge, "distribute" for equal spacing (default: align)' },
+        edge: { type: 'string', enum: ['left', 'right', 'top', 'bottom', 'centerH', 'centerV'], description: 'For align: which edge to align to (default: left)' },
+        axis: { type: 'string', enum: ['horizontal', 'vertical'], description: 'For distribute: axis along which to distribute (default: horizontal)' },
+        tableNumbers: { type: 'array', items: { type: 'number' }, description: 'Only affect these specific tables (affects ALL if omitted)' },
       },
       required: [],
     },
