@@ -128,7 +128,7 @@ function SeatSlot({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          'relative w-[60px] h-[60px] rounded-full flex items-center justify-center transition-all duration-300 ease-in-out select-none',
+          'relative w-[46px] h-[46px] rounded-full flex items-center justify-center transition-all duration-300 ease-in-out select-none',
           guest
             ? 'border-2'
             : cn(
@@ -151,7 +151,7 @@ function SeatSlot({
           <>
             {/* Initials */}
             <span
-              className="text-[13px] font-bold leading-none"
+              className="text-[11px] font-bold leading-none"
               style={{ color: groupColor ?? undefined }}
             >
               {getInitials(guest)}
@@ -274,7 +274,7 @@ function TableCard({
 
   return (
     <div className={cn(
-      'rounded-xl border p-4 flex flex-col gap-3 group transition-all duration-300 ease-in-out',
+      'rounded-xl border p-4 flex flex-col gap-3 group transition-all duration-300 ease-in-out overflow-hidden',
       isAnchored ? 'border-opacity-60' : 'border-border bg-card',
     )} style={isAnchored && anchorColor ? {
       borderColor: `${anchorColor}50`,
@@ -381,9 +381,10 @@ function RoundTableSeats({
   isAnchored,
 }: SeatArrangementProps) {
   const positions = getCircularSeatPositions(capacity);
-  const radius = Math.max(80, Math.min(130, 60 + capacity * 8));
-  const containerSize = (radius + 40) * 2;
-  const surfaceSize = radius * 2 * 0.55;
+  const radius = Math.max(60, Math.min(100, 44 + capacity * 6));
+  const seatHalf = 23; // half of 46px seat
+  const containerSize = (radius + seatHalf + 4) * 2;
+  const surfaceSize = radius * 2 * 0.5;
 
   return (
     <div
@@ -442,8 +443,8 @@ function RoundTableSeats({
             key={seatNumber}
             className="absolute"
             style={{
-              left: cx - 30, // 30 = half of 60px seat
-              top: cy - 30,
+              left: cx - seatHalf,
+              top: cy - seatHalf,
             }}
           >
             <SeatSlot
