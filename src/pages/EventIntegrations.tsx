@@ -6,8 +6,8 @@ import { ExternalLink, Upload, Download, Webhook, QrCode, RefreshCw, Database, F
 import { toast } from 'sonner';
 import BlackbaudImportDialog from '@/components/BlackbaudImportDialog';
 
-const integrations = [
-  { name: 'Blackbaud Award Management', description: 'Import scholarship recipients, donors, and award data from AcademicWorks / Blackbaud Award Management', icon: GraduationCap, status: 'available', category: 'Data' },
+const integrations: { name: string; description: string; icon: typeof GraduationCap; status: string; category: string; featured?: boolean }[] = [
+  { name: 'Blackbaud Award Management', description: 'Import scholarship recipients, donors, and award data from AcademicWorks / Blackbaud Award Management', icon: GraduationCap, status: 'available', category: 'Data', featured: true },
   { name: 'Eventbrite', description: 'Sync registrations and attendee data', icon: ExternalLink, status: 'available', category: 'Registration' },
   { name: 'CRM / Donor Database', description: 'Import donor records and giving history', icon: Database, status: 'coming_soon', category: 'Data' },
   { name: 'Google Sheets', description: 'Two-way sync with spreadsheet data', icon: FileSpreadsheet, status: 'available', category: 'Data' },
@@ -42,9 +42,41 @@ export default function EventIntegrations() {
         <Button variant="outline" size="sm" className="gap-2" disabled title="Export seating coming soon"><Download className="w-3.5 h-3.5" />Export Seating</Button>
       </div>
 
+      {/* Featured integration — Blackbaud */}
+      {integrations.filter((i) => i.featured).map((item) => {
+        const status = statusLabels[item.status];
+        return (
+          <div key={item.name} className="glass-panel p-6 mb-6 border-primary/40 ring-1 ring-primary/20">
+            <div className="flex items-start gap-5">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <item.icon className="w-6 h-6 text-primary" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-base font-bold text-foreground">{item.name}</h3>
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Featured</Badge>
+                  <Badge variant="outline" className={`text-xs ${status.color}`}>{status.label}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{item.description}</p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Scholarship Recipients</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Donor Data</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Award Funds</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Relationship Groups</span>
+                </div>
+              </div>
+              <Button size="sm" className="gap-2" onClick={() => setShowBlackbaudDialog(true)}>
+                <GraduationCap className="w-3.5 h-3.5" />
+                Import Data
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+
       {/* Integration cards */}
       <div className="grid md:grid-cols-2 gap-4 mb-8">
-        {integrations.map((item) => {
+        {integrations.filter((i) => !i.featured).map((item) => {
           const status = statusLabels[item.status];
           return (
             <div key={item.name} className="glass-panel p-5">
@@ -61,11 +93,7 @@ export default function EventIntegrations() {
                   <p className="text-xs text-muted-foreground mt-1 opacity-60">{item.category}</p>
                 </div>
                 <Button variant="ghost" size="sm" className="text-xs" disabled={item.status === 'coming_soon'} onClick={() => {
-                  if (item.name === 'Blackbaud Award Management') {
-                    setShowBlackbaudDialog(true);
-                  } else {
-                    toast.info(`${item.name} integration coming soon`);
-                  }
+                  toast.info(`${item.name} integration coming soon`);
                 }}>
                   {item.status === 'coming_soon' ? 'Soon' : 'Connect'}
                 </Button>
