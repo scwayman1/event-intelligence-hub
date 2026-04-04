@@ -1,7 +1,10 @@
 import { useParams } from 'react-router-dom';
 import { useEventStore } from '@/data/store';
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Mail, Phone, Plus, Search, Sparkles, Tag, Upload, Users, X } from 'lucide-react';
+import { useMemo, useState, useCallback } from 'react';
+import {
+  AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown,
+  Mail, Phone, Plus, Search, Sparkles, Tag, Trash2, Upload, Users, X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +13,8 @@ import { collectAllTags } from '@/lib/rule-engine';
 import { AddGuestDialog } from '@/components/AddGuestDialog';
 import { CsvImportDialog } from '@/components/CsvImportDialog';
 import { RelationshipBadge } from '@/components/RelationshipBadge';
-import type { GuestCategory, RSVPStatus } from '@/types/events';
+import { toast } from 'sonner';
+import type { GuestCategory, RSVPStatus, Guest } from '@/types/events';
 
 const categoryLabels: Record<GuestCategory, string> = {
   donor: 'Donor', scholarship_recipient: 'Scholar', family: 'Family',
@@ -39,6 +43,65 @@ const rsvpColors: Record<RSVPStatus, string> = {
   checked_in: 'bg-primary/20 text-primary',
 };
 
+const rsvpLabels: Record<RSVPStatus, string> = {
+  invited: 'Invited',
+  confirmed: 'Confirmed',
+  declined: 'Declined',
+  waitlist: 'Waitlist',
+  checked_in: 'Checked In',
+};
+
+type SortField = 'name' | 'category' | 'rsvp' | 'organization' | 'table';
+type SortDir = 'asc' | 'desc';
+
+/** Inline dropdown for RSVP or Category changes */
+function InlineDropdown<T extends string>({
+  value,
+  options,
+  labels,
+  colors,
+  onSelect,
+}: {
+  value: T;
+  options: T[];
+  labels: Record<T, string>;
+  colors: Record<T, string>;
+  onSelect: (v: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all ${colors[value]}`}
+      >
+        <span className="status-dot" style={{ width: 6, height: 6 }} />
+        {labels[value]}
+        <ChevronDown className="w-3 h-3 opacity-50" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+            {options.map((opt) => (
+              <button
+                key={opt}
+                onClick={(e) => { e.stopPropagation(); onSelect(opt); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 flex items-center gap-2 ${opt === value ? 'font-medium' : ''}`}
+              >
+                <span className={`inline-block w-2 h-2 rounded-full ${colors[opt].split(' ')[0]}`} />
+                {labels[opt]}
+                {opt === value && <Check className="w-3 h-3 ml-auto text-primary" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function EventGuests() {
   const { eventId } = useParams();
   const getOrgEvents = useEventStore((s) => s.getOrgEvents);
@@ -48,13 +111,13 @@ export default function EventGuests() {
   const seatingAssignments = useEventStore((s) => s.seatingAssignments);
   const seatingRules = useEventStore((s) => s.seatingRules);
   const getGuestRelationships = useEventStore((s) => s.getGuestRelationships);
+  const updateGuest = useEventStore((s) => s.updateGuest);
+  const removeGuest = useEventStore((s) => s.removeGuest);
 
   const event = getOrgEvents().find((item) => item.id === eventId);
   const analytics = event
     ? buildEventAnalytics({ event, guests, versions, layoutObjects, seatingAssignments, seatingRules })
     : null;
-
-  const updateGuest = useEventStore((s) => s.updateGuest);
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<GuestCategory | 'all'>('all');
@@ -63,17 +126,28 @@ export default function EventGuests() {
   const [newTag, setNewTag] = useState('');
   const [showAddGuest, setShowAddGuest] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const eventGuests = useMemo(() => {
-    return guests
-      .filter((g) => g.eventId === eventId)
-      .filter((g) => categoryFilter === 'all' || g.category === categoryFilter)
-      .filter((g) => rsvpFilter === 'all' || g.rsvpStatus === rsvpFilter)
-      .filter((g) =>
-        search === '' ||
-        `${g.firstName} ${g.lastName} ${g.organization} ${g.email} ${g.notes}`.toLowerCase().includes(search.toLowerCase())
-      );
-  }, [guests, eventId, search, categoryFilter, rsvpFilter]);
+  const allEventGuests = useMemo(() => guests.filter((g) => g.eventId === eventId), [guests, eventId]);
+  const stats = {
+    total: allEventGuests.length,
+    confirmed: allEventGuests.filter((g) => g.rsvpStatus === 'confirmed').length,
+    declined: allEventGuests.filter((g) => g.rsvpStatus === 'declined').length,
+    invited: allEventGuests.filter((g) => g.rsvpStatus === 'invited').length,
+    waitlist: allEventGuests.filter((g) => g.rsvpStatus === 'waitlist').length,
+    checked_in: allEventGuests.filter((g) => g.rsvpStatus === 'checked_in').length,
+  };
+
+  const rsvpFilterCounts: Record<RSVPStatus | 'all', number> = {
+    all: allEventGuests.length,
+    invited: stats.invited,
+    confirmed: stats.confirmed,
+    declined: stats.declined,
+    waitlist: stats.waitlist,
+    checked_in: stats.checked_in,
+  };
 
   const tableMap = useMemo(() => {
     if (!analytics) return new Map<string, string>();
@@ -85,14 +159,31 @@ export default function EventGuests() {
     return result;
   }, [analytics]);
 
-  const allEventGuests = useMemo(() => guests.filter((g) => g.eventId === eventId), [guests, eventId]);
-  const stats = {
-    total: allEventGuests.length,
-    confirmed: allEventGuests.filter((g) => g.rsvpStatus === 'confirmed').length,
-    declined: allEventGuests.filter((g) => g.rsvpStatus === 'declined').length,
-    invited: allEventGuests.filter((g) => g.rsvpStatus === 'invited').length,
-    waitlist: allEventGuests.filter((g) => g.rsvpStatus === 'waitlist').length,
-  };
+  const eventGuests = useMemo(() => {
+    const filtered = guests
+      .filter((g) => g.eventId === eventId)
+      .filter((g) => categoryFilter === 'all' || g.category === categoryFilter)
+      .filter((g) => rsvpFilter === 'all' || g.rsvpStatus === rsvpFilter)
+      .filter((g) =>
+        search === '' ||
+        `${g.firstName} ${g.lastName} ${g.organization} ${g.email} ${g.notes}`.toLowerCase().includes(search.toLowerCase())
+      );
+
+    // Sort
+    const compare = (a: Guest, b: Guest): number => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'name': cmp = a.displayName.localeCompare(b.displayName); break;
+        case 'category': cmp = categoryLabels[a.category].localeCompare(categoryLabels[b.category]); break;
+        case 'rsvp': cmp = a.rsvpStatus.localeCompare(b.rsvpStatus); break;
+        case 'organization': cmp = (a.organization || '').localeCompare(b.organization || ''); break;
+        case 'table': cmp = (tableMap.get(a.id) || 'zzz').localeCompare(tableMap.get(b.id) || 'zzz'); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    };
+
+    return [...filtered].sort(compare);
+  }, [guests, eventId, search, categoryFilter, rsvpFilter, sortField, sortDir, tableMap]);
 
   const allTags = useMemo(() => collectAllTags(allEventGuests), [allEventGuests]);
 
@@ -110,8 +201,57 @@ export default function EventGuests() {
     updateGuest(guestId, { relationshipTags: guest.relationshipTags.filter((t) => t !== tag) });
   }
 
+  const toggleSort = useCallback((field: SortField) => {
+    setSortField((prev) => {
+      if (prev === field) { setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); return field; }
+      setSortDir('asc');
+      return field;
+    });
+  }, []);
+
+  const toggleSelect = useCallback((guestId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(guestId)) next.delete(guestId); else next.add(guestId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelected((prev) => {
+      if (prev.size === eventGuests.length) return new Set();
+      return new Set(eventGuests.map((g) => g.id));
+    });
+  }, [eventGuests]);
+
+  const bulkUpdateRsvp = useCallback((status: RSVPStatus) => {
+    selected.forEach((id) => updateGuest(id, { rsvpStatus: status }));
+    toast.success(`Updated ${selected.size} guest(s) to ${rsvpLabels[status]}`);
+    setSelected(new Set());
+  }, [selected, updateGuest]);
+
+  const bulkUpdateCategory = useCallback((category: GuestCategory) => {
+    selected.forEach((id) => updateGuest(id, { category }));
+    toast.success(`Updated ${selected.size} guest(s) to ${categoryLabels[category]}`);
+    setSelected(new Set());
+  }, [selected, updateGuest]);
+
+  const bulkDelete = useCallback(() => {
+    const count = selected.size;
+    selected.forEach((id) => removeGuest(id));
+    toast.success(`Removed ${count} guest(s)`);
+    setSelected(new Set());
+  }, [selected, removeGuest]);
+
   const categories: (GuestCategory | 'all')[] = ['all', 'donor', 'scholarship_recipient', 'board_member', 'vip', 'staff', 'family', 'sponsor', 'volunteer', 'dignitary', 'other'];
   const rsvpStatuses: (RSVPStatus | 'all')[] = ['all', 'invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
+  const allRsvpValues: RSVPStatus[] = ['invited', 'confirmed', 'declined', 'waitlist', 'checked_in'];
+  const allCategoryValues: GuestCategory[] = ['donor', 'scholarship_recipient', 'board_member', 'vip', 'staff', 'family', 'sponsor', 'volunteer', 'dignitary', 'other'];
+
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+    return sortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-primary" /> : <ArrowDown className="w-3 h-3 text-primary" />;
+  }
 
   if (!event || !analytics) return <div className="p-8 text-muted-foreground">Event not found</div>;
 
@@ -181,64 +321,147 @@ export default function EventGuests() {
             </div>
           </div>
 
+          {/* RSVP filters with counts */}
           <div className="flex gap-1 flex-wrap mb-4">
             {rsvpStatuses.map((status) => (
               <button
                 key={status}
                 onClick={() => setRsvpFilter(status)}
-                className={`px-2.5 py-1 rounded-md text-xs transition-colors ${rsvpFilter === status ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                className={`px-2.5 py-1 rounded-md text-xs transition-colors flex items-center gap-1.5 ${rsvpFilter === status ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
-                {status === 'all' ? 'All RSVP' : status.replace('_', ' ')}
+                {status === 'all' ? 'All RSVP' : rsvpLabels[status as RSVPStatus]}
+                <span className="font-mono text-[10px] opacity-60">{rsvpFilterCounts[status]}</span>
               </button>
             ))}
           </div>
+
+          {/* Bulk actions bar */}
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20">
+              <span className="text-xs font-medium text-primary">{selected.size} selected</span>
+              <div className="w-px h-4 bg-border" />
+
+              {/* Bulk RSVP */}
+              <div className="relative group">
+                <button className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground">Set RSVP</button>
+                <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block bg-card border border-border rounded-lg shadow-lg py-1 min-w-[130px]">
+                  {allRsvpValues.map((s) => (
+                    <button key={s} onClick={() => bulkUpdateRsvp(s)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${rsvpColors[s].split(' ')[0]}`} />
+                      {rsvpLabels[s]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bulk Category */}
+              <div className="relative group">
+                <button className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground">Set Category</button>
+                <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block bg-card border border-border rounded-lg shadow-lg py-1 min-w-[150px] max-h-[200px] overflow-y-auto">
+                  {allCategoryValues.map((c) => (
+                    <button key={c} onClick={() => bulkUpdateCategory(c)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50">
+                      {categoryLabels[c]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={bulkDelete}
+                className="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center gap-1 ml-auto"
+              >
+                <Trash2 className="w-3 h-3" />
+                Remove
+              </button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           <div className="overflow-hidden rounded-lg border border-border/60">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/20">
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Guest</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Category</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">RSVP</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Organization</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Seat / Table</th>
+                  <th className="w-8 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={eventGuests.length > 0 && selected.size === eventGuests.length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-border cursor-pointer"
+                    />
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('name')}>
+                    <span className="flex items-center gap-1">Guest <SortIcon field="name" /></span>
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('category')}>
+                    <span className="flex items-center gap-1">Category <SortIcon field="category" /></span>
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('rsvp')}>
+                    <span className="flex items-center gap-1">RSVP <SortIcon field="rsvp" /></span>
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('organization')}>
+                    <span className="flex items-center gap-1">Organization <SortIcon field="organization" /></span>
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('table')}>
+                    <span className="flex items-center gap-1">Table <SortIcon field="table" /></span>
+                  </th>
                   <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">Tags & Signals</th>
+                  <th className="w-10 px-2 py-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {eventGuests.map((guest) => {
                   const seatedTable = tableMap.get(guest.id);
-                  const hasSignals = Boolean(guest.dietaryRestrictions || guest.accessibilityNeeds || guest.tablePreference || guest.seatingPreference);
+                  const isSelected = selected.has(guest.id);
 
                   return (
-                    <tr key={guest.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors align-top">
+                    <tr
+                      key={guest.id}
+                      className={`border-b border-border/50 hover:bg-muted/30 transition-colors align-top ${isSelected ? 'bg-primary/5' : ''}`}
+                    >
+                      <td className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(guest.id)}
+                          className="rounded border-border cursor-pointer"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div>
                           <p className="text-sm font-medium text-foreground">{guest.displayName}</p>
-                          <div className="mt-1 space-y-1">
+                          <div className="mt-1 space-y-0.5">
                             {guest.email && <p className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" />{guest.email}</p>}
                             {guest.phone && <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{guest.phone}</p>}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline" className={`text-xs ${categoryColors[guest.category]}`}>
-                          {categoryLabels[guest.category]}
-                        </Badge>
+                        <InlineDropdown
+                          value={guest.category}
+                          options={allCategoryValues}
+                          labels={categoryLabels}
+                          colors={categoryColors}
+                          onSelect={(cat) => updateGuest(guest.id, { category: cat })}
+                        />
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${rsvpColors[guest.rsvpStatus]}`}>
-                          <span className="status-dot" style={{ width: 6, height: 6 }} />
-                          {guest.rsvpStatus.replace('_', ' ')}
-                        </span>
+                        <InlineDropdown
+                          value={guest.rsvpStatus}
+                          options={allRsvpValues}
+                          labels={rsvpLabels}
+                          colors={rsvpColors}
+                          onSelect={(status) => updateGuest(guest.id, { rsvpStatus: status })}
+                        />
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{guest.organization || '—'}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        <div>{seatedTable || 'Unassigned'}</div>
-                        <div className="text-xs font-mono text-muted-foreground/80">Party {guest.partySize}</div>
+                        <div>{seatedTable || <span className="text-muted-foreground/50">Unassigned</span>}</div>
+                        {guest.partySize > 1 && <div className="text-xs font-mono text-muted-foreground/80">Party {guest.partySize}</div>}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="space-y-2 max-w-[300px]">
+                        <div className="space-y-1.5 max-w-[280px]">
                           {/* Relationship groups */}
                           {(() => {
                             const rels = getGuestRelationships(guest.id);
@@ -329,6 +552,18 @@ export default function EventGuests() {
                             <p className="text-xs text-muted-foreground">Seat pref: {guest.seatingPreference}</p>
                           )}
                         </div>
+                      </td>
+                      <td className="px-2 py-3">
+                        <button
+                          onClick={() => { removeGuest(guest.id); toast.success(`Removed ${guest.displayName}`); }}
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                          style={{ opacity: undefined }}
+                          title="Remove guest"
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );
