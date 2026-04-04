@@ -756,17 +756,29 @@ function getTableInfo(
     emptyTables: seatingAnalytics.emptyTables,
     fullTables: seatingAnalytics.fullTables,
     overCapacityTables: seatingAnalytics.overCapacityTables,
-    tables: seatingAnalytics.tableUtilization.map((t) => ({
-      tableId: t.table.id,
-      tableNumber: t.table.tableNumber ?? null,
-      tableName: t.table.name,
-      type: t.table.type,
-      capacity: t.capacity,
-      seated: t.seated,
-      utilizationPct: t.utilizationPct,
-      hasAnchor: t.hasAnchor,
-      anchorGroupName: t.anchorGroupName ?? null,
-    })),
+    tables: seatingAnalytics.tableUtilization.map((t) => {
+      // Find guests seated at this table
+      const tableAssignments = ctx.assignments.filter((a) => a.tableId === t.table.id);
+      const seatedGuests = tableAssignments.map((a) => {
+        const guest = ctx.guests.find((g) => g.id === a.guestId);
+        return guest
+          ? { id: guest.id, name: guest.displayName, category: guest.category, rsvpStatus: guest.rsvpStatus, seatNumber: a.seatNumber ?? null }
+          : null;
+      }).filter(Boolean);
+
+      return {
+        tableId: t.table.id,
+        tableNumber: t.table.tableNumber ?? null,
+        tableName: t.table.name,
+        type: t.table.type,
+        capacity: t.capacity,
+        seated: t.seated,
+        utilizationPct: t.utilizationPct,
+        hasAnchor: t.hasAnchor,
+        anchorGroupName: t.anchorGroupName ?? null,
+        guests: seatedGuests,
+      };
+    }),
   });
 }
 
