@@ -177,7 +177,7 @@ export default function EventGuests() {
         case 'category': cmp = categoryLabels[a.category].localeCompare(categoryLabels[b.category]); break;
         case 'rsvp': cmp = a.rsvpStatus.localeCompare(b.rsvpStatus); break;
         case 'organization': cmp = (a.organization || '').localeCompare(b.organization || ''); break;
-        case 'table': cmp = (tableMap.get(a.id) || 'zzz').localeCompare(tableMap.get(b.id) || 'zzz'); break;
+        case 'table': cmp = (tableMap.get(a.id) || 'zzz').localeCompare(tableMap.get(b.id) || 'zzz', undefined, { numeric: true }); break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
     };
