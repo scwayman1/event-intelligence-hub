@@ -35,6 +35,8 @@ import { toast } from 'sonner';
   MessageSquare,
   AlertCircle,
   Mail,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import {
   sendMessage,
@@ -365,6 +367,75 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const loadingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Speech-to-text ─────────────────────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      // Stop
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error('Speech recognition is not supported in this browser');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    let finalTranscript = '';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interim = transcript;
+        }
+      }
+      setInput((prev) => {
+        // Replace any previous interim with the current state
+        const base = finalTranscript || prev;
+        return (base + interim).trim();
+      });
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error !== 'no-speech') {
+        toast.error(`Mic error: ${event.error}`);
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+    toast.success('Listening... speak to Franck');
+  }, [isListening]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
 
   // ── Auto-scroll on new messages ─────────────────────────────────────────
   useEffect(() => {
@@ -1612,11 +1683,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder={
-                keyStored
-                  ? 'Ask Franck anything about your event...'
-                  : DEFAULT_FREE_CONFIG
+                isListening
+                  ? 'Listening... speak now'
+                  : keyStored
                     ? 'Ask Franck anything about your event...'
-                    : 'Configure provider first'
+                    : DEFAULT_FREE_CONFIG
+                      ? 'Ask Franck anything about your event...'
+                      : 'Configure provider first'
               }
               disabled={(!keyStored && !DEFAULT_FREE_CONFIG) || isLoading}
               rows={1}
@@ -1625,12 +1698,30 @@ export function FranckChat({ eventId }: FranckChatProps) {
                 'placeholder:text-muted-foreground/60',
                 'focus:outline-none',
                 'disabled:cursor-not-allowed disabled:opacity-50',
-                'max-h-[120px]'
+                'max-h-[120px]',
+                isListening && 'placeholder:text-red-400'
               )}
             />
+            {speechSupported && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={toggleListening}
+                disabled={isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
+                className={cn(
+                  'h-8 w-8 shrink-0 rounded-lg transition-all',
+                  isListening
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 animate-pulse'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title={isListening ? 'Stop listening' : 'Talk to Franck'}
+              >
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
+            )}
             <Button
               size="icon"
-              onClick={() => handleSend()}
+              onClick={() => { recognitionRef.current?.stop(); handleSend(); }}
               disabled={!input.trim() || isLoading || (!keyStored && !DEFAULT_FREE_CONFIG)}
               className={cn(
                 'h-8 w-8 shrink-0 rounded-lg',
