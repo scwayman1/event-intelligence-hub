@@ -103,24 +103,27 @@ export default function BlackbaudImportDialog({ open, onOpenChange }: BlackbaudI
       errors: [],
     };
 
+    // Get current event and org context from store
+    const storeState = useEventStore.getState();
+    const eventId = storeState.events?.[0]?.id ?? '';
+    const orgId = storeState.activeOrgId ?? storeState.organizations?.[0]?.id ?? '';
+
     try {
       if (state.importRecipients) {
-        const r = await importScholarshipRecipients(state.config);
-        result.guestsAdded += r.added;
-        result.guestsUpdated += r.updated;
-        result.errors.push(...r.errors.map((msg) => ({ message: msg })));
+        const r = await importScholarshipRecipients(state.config, eventId, orgId, {
+          skipRelationships: !state.createRelationshipGroups,
+        });
+        result.guestsAdded += r.guestsAdded;
+        result.guestsUpdated += r.guestsUpdated;
+        result.relationshipGroupsCreated += r.relationshipGroupsCreated;
+        result.errors.push(...r.errors);
       }
 
       if (state.importDonors) {
-        const d = await importDonors(state.config);
-        result.guestsAdded += d.added;
-        result.guestsUpdated += d.updated;
-        result.errors.push(...d.errors.map((msg) => ({ message: msg })));
-      }
-
-      if (state.createRelationshipGroups) {
-        // Relationship group creation would happen here in a real implementation
-        result.relationshipGroupsCreated = 0;
+        const d = await importDonors(state.config, eventId, orgId);
+        result.guestsAdded += d.guestsAdded;
+        result.guestsUpdated += d.guestsUpdated;
+        result.errors.push(...d.errors);
       }
 
       setState((s) => ({ ...s, step: 'import', importResult: result, loading: false }));
