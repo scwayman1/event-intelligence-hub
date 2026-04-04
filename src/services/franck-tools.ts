@@ -3285,6 +3285,29 @@ function alignTablesTool(
   });
 }
 
+function importBlackbaudTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  // Check if Blackbaud config exists in localStorage
+  const configStr = typeof window !== 'undefined' ? localStorage.getItem('blackbaud-config') : null;
+  if (!configStr) {
+    return json({
+      error: true,
+      message: 'Blackbaud is not connected yet. Ask the user to go to Integrations and set up the Blackbaud connection first.',
+      suggestion: 'Navigate to the Integrations page and click "Connect" on Blackbaud Award Management to enter their SKY API credentials.',
+    });
+  }
+
+  // Config exists — tell Franck what's available
+  return json({
+    summary: 'Blackbaud Award Management is connected. To import scholarship data, the user should use the Import dialog on the Integrations page. Franck can guide them there.',
+    connected: true,
+    suggestion: 'Tell the user to go to Integrations → Blackbaud Award Management → Import to pull in scholarship recipients, donors, and award data automatically.',
+  });
+}
+
 const TOOL_MAP: Record<
   string,
   (state: StoreState, eventId: string, input: ToolInput) => string | Promise<string>
@@ -3340,6 +3363,7 @@ const TOOL_MAP: Record<
   export_guest_list: exportGuestListTool,
   get_event_checklist: getEventChecklistTool,
   suggest_next_actions: suggestNextActionsTool,
+  import_blackbaud: importBlackbaudTool,
 };
 
 /**

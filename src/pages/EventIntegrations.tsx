@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Download, Webhook, QrCode, RefreshCw, Database, FileSpreadsheet } from 'lucide-react';
+import { ExternalLink, Upload, Download, Webhook, QrCode, RefreshCw, Database, FileSpreadsheet, GraduationCap } from 'lucide-react';
 import { toast } from 'sonner';
+import BlackbaudImportDialog from '@/components/BlackbaudImportDialog';
 
 const integrations = [
+  { name: 'Blackbaud Award Management', description: 'Import scholarship recipients, donors, and award data from AcademicWorks / Blackbaud Award Management', icon: GraduationCap, status: 'available', category: 'Data' },
   { name: 'Eventbrite', description: 'Sync registrations and attendee data', icon: ExternalLink, status: 'available', category: 'Registration' },
   { name: 'CRM / Donor Database', description: 'Import donor records and giving history', icon: Database, status: 'coming_soon', category: 'Data' },
   { name: 'Google Sheets', description: 'Two-way sync with spreadsheet data', icon: FileSpreadsheet, status: 'available', category: 'Data' },
@@ -24,6 +27,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 export default function EventIntegrations() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const [showBlackbaudDialog, setShowBlackbaudDialog] = useState(false);
 
   return (
     <div className="p-8 max-w-5xl">
@@ -56,7 +60,13 @@ export default function EventIntegrations() {
                   <p className="text-xs text-muted-foreground">{item.description}</p>
                   <p className="text-xs text-muted-foreground mt-1 opacity-60">{item.category}</p>
                 </div>
-                <Button variant="ghost" size="sm" className="text-xs" disabled={item.status === 'coming_soon'} onClick={() => toast.info(`${item.name} integration coming soon`)}>
+                <Button variant="ghost" size="sm" className="text-xs" disabled={item.status === 'coming_soon'} onClick={() => {
+                  if (item.name === 'Blackbaud Award Management') {
+                    setShowBlackbaudDialog(true);
+                  } else {
+                    toast.info(`${item.name} integration coming soon`);
+                  }
+                }}>
                   {item.status === 'coming_soon' ? 'Soon' : 'Connect'}
                 </Button>
               </div>
@@ -82,6 +92,8 @@ export default function EventIntegrations() {
           ))}
         </div>
       </div>
+
+      <BlackbaudImportDialog open={showBlackbaudDialog} onOpenChange={setShowBlackbaudDialog} />
     </div>
   );
 }

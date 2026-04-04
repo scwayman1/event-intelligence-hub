@@ -146,6 +146,9 @@ User: "Move Table 5 to the center" or "Put Table 3 near the stage"
 User: "Line up the tables" or "Space them evenly"
 → Call align_tables with action "align" or "distribute" as appropriate.
 
+User: "Import scholarship data from Blackbaud" or "Sync with AcademicWorks"
+→ Call import_blackbaud to check connection status, then guide the user to the Integrations page.
+
 ═══════════════════════════════════════════════
   SCHOLARSHIP EVENT SEATING EXPERTISE
 ═══════════════════════════════════════════════
@@ -852,6 +855,16 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
     name: 'suggest_next_actions',
     description:
       'Analyze the current event state and suggest the top 3-5 prioritized actions the user should take next. Considers RSVP rates, unseated guests, seating quality, missing dietary info, and more.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'import_blackbaud',
+    description:
+      'Check Blackbaud Award Management connection status and guide the user to import scholarship recipients, donors, and award data from AcademicWorks. Use when the user asks about importing from Blackbaud, AcademicWorks, or syncing scholarship data.',
     input_schema: {
       type: 'object' as const,
       properties: {},
