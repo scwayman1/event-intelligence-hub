@@ -75,11 +75,12 @@ interface ModelCapabilities {
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // Free models
-  'qwen/qwen3-235b-a22b:free': { toolUse: true },
-  'deepseek/deepseek-chat-v3.1:free': { toolUse: true },
-  'meta-llama/llama-4-maverick:free': { toolUse: true },
+  'qwen/qwen3.6-plus:free': { toolUse: true },
+  'deepseek/deepseek-chat-v3-0324:free': { toolUse: true },
+  'meta-llama/llama-3.3-70b-instruct:free': { toolUse: true },
+  'qwen/qwen3-coder:free': { toolUse: true },
   // Paid models
-  'deepseek/deepseek-chat-v3.1': { toolUse: true },
+  'deepseek/deepseek-chat': { toolUse: true },
 };
 
 const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: true };
@@ -129,15 +130,16 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'openrouter',
     label: 'OpenRouter',
     keyPlaceholder: 'sk-or-v1-...',
-    defaultModel: 'qwen/qwen3-235b-a22b:free',
+    defaultModel: 'qwen/qwen3.6-plus:free',
     models: [
       // ── Free models (no API key required) ──
-      { id: 'qwen/qwen3-235b-a22b:free', label: '🆓 Qwen 3 235B (Recommended Free)' },
-      { id: 'deepseek/deepseek-chat-v3.1:free', label: '🆓 DeepSeek V3.1' },
-      { id: 'meta-llama/llama-4-maverick:free', label: '🆓 Llama 4 Maverick' },
+      { id: 'qwen/qwen3.6-plus:free', label: '🆓 Qwen 3.6 Plus (Recommended Free)' },
+      { id: 'deepseek/deepseek-chat-v3-0324:free', label: '🆓 DeepSeek V3 0324' },
+      { id: 'meta-llama/llama-3.3-70b-instruct:free', label: '🆓 Llama 3.3 70B' },
+      { id: 'qwen/qwen3-coder:free', label: '🆓 Qwen 3 Coder 480B' },
       // ── Best value (great tool calling, pennies per conversation) ──
       { id: 'anthropic/claude-haiku-4.5', label: '⚡ Claude Haiku 4.5 (Best Value)' },
-      { id: 'deepseek/deepseek-chat-v3.1', label: '⚡ DeepSeek V3.1' },
+      { id: 'deepseek/deepseek-chat', label: '⚡ DeepSeek V3' },
       { id: 'google/gemini-2.5-flash', label: '⚡ Gemini 2.5 Flash' },
       // ── Premium (excellent tool calling, reliable) ──
       { id: 'anthropic/claude-sonnet-4.6', label: '💎 Claude Sonnet 4.6' },
@@ -154,7 +156,7 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 // ──────────────────────────────────────────────
 
 const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
-const FREE_MODEL = 'qwen/qwen3-235b-a22b:free';
+const FREE_MODEL = 'qwen/qwen3.6-plus:free';
 
 /** Best paid model for org-level use — fast, cheap, great tool calling */
 export const RECOMMENDED_PAID_MODEL = 'anthropic/claude-haiku-4.5';
