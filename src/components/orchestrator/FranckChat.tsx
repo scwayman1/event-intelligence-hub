@@ -226,8 +226,8 @@ const WELCOME_MESSAGE: ChatMessage = {
   role: 'assistant',
   content:
     'Bonjour! I am Franck Eggelhoffer, and I am HERE to make your event absolutely MAGNIFIQUE! 🎩✨\n\n' +
-    'I\'m powered by **DeepSeek V3.1** via OpenRouter — completely free, no setup needed. ' +
-    'Want even more power? Bring your own OpenRouter or Anthropic API key in Settings (gear icon above) to unlock premium models like Claude or GPT-4.\n\n' +
+    'I\'m powered by a free AI model via OpenRouter — no setup needed. ' +
+    'Want even more power? Bring your own OpenRouter or Anthropic API key in Settings (gear icon above) to unlock premium models like Claude Opus or Sonnet.\n\n' +
     'Ask me anything about your guests, seating, or I can take care of things for you!',
   timestamp: Date.now(),
 };

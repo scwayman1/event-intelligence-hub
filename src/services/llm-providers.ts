@@ -371,7 +371,7 @@ function anthropicMessagesToOpenAI(
 // Retry & Timeout Helpers
 // ──────────────────────────────────────────────
 
-const API_TIMEOUT_MS = 60_000;
+const API_TIMEOUT_MS = 120_000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
 const MAX_RETRIES = 2;
 const BACKOFF_MS = [1000, 2000];
