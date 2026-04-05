@@ -788,8 +788,10 @@ function getTableInfo(
   // If querying a specific table, return focused response
   if (filteredTables.length === 1) {
     const t = filteredTables[0];
+    const guestNames = t.guests.map((g: { name: string; category: string }) => `${g.name} (${g.category})`).join(', ');
     return json({
-      summary: `Table ${t.tableNumber ?? t.tableName}: ${t.seated}/${t.capacity} seats filled`,
+      summary: `Table ${t.tableNumber ?? t.tableName}: ${t.seated}/${t.capacity} seats filled. Guests: ${guestNames || 'none'}`,
+      GUEST_LIST: guestNames || 'No guests seated',
       ...t,
     });
   }
