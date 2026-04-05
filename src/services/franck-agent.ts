@@ -14,6 +14,7 @@
  */
 
 import { executeTool } from './franck-tools';
+import { buildMemoryContext, extractMemories, storeMemory } from '@/services/franck-memory';
 import { useEventStore } from '@/data/store';
 import {
   callLLM,
@@ -180,7 +181,15 @@ When the user asks about organizing the layout:
 2. Then call arrange_tables or fix_layout_issues to make changes
 3. Report what you did with flair
 
-You have tools to manage events, guests, seating, layout arrangement, and communications. Use them liberally.`;
+You have tools to manage events, guests, seating, layout arrangement, and communications. Use them liberally.
+
+═══════════════════════════════════════════════
+  MEMORY & CONTEXT
+═══════════════════════════════════════════════
+
+13. **You have persistent memory.** Important instructions, preferences, and decisions from past conversations are included in your EVENT MEMORY section (if present). ALWAYS honor standing instructions and preferences. Reference past decisions when relevant.
+
+14. **When the user gives you an instruction** (e.g., "always seat donors with recipients", "never put family at Table 1"), acknowledge it and remember it. These instructions persist across conversations.`;
 
 // ──────────────────────────────────────────────
 // 2. Tool Definitions
@@ -1424,6 +1433,12 @@ export async function sendMessage(
   const allToolCalls: { name: string; result: string }[] = [];
   rawMessages.push({ role: 'user', content: userMessage });
 
+  // Build memory context for this event
+  const memoryContext = await buildMemoryContext(eventId, userMessage);
+  const systemWithMemory = memoryContext
+    ? FRANCK_SYSTEM_PROMPT + '\n\n' + memoryContext
+    : FRANCK_SYSTEM_PROMPT;
+
   // ── 5. No-tool-use LLM path ────────────────────────────────────
   // When the model doesn't support tools, inject event context into the
   // system prompt and call without tools so the model can still answer
@@ -1431,7 +1446,7 @@ export async function sendMessage(
   if (!modelSupportsToolUse(config)) {
     const eventContext = buildEventContextBlock(eventId);
     const enrichedPrompt =
-      FRANCK_SYSTEM_PROMPT +
+      systemWithMemory +
       '\n\n═══════════════════════════════════════════════\n' +
       '  CURRENT EVENT STATE (read-only snapshot)\n' +
       '═══════════════════════════════════════════════\n' +
@@ -1478,11 +1493,11 @@ export async function sendMessage(
     // to wrap up so we don't burn tokens endlessly.
     const systemPrompt =
       iteration >= 10
-        ? FRANCK_SYSTEM_PROMPT +
+        ? systemWithMemory +
           '\n\n[SYSTEM NOTE: You have used many tool calls already. ' +
           'Please summarize what you have accomplished so far and provide ' +
           'your final response to the user now.]'
-        : FRANCK_SYSTEM_PROMPT;
+        : systemWithMemory;
 
     const normalized: NormalizedResponse = await callLLM(
       config,
