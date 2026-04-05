@@ -1665,6 +1665,9 @@ function addGuestsBulkTool(
 
   const guestsInput = input.guests as Array<Record<string, unknown>> | undefined;
   if (!guestsInput || guestsInput.length === 0) return errorResult('guests array is required and must not be empty.');
+  if (guestsInput.length > 200) {
+    return errorResult('Bulk add limited to 200 guests per call to prevent performance issues.');
+  }
 
   const store = useEventStore.getState();
   const added: Array<{ guestId: string; displayName: string }> = [];

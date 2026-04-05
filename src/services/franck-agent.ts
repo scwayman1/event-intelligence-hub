@@ -1528,6 +1528,9 @@ export async function sendMessage(
         } else {
           const currentState = useEventStore.getState();
           result = await executeTool(toolCall.name, toolCall.input, currentState, eventId);
+          if (!result || result.trim() === '') {
+            result = JSON.stringify({ error: true, message: `Tool "${toolCall.name}" returned an empty result.` });
+          }
           toolResultCache.set(cacheKey, result);
         }
 
@@ -1548,25 +1551,27 @@ export async function sendMessage(
     }
 
     // No more tool calls — extract the final text and return
-    const responseText = normalized.textContent;
+    const responseText = normalized.textContent || '';
 
     // Extract and persist memories from this interaction
     try {
       const event = useEventStore.getState().events.find((e) => e.id === eventId);
-      const executedToolCalls = allToolCalls.map((tc) => tc.name);
-      const candidates = extractMemories(userMessage, responseText, executedToolCalls);
-      for (const candidate of candidates) {
-        await storeMemory({
-          eventId,
-          orgId: event?.orgId ?? '',
-          type: candidate.type,
-          content: candidate.content,
-          summary: candidate.summary,
-          importance: candidate.importance,
-          source: candidate.source,
-          toolName: candidate.toolName,
-          expiresAt: null,
-        });
+      if (event) {
+        const executedToolCalls = allToolCalls.map((tc) => tc.name);
+        const candidates = extractMemories(userMessage, responseText, executedToolCalls);
+        for (const candidate of candidates) {
+          await storeMemory({
+            eventId,
+            orgId: event.orgId,
+            type: candidate.type,
+            content: candidate.content,
+            summary: candidate.summary,
+            importance: candidate.importance,
+            source: candidate.source,
+            toolName: candidate.toolName,
+            expiresAt: null,
+          });
+        }
       }
     } catch {
       // Memory extraction should never break the agent

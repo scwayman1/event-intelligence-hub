@@ -378,6 +378,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
     if (isListening) {
       // Stop
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
       setIsListening(false);
       return;
     }
@@ -434,6 +435,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
     };
   }, []);
 
@@ -516,16 +518,11 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
   // ── Rotate loading messages ─────────────────────────────────────────────
   useEffect(() => {
-    if (isLoading) {
-      loadingInterval.current = setInterval(() => {
-        setLoadingMsgIndex((i) => (i + 1) % LOADING_MESSAGES.length);
-      }, 2500);
-    } else {
-      if (loadingInterval.current) clearInterval(loadingInterval.current);
-    }
-    return () => {
-      if (loadingInterval.current) clearInterval(loadingInterval.current);
-    };
+    if (!isLoading) return;
+    const interval = setInterval(() => {
+      setLoadingMsgIndex((i) => (i + 1) % LOADING_MESSAGES.length);
+    }, 2500);
+    return () => clearInterval(interval);
   }, [isLoading]);
 
   // ── Loading "too long" timer ────────────────────────────────────────────
