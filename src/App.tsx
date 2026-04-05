@@ -23,6 +23,7 @@ import Profile from "@/pages/Profile";
 import MessagingHub from "@/pages/MessagingHub";
 import JoinInvite from "@/pages/JoinInvite";
 import TeamManagement from "@/pages/TeamManagement";
+import BlackbaudCallback from "@/pages/BlackbaudCallback";
 import NotFound from "./pages/NotFound";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useEventStore } from "@/data/store";
@@ -93,6 +94,9 @@ const AppRoutes = () => (
     <Route path="/sign-up" element={<RedirectIfSignedIn><ErrorBoundary><SignUp /></ErrorBoundary></RedirectIfSignedIn>} />
     <Route path="/forgot-password" element={<RedirectIfSignedIn><ErrorBoundary><ForgotPassword /></ErrorBoundary></RedirectIfSignedIn>} />
     <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
+
+    {/* OAuth callbacks — require auth but not onboarding */}
+    <Route path="/integrations/blackbaud/callback" element={<RequireAuth><ErrorBoundary><BlackbaudCallback /></ErrorBoundary></RequireAuth>} />
 
     {/* Invite join — accessible to anyone; handles auth redirect internally */}
     <Route path="/join/:inviteCode" element={<ErrorBoundary><JoinInvite /></ErrorBoundary>} />
