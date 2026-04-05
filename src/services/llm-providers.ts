@@ -74,17 +74,14 @@ interface ModelCapabilities {
 }
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
-  // Free models with tool calling support
+  // Free models
+  'qwen/qwen3-235b-a22b:free': { toolUse: true },
   'deepseek/deepseek-chat-v3.1:free': { toolUse: true },
   'meta-llama/llama-4-maverick:free': { toolUse: true },
-  'qwen/qwen3-235b-a22b:free': { toolUse: true },
-  'qwen/qwen3-coder:free': { toolUse: true },
-  // Paid models with tool calling
+  // Paid models
   'deepseek/deepseek-chat-v3.1': { toolUse: true },
-  'deepseek/deepseek-v3.2': { toolUse: true },
-  'deepseek/deepseek-v3.2-speciale': { toolUse: true },
-  // Reasoning models — limited tool use (think-then-act)
-  'deepseek/deepseek-r1': { toolUse: false },
+  // Reasoning-only models (no tool calling)
+  'openai/o3': { toolUse: false },
 };
 
 const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: true };
@@ -134,28 +131,23 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     name: 'openrouter',
     label: 'OpenRouter',
     keyPlaceholder: 'sk-or-v1-...',
-    defaultModel: 'deepseek/deepseek-chat-v3.1:free',
+    defaultModel: 'qwen/qwen3-235b-a22b:free',
     models: [
-      // ── Free models (no key required, all support tool calling) ──
+      // ── Free models (no API key required) ──
+      { id: 'qwen/qwen3-235b-a22b:free', label: '🆓 Qwen 3 235B (Recommended Free)' },
       { id: 'deepseek/deepseek-chat-v3.1:free', label: '🆓 DeepSeek V3.1' },
       { id: 'meta-llama/llama-4-maverick:free', label: '🆓 Llama 4 Maverick' },
-      { id: 'qwen/qwen3-235b-a22b:free', label: '🆓 Qwen 3 235B' },
-      { id: 'qwen/qwen3-coder:free', label: '🆓 Qwen 3 Coder 480B' },
-      // ── Best value (pennies per conversation) ──
-      { id: 'google/gemini-2.5-flash', label: '⚡ Gemini 2.5 Flash (Recommended)' },
-      { id: 'google/gemini-2.5-flash-lite', label: '⚡ Gemini 2.5 Flash Lite' },
+      // ── Best value (great tool calling, pennies per conversation) ──
+      { id: 'anthropic/claude-haiku-4.5', label: '⚡ Claude Haiku 4.5 (Best Value)' },
       { id: 'deepseek/deepseek-chat-v3.1', label: '⚡ DeepSeek V3.1' },
-      { id: 'anthropic/claude-haiku-4.5', label: '⚡ Claude Haiku 4.5' },
-      // ── Premium models ──
+      { id: 'google/gemini-2.5-flash', label: '⚡ Gemini 2.5 Flash' },
+      // ── Premium (excellent tool calling, reliable) ──
       { id: 'anthropic/claude-sonnet-4.6', label: '💎 Claude Sonnet 4.6' },
-      { id: 'anthropic/claude-opus-4.6', label: '💎 Claude Opus 4.6' },
-      { id: 'google/gemini-3-pro-preview', label: '💎 Gemini 3 Pro' },
       { id: 'openai/gpt-4.1', label: '💎 GPT-4.1' },
-      // ── Experimental / cutting edge ──
-      { id: 'deepseek/deepseek-v3.2', label: '🧪 DeepSeek V3.2' },
-      { id: 'deepseek/deepseek-v3.2-speciale', label: '🧪 DeepSeek V3.2 Speciale' },
-      { id: 'deepseek/deepseek-r1', label: '🧪 DeepSeek R1 (Reasoning)' },
-      { id: 'google/gemini-3-flash-preview', label: '🧪 Gemini 3 Flash' },
+      { id: 'google/gemini-2.5-pro', label: '💎 Gemini 2.5 Pro' },
+      // ── Flagship (best quality, highest cost) ──
+      { id: 'anthropic/claude-opus-4.6', label: '👑 Claude Opus 4.6' },
+      { id: 'openai/o3', label: '👑 OpenAI o3' },
     ],
   },
 };
@@ -165,10 +157,10 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
 // ──────────────────────────────────────────────
 
 const FREE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_FREE_KEY as string | undefined;
-const FREE_MODEL = 'deepseek/deepseek-chat-v3.1:free';
+const FREE_MODEL = 'qwen/qwen3-235b-a22b:free';
 
 /** Best paid model for org-level use — fast, cheap, great tool calling */
-export const RECOMMENDED_PAID_MODEL = 'google/gemini-2.5-flash';
+export const RECOMMENDED_PAID_MODEL = 'anthropic/claude-haiku-4.5';
 
 export const DEFAULT_FREE_CONFIG: ProviderConfig | null = FREE_OPENROUTER_KEY
   ? { provider: 'openrouter', apiKey: FREE_OPENROUTER_KEY, model: FREE_MODEL }
