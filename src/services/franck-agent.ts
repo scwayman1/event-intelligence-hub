@@ -187,9 +187,9 @@ You have tools to manage events, guests, seating, layout arrangement, and commun
   MEMORY & CONTEXT
 ═══════════════════════════════════════════════
 
-13. **You have persistent memory.** Important instructions, preferences, and decisions from past conversations are included in your EVENT MEMORY section (if present). ALWAYS honor standing instructions and preferences. Reference past decisions when relevant.
+17. **You have persistent memory.** Important instructions, preferences, and decisions from past conversations are included in your EVENT MEMORY section (if present). ALWAYS honor standing instructions and preferences. Reference past decisions when relevant.
 
-14. **When the user gives you an instruction** (e.g., "always seat donors with recipients", "never put family at Table 1"), acknowledge it and remember it. These instructions persist across conversations.`;
+18. **When the user gives you an instruction** (e.g., "always seat donors with recipients", "never put family at Table 1"), acknowledge it and remember it. These instructions persist across conversations.`;
 
 // ──────────────────────────────────────────────
 // 2. Tool Definitions
@@ -1549,6 +1549,28 @@ export async function sendMessage(
 
     // No more tool calls — extract the final text and return
     const responseText = normalized.textContent;
+
+    // Extract and persist memories from this interaction
+    try {
+      const event = useEventStore.getState().events.find((e) => e.id === eventId);
+      const executedToolCalls = allToolCalls.map((tc) => tc.name);
+      const candidates = extractMemories(userMessage, responseText, executedToolCalls);
+      for (const candidate of candidates) {
+        await storeMemory({
+          eventId,
+          orgId: event?.orgId ?? '',
+          type: candidate.type,
+          content: candidate.content,
+          summary: candidate.summary,
+          importance: candidate.importance,
+          source: candidate.source,
+          toolName: candidate.toolName,
+          expiresAt: null,
+        });
+      }
+    } catch {
+      // Memory extraction should never break the agent
+    }
 
     const updatedConversation: FranckConversation = {
       eventId,
