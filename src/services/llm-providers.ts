@@ -74,9 +74,13 @@ interface ModelCapabilities {
 }
 
 const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
-  // Free models
+  // Free models — all verified with tool calling
   'qwen/qwen3.6-plus:free': { toolUse: true },
+  'x-ai/grok-4-fast:free': { toolUse: true },
+  'meta-llama/llama-4-maverick:free': { toolUse: true },
   'deepseek/deepseek-chat-v3-0324:free': { toolUse: true },
+  'nvidia/nemotron-3-super-120b-a12b:free': { toolUse: true },
+  'openai/gpt-oss-120b:free': { toolUse: true },
   'meta-llama/llama-3.3-70b-instruct:free': { toolUse: true },
   'qwen/qwen3-coder:free': { toolUse: true },
   // Paid models
@@ -133,8 +137,12 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
     defaultModel: 'qwen/qwen3.6-plus:free',
     models: [
       // ── Free models (no API key required) ──
-      { id: 'qwen/qwen3.6-plus:free', label: '🆓 Qwen 3.6 Plus (Recommended Free)' },
+      { id: 'qwen/qwen3.6-plus:free', label: '🆓 Qwen 3.6 Plus — 1M ctx, best free tool calling' },
+      { id: 'x-ai/grok-4-fast:free', label: '🆓 Grok 4 Fast' },
+      { id: 'meta-llama/llama-4-maverick:free', label: '🆓 Llama 4 Maverick' },
       { id: 'deepseek/deepseek-chat-v3-0324:free', label: '🆓 DeepSeek V3 0324' },
+      { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: '🆓 Nemotron 3 Super 120B — 262K ctx' },
+      { id: 'openai/gpt-oss-120b:free', label: '🆓 GPT-OSS 120B' },
       { id: 'meta-llama/llama-3.3-70b-instruct:free', label: '🆓 Llama 3.3 70B' },
       { id: 'qwen/qwen3-coder:free', label: '🆓 Qwen 3 Coder 480B' },
       // ── Best value (great tool calling, pennies per conversation) ──
