@@ -80,8 +80,6 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'meta-llama/llama-4-maverick:free': { toolUse: true },
   // Paid models
   'deepseek/deepseek-chat-v3.1': { toolUse: true },
-  // Reasoning-only models (no tool calling)
-  'openai/o3': { toolUse: false },
 };
 
 const DEFAULT_CAPABILITIES: ModelCapabilities = { toolUse: true };
@@ -147,7 +145,6 @@ export const PROVIDERS: Record<ProviderType, ProviderDefinition> = {
       { id: 'google/gemini-2.5-pro', label: '💎 Gemini 2.5 Pro' },
       // ── Flagship (best quality, highest cost) ──
       { id: 'anthropic/claude-opus-4.6', label: '👑 Claude Opus 4.6' },
-      { id: 'openai/o3', label: '👑 OpenAI o3' },
     ],
   },
 };
