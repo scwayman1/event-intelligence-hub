@@ -499,14 +499,17 @@ async function callOpenRouter(
     body.tools = anthropicToolsToOpenAI(tools);
   }
 
-  const response = await fetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
+  const url = 'https://openrouter.ai/api/v1/chat/completions';
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${config.apiKey}`,
+    'HTTP-Referer': window.location.origin,
+    'X-Title': 'Event Intelligence Hub - Franck Agent',
+  };
+
+  const response = await fetchWithRetry(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'Event Intelligence Hub - Franck Agent',
-    },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -517,9 +520,32 @@ async function callOpenRouter(
 
   const data = await response.json();
 
-  // Validate expected response shape
+  // Validate expected response shape — retry once if malformed
   if (!data || !Array.isArray(data.choices) || data.choices.length === 0) {
-    throw new Error('OpenRouter API returned unexpected response shape: missing "choices"');
+    // Some free models occasionally return empty/malformed responses.
+    // Retry once before giving up.
+    console.warn('OpenRouter returned malformed response, retrying...', data);
+    await delay(1500);
+    const retryResponse = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!retryResponse.ok) {
+      throw new Error(`OpenRouter retry failed (${retryResponse.status})`);
+    }
+    const retryData = await retryResponse.json();
+    if (!retryData || !Array.isArray(retryData.choices) || retryData.choices.length === 0) {
+      // Return a graceful text-only response instead of crashing
+      return {
+        textContent: 'Mon Dieu! The model had a brief moment of confusion. Please try your request again — Franck is ready!',
+        toolCalls: [],
+        stopReason: 'stop',
+        rawAssistantMessage: { role: 'assistant' as const, content: 'The model returned an invalid response. Please retry.' },
+      };
+    }
+    // Use retry data
+    Object.assign(data, retryData);
   }
 
   const choice = data.choices[0];
