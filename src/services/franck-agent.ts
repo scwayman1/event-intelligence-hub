@@ -333,13 +333,17 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
   {
     name: 'get_table_info',
     description:
-      'Get information about tables including assigned guests, capacity, and availability. If no tableId is provided, returns info for all tables.',
+      'Get detailed table information including the names, categories, and RSVP status of every guest seated at each table. Use tableNumber to query a specific table (e.g. tableNumber: 8 for "Table 8"). Returns guest names, not just counts.',
     input_schema: {
       type: 'object' as const,
       properties: {
         tableId: {
           type: 'string',
-          description: 'Optional table ID to get info for a specific table. Omit for all tables.',
+          description: 'Optional table ID to get info for a specific table.',
+        },
+        tableNumber: {
+          type: 'number',
+          description: 'Table number to query (e.g. 8 for Table 8). Use this when the user asks about a specific table by number.',
         },
       },
       required: [],

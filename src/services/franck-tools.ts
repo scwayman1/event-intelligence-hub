@@ -732,7 +732,7 @@ function getSeatingRecommendationsTool(
 function getTableInfo(
   state: StoreState,
   eventId: string,
-  _input: ToolInput,
+  input: ToolInput,
 ): string {
   const ctx = getEventContext(state, eventId);
   if (!ctx) return eventNotFoundError(eventId);
@@ -746,6 +746,54 @@ function getTableInfo(
     ctx.versionId,
   );
 
+  // Build full table data with guest names
+  const allTableData = seatingAnalytics.tableUtilization.map((t) => {
+    const tableAssignments = ctx.assignments.filter((a) => a.tableId === t.table.id);
+    const seatedGuests = tableAssignments.map((a) => {
+      const guest = ctx.guests.find((g) => g.id === a.guestId);
+      return guest
+        ? { id: guest.id, name: guest.displayName, category: guest.category, rsvpStatus: guest.rsvpStatus, organization: guest.organization || undefined, seatNumber: a.seatNumber ?? null }
+        : null;
+    }).filter(Boolean);
+
+    return {
+      tableId: t.table.id,
+      tableNumber: t.table.tableNumber ?? null,
+      tableName: t.table.name,
+      type: t.table.type,
+      capacity: t.capacity,
+      seated: t.seated,
+      utilizationPct: t.utilizationPct,
+      hasAnchor: t.hasAnchor,
+      anchorGroupName: t.anchorGroupName ?? null,
+      guests: seatedGuests,
+    };
+  });
+
+  // Filter to specific table if requested
+  const requestedTableId = input.tableId as string | undefined;
+  const requestedTableNumber = input.tableNumber as number | undefined;
+
+  let filteredTables = allTableData;
+  if (requestedTableId) {
+    filteredTables = allTableData.filter((t) => t.tableId === requestedTableId);
+  } else if (requestedTableNumber != null) {
+    filteredTables = allTableData.filter((t) => t.tableNumber === requestedTableNumber);
+  }
+
+  if ((requestedTableId || requestedTableNumber != null) && filteredTables.length === 0) {
+    return errorResult(`Table ${requestedTableNumber ?? requestedTableId} not found.`);
+  }
+
+  // If querying a specific table, return focused response
+  if (filteredTables.length === 1) {
+    const t = filteredTables[0];
+    return json({
+      summary: `Table ${t.tableNumber ?? t.tableName}: ${t.seated}/${t.capacity} seats filled`,
+      ...t,
+    });
+  }
+
   return json({
     summary: `${seatingAnalytics.totalTables} tables, ${seatingAnalytics.seatedGuests}/${seatingAnalytics.totalCapacity} seats filled (${seatingAnalytics.averageUtilization}% utilization)`,
     totalTables: seatingAnalytics.totalTables,
@@ -756,29 +804,7 @@ function getTableInfo(
     emptyTables: seatingAnalytics.emptyTables,
     fullTables: seatingAnalytics.fullTables,
     overCapacityTables: seatingAnalytics.overCapacityTables,
-    tables: seatingAnalytics.tableUtilization.map((t) => {
-      // Find guests seated at this table
-      const tableAssignments = ctx.assignments.filter((a) => a.tableId === t.table.id);
-      const seatedGuests = tableAssignments.map((a) => {
-        const guest = ctx.guests.find((g) => g.id === a.guestId);
-        return guest
-          ? { id: guest.id, name: guest.displayName, category: guest.category, rsvpStatus: guest.rsvpStatus, seatNumber: a.seatNumber ?? null }
-          : null;
-      }).filter(Boolean);
-
-      return {
-        tableId: t.table.id,
-        tableNumber: t.table.tableNumber ?? null,
-        tableName: t.table.name,
-        type: t.table.type,
-        capacity: t.capacity,
-        seated: t.seated,
-        utilizationPct: t.utilizationPct,
-        hasAnchor: t.hasAnchor,
-        anchorGroupName: t.anchorGroupName ?? null,
-        guests: seatedGuests,
-      };
-    }),
+    tables: filteredTables,
   });
 }
 
