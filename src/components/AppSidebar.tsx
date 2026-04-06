@@ -84,7 +84,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
             <Sprout className="w-4 h-4 text-white" />
           </div>
           <div>
-            <span className="font-bold text-foreground tracking-tight text-sm">Grad Roots</span>
+            <span className="font-bold text-foreground tracking-tight text-sm">GradRoots</span>
             <span className="text-[10px] text-muted-foreground ml-1.5 font-medium">EventMap</span>
           </div>
         </div>
@@ -250,7 +250,7 @@ export function AppSidebar({ showInspector, onToggleInspector }: AppSidebarProps
         )}
         <div className="flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground">
-            <span className="font-semibold">Grad Roots</span> EventMap v0.1
+            <span className="font-semibold">GradRoots</span> EventMap v0.1
           </p>
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

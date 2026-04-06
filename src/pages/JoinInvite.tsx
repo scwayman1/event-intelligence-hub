@@ -219,7 +219,7 @@ export default function JoinInvite() {
               </div>
               <h2 className="text-xl font-bold text-foreground">Join {orgName}</h2>
               <p className="text-sm text-muted-foreground">
-                You have been invited to join <span className="font-medium text-foreground">{orgName}</span> on Grad Roots EventMap.
+                You have been invited to join <span className="font-medium text-foreground">{orgName}</span> on GradRoots EventMap.
               </p>
               <Button onClick={handleJoin} className="w-full mt-2">
                 Accept Invite & Join

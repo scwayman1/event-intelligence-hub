@@ -95,7 +95,7 @@ export default function SignUp() {
           <div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight">Create your account</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {pendingInviteCode ? 'Create an account to accept your team invite' : 'Get started with Grad Roots EventMap'}
+              {pendingInviteCode ? 'Create an account to accept your team invite' : 'Get started with GradRoots EventMap'}
             </p>
           </div>
         </div>

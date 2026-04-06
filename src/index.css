@@ -11,7 +11,7 @@
 
 @layer base {
   :root {
-    /* Grad Roots Light Mode — fresh, airy greens */
+    /* GradRoots Light Mode — fresh, airy greens */
     --background: 140 20% 97%;
     --foreground: 155 30% 15%;
 
@@ -61,14 +61,14 @@
     --glass: 140 18% 99% / 0.8;
     --glass-border: 145 16% 85%;
 
-    /* Grad Roots gradient tokens */
+    /* GradRoots gradient tokens */
     --gr-gradient-start: 152 55% 48%;
     --gr-gradient-mid: 130 45% 42%;
     --gr-gradient-end: 84 50% 52%;
   }
 
   .dark {
-    /* Grad Roots Dark Mode — rich forest greens */
+    /* GradRoots Dark Mode — rich forest greens */
     --background: 155 22% 7%;
     --foreground: 140 15% 90%;
 
