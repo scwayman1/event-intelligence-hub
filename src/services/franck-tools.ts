@@ -1763,8 +1763,25 @@ function addTableTool(
   const tableName = (input.name as string) ?? `Table ${tableNumber}`;
 
   const isRound = tableType === 'round_table';
-  const width = isRound ? 80 : 120;
-  const height = isRound ? 80 : 40;
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+
+  // Use real-world table dimensions scaled to canvas
+  // 60" round = 1.52m diameter, 8ft banquet = 2.44m × 0.76m
+  let width: number;
+  let height: number;
+  if (isRound) {
+    // Default 60" (5ft) round table = 1.52m. 72" for capacity 10+.
+    const diameterMeters = capacity >= 10 ? 1.83 : 1.52;
+    const px = Math.round(diameterMeters / metersPerPixel);
+    width = Math.max(20, px);
+    height = width;
+  } else {
+    // Rectangular: 6ft banquet for ≤6, 8ft for more
+    const lengthMeters = capacity > 6 ? 2.44 : 1.83;
+    const depthMeters = 0.76;
+    width = Math.max(20, Math.round(lengthMeters / metersPerPixel));
+    height = Math.max(10, Math.round(depthMeters / metersPerPixel));
+  }
 
   // Position new tables in a grid pattern
   const column = ctx.tables.length % 4;
@@ -3049,50 +3066,60 @@ function arrangeTablesTool(
 
   const rows = Math.ceil(n / cols);
 
-  // Calculate the max table size that fits all tables with at least 5px spacing
-  const minSpacing = 5;
-  const maxTableW = Math.floor((boundsWidth - (cols + 1) * minSpacing) / cols);
-  const maxTableH = Math.floor((boundsHeight - (rows + 1) * minSpacing) / rows);
-  // Keep tables square for round tables, use the smaller dimension
-  const isAllRect = tablesToArrange.every((t) => t.type === 'rect_table');
-  let uniformW: number;
-  let uniformH: number;
+  // Use existing table sizes (they should already be to real-world scale).
+  // Compute uniform size as the average for spacing calculations.
+  const avgW = Math.round(tablesToArrange.reduce((s, t) => s + t.width, 0) / n);
+  const avgH = Math.round(tablesToArrange.reduce((s, t) => s + t.height, 0) / n);
+  const uniformW = Math.max(20, avgW);
+  const uniformH = Math.max(20, avgH);
 
-  if (isAllRect) {
-    // Rect tables: 3:1 aspect ratio
-    uniformW = Math.min(maxTableW, maxTableH * 3);
-    uniformH = Math.floor(uniformW / 3);
-  } else {
-    // Round/square tables: equal w/h
-    const maxDim = Math.min(maxTableW, maxTableH);
-    // Cap at 80px (don't make tables absurdly large either)
-    uniformW = Math.min(maxDim, 80);
-    uniformH = uniformW;
+  // Check if tables are unreasonably small (likely not scaled) — auto-fix
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+  const expectedRoundPx = Math.round(1.52 / metersPerPixel); // 60" round
+  const tooSmall = uniformW < expectedRoundPx * 0.5 && uniformW < 30;
+  const tooLarge = uniformW > expectedRoundPx * 3 && uniformW > 200;
+
+  if (tooSmall || tooLarge) {
+    // Tables aren't to scale — rescale them based on real-world dimensions
+    for (const t of tablesToArrange) {
+      const isRound = t.type === 'round_table';
+      let w: number, h: number;
+      if (isRound) {
+        const diam = t.capacity >= 10 ? 1.83 : 1.52;
+        const px = Math.round(diam / metersPerPixel);
+        w = Math.max(20, px);
+        h = w;
+      } else {
+        const len = t.capacity > 6 ? 2.44 : 1.83;
+        w = Math.max(20, Math.round(len / metersPerPixel));
+        h = Math.max(10, Math.round(0.76 / metersPerPixel));
+      }
+      store.updateLayoutObject(t.id, { width: w, height: h });
+    }
   }
 
-  // Minimum table size of 25px so they're still visible
-  uniformW = Math.max(25, uniformW);
-  uniformH = Math.max(25, uniformH);
-
-  // Force every table to the computed size
-  for (const t of tablesToArrange) {
-    store.updateLayoutObject(t.id, { width: uniformW, height: uniformH });
-  }
+  // Re-read actual table sizes after potential rescaling
+  const freshState = useEventStore.getState();
+  const freshObjects = freshState.layoutObjects.filter((o) => o.versionId === ctx.versionId);
+  const freshTables = tablesToArrange.map((t) => freshObjects.find((o) => o.id === t.id) ?? t);
+  const cellW = Math.round(freshTables.reduce((s, t) => s + t.width, 0) / n);
+  const cellH = Math.round(freshTables.reduce((s, t) => s + t.height, 0) / n);
 
   // STEP 2: Calculate spacing from remaining space
+  // Add real-world walk space: minimum 24 inches (0.61m) between tables
+  const minWalkSpacePx = Math.round(0.61 / metersPerPixel);
   const spacingX = cols > 1
-    ? Math.max(3, Math.floor((boundsWidth - cols * uniformW) / (cols + 1)))
+    ? Math.max(minWalkSpacePx, Math.floor((boundsWidth - cols * cellW) / (cols + 1)))
     : 0;
   const spacingY = rows > 1
-    ? Math.max(3, Math.floor((boundsHeight - rows * uniformH) / (rows + 1)))
+    ? Math.max(minWalkSpacePx, Math.floor((boundsHeight - rows * cellH) / (rows + 1)))
     : 0;
-  // Use the smaller of the two for uniform look, capped reasonably
-  const spacing = Math.min(spacingX, spacingY, 40);
+  const spacing = Math.min(spacingX, spacingY);
 
   // STEP 3: Compute positions directly (don't rely on arrangement engine for critical path)
   // This gives us full control and avoids any centering/margin surprises
-  const gridTotalW = cols * uniformW + (cols - 1) * spacing;
-  const gridTotalH = rows * uniformH + (rows - 1) * spacing;
+  const gridTotalW = cols * cellW + (cols - 1) * spacing;
+  const gridTotalH = rows * cellH + (rows - 1) * spacing;
   const startX = boundsX + Math.max(0, (boundsWidth - gridTotalW) / 2);
   const startY = boundsY + Math.max(0, (boundsHeight - gridTotalH) / 2);
 
@@ -3100,8 +3127,8 @@ function arrangeTablesTool(
 
   if (pattern === 'circle') {
     // Circle layout uses the arrangement engine
-    const objects: ArrangeableObject[] = tablesToArrange.map((t) => ({
-      id: t.id, x: t.x, y: t.y, width: uniformW, height: uniformH,
+    const objects: ArrangeableObject[] = freshTables.map((t) => ({
+      id: t.id, x: t.x, y: t.y, width: t.width, height: t.height,
     }));
     results = arrangeCircle(objects, {
       centerX: boundsWidth / 2,
@@ -3112,11 +3139,11 @@ function arrangeTablesTool(
     for (const r of results) { r.x += boundsX; r.y += boundsY; }
   } else {
     // Grid and rows: compute directly for maximum control
-    results = tablesToArrange.map((t, i) => {
+    results = freshTables.map((t, i) => {
       const col = i % cols!;
       const row = Math.floor(i / cols!);
-      let x = startX + col * (uniformW + spacing);
-      let y = startY + row * (uniformH + spacing);
+      let x = startX + col * (cellW + spacing);
+      let y = startY + row * (cellH + spacing);
 
       // Stagger for rows pattern
       if (pattern === 'rows' && (input.stagger as boolean) && row % 2 === 1) {

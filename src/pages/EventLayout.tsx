@@ -853,6 +853,38 @@ export default function EventLayout() {
             <Button variant={showCapCalc ? 'secondary' : 'ghost'} size="sm" className="text-[11px] h-7 px-2 gap-1" onClick={() => setShowCapCalc(!showCapCalc)}>
               <Calculator className="w-3 h-3" />Fit Calc
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-[11px] h-7 px-2 gap-1"
+              title="Rescale all tables to real-world dimensions based on current canvas scale"
+              onClick={() => {
+                if (!metersPerPixel) { toast.error('Set a canvas scale first (use Room Size or satellite capture).'); return; }
+                pushUndoSnapshot();
+                const tables = objects.filter((o) => o.type === 'round_table' || o.type === 'rect_table');
+                if (tables.length === 0) { toast.error('No tables to rescale.'); return; }
+                let count = 0;
+                for (const t of tables) {
+                  const isRound = t.type === 'round_table';
+                  let w: number, h: number;
+                  if (isRound) {
+                    const diam = t.capacity >= 10 ? 1.83 : 1.52; // 72" or 60"
+                    const px = Math.round(diam / metersPerPixel);
+                    w = Math.max(20, px);
+                    h = w;
+                  } else {
+                    const len = t.capacity > 6 ? 2.44 : 1.83; // 8ft or 6ft
+                    w = Math.max(20, Math.round(len / metersPerPixel));
+                    h = Math.max(10, Math.round(0.76 / metersPerPixel));
+                  }
+                  updateLayoutObject(t.id, { width: w, height: h });
+                  count++;
+                }
+                toast.success(`Rescaled ${count} tables to real-world dimensions.`);
+              }}
+            >
+              <Maximize2 className="w-3 h-3" />Scale Tables
+            </Button>
             <ArrangementPanel
               tables={objects.filter((o) => ['round_table', 'rect_table'].includes(o.type))}
               boundsWidth={roomBoundsPx?.width ?? canvasSize.width}
@@ -1622,16 +1654,51 @@ export default function EventLayout() {
               {/* Section: Size */}
               <div className="space-y-2">
                 <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Maximize2 className="w-3 h-3" /> Size</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Width {metersPerPixel ? `(${formatDimension(selected.width, metersPerPixel, unitSystem)})` : ''}</label>
-                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
+                {metersPerPixel ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Width ({unitSystem === 'imperial' ? 'ft' : 'm'})</label>
+                      <input
+                        className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        type="number"
+                        step="0.5"
+                        value={parseFloat(metersToUserUnit(selected.width * metersPerPixel, unitSystem).toFixed(1))}
+                        onChange={(e) => {
+                          const realWorldVal = parseFloat(e.target.value) || 0;
+                          const meters = userInputToMeters(realWorldVal, unitSystem);
+                          const px = Math.round(meters / metersPerPixel);
+                          updateLayoutObject(selected.id, { width: Math.max(10, px) });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Height ({unitSystem === 'imperial' ? 'ft' : 'm'})</label>
+                      <input
+                        className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        type="number"
+                        step="0.5"
+                        value={parseFloat(metersToUserUnit(selected.height * metersPerPixel, unitSystem).toFixed(1))}
+                        onChange={(e) => {
+                          const realWorldVal = parseFloat(e.target.value) || 0;
+                          const meters = userInputToMeters(realWorldVal, unitSystem);
+                          const px = Math.round(meters / metersPerPixel);
+                          updateLayoutObject(selected.id, { height: Math.max(10, px) });
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Height {metersPerPixel ? `(${formatDimension(selected.height, metersPerPixel, unitSystem)})` : ''}</label>
-                    <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Width (px)</label>
+                      <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.width} onChange={(e) => updateLayoutObject(selected.id, { width: Number(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Height (px)</label>
+                      <input className="w-full mt-1 px-2.5 py-2 text-sm bg-muted border border-border rounded-md text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" type="number" value={selected.height} onChange={(e) => updateLayoutObject(selected.id, { height: Number(e.target.value) })} />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Section: Properties */}
