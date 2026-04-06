@@ -172,16 +172,23 @@ After auto-seating, use get_seating_recommendations and score_seating to evaluat
   LAYOUT ARRANGEMENT EXPERTISE
 ═══════════════════════════════════════════════
 
-Franck can now physically MOVE and ARRANGE tables on the canvas:
-- **arrange_tables** — The power tool. Instantly arranges all tables in grid, circle, or rows patterns with configurable spacing. Use "grid" for formal events, "circle" for galas, "rows" with stagger for ceremonies.
+Franck can physically MOVE, ARRANGE, and SCALE tables and the venue on the canvas:
+- **resize_venue** — Set the tent/venue to real-world dimensions (e.g. 40ft × 80ft). Auto-creates tent if none exists. ALWAYS use this first when the venue size doesn't match reality.
+- **resize_table** — Set tables to real-world size (e.g. 6-foot rounds = diameterFeet=6). Use allTables=true to resize every table. Tables render TO SCALE.
+- **set_canvas_scale** — Adjust how many feet/meters per pixel. For large venues (40ft+), use feetPerPixel=0.15 or higher.
+- **arrange_tables** — The power tool. Arranges all tables in grid, circle, or rows patterns. TENT-AWARE: fits tables inside the venue boundary.
 - **move_table** — Precision placement. Move individual tables to exact coordinates.
 - **fix_layout_issues** — Auto-fix overlaps, spacing violations, and out-of-bounds tables.
 - **align_tables** — Align tables to an edge or distribute with equal spacing.
 
 When the user asks about organizing the layout:
-1. Call analyze_layout FIRST to understand current state and canvas size
-2. Then call arrange_tables or fix_layout_issues to make changes
-3. Report what you did with flair
+1. Call analyze_layout FIRST to understand current state, canvas size, and venue dimensions
+2. If the venue size is wrong, call resize_venue with the correct real-world dimensions
+3. Call resize_table with allTables=true to set tables to real-world scale
+4. Then call arrange_tables to fit everything perfectly
+5. Report what you did with flair
+
+CRITICAL RULE: When the user tells you venue dimensions (e.g. "40 × 80 foot tent"), ALWAYS call resize_venue with those dimensions. Never say the system can't handle it — you have the tools to resize everything.
 
 You have tools to manage events, guests, seating, layout arrangement, and communications. Use them liberally.
 
@@ -609,6 +616,55 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
         edge: { type: 'string', enum: ['left', 'right', 'top', 'bottom', 'centerH', 'centerV'], description: 'For align: which edge to align to (default: left)' },
         axis: { type: 'string', enum: ['horizontal', 'vertical'], description: 'For distribute: axis along which to distribute (default: horizontal)' },
         tableNumbers: { type: 'array', items: { type: 'number' }, description: 'Only affect these specific tables (affects ALL if omitted)' },
+      },
+      required: [],
+    },
+  },
+  // ── VENUE / CANVAS SCALE ────────────────────────────────────────
+  {
+    name: 'resize_venue',
+    description:
+      'Resize the venue tent/boundary to match real-world dimensions. Accepts feet or meters. If no tent exists, creates one. Also auto-adjusts the canvas size to fit. After resizing, call arrange_tables to redistribute tables within the new space.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        widthFeet: { type: 'number', description: 'Venue width in feet (e.g. 40 for a 40-foot wide tent)' },
+        heightFeet: { type: 'number', description: 'Venue depth/length in feet (e.g. 80 for an 80-foot long tent)' },
+        widthMeters: { type: 'number', description: 'Venue width in meters (alternative to feet)' },
+        heightMeters: { type: 'number', description: 'Venue depth in meters (alternative to feet)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'resize_table',
+    description:
+      'Resize a table (or all tables) to match real-world dimensions. For 6-foot round tables, use diameterFeet=6 or diameterInches=72. Use allTables=true to resize every table at once. Tables are drawn TO SCALE based on the canvas metersPerPixel setting.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        tableNumber: { type: 'number', description: 'Table number to resize' },
+        tableId: { type: 'string', description: 'Table ID to resize (alternative to tableNumber)' },
+        allTables: { type: 'boolean', description: 'Set true to resize ALL tables at once' },
+        diameterFeet: { type: 'number', description: 'Diameter in feet (for round tables, e.g. 5 or 6)' },
+        diameterInches: { type: 'number', description: 'Diameter in inches (e.g. 60 or 72)' },
+        widthFeet: { type: 'number', description: 'Width in feet (for rectangular tables)' },
+        heightFeet: { type: 'number', description: 'Height/depth in feet (for rectangular tables)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'set_canvas_scale',
+    description:
+      'Set the canvas scale (how many real-world units per pixel) and optionally resize the canvas itself. Use this when objects appear too large or too small. The default is 0.03048 meters/pixel (0.1 feet/pixel = ~1 inch per pixel). For large venues, increase to ~0.05 meters/pixel.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        metersPerPixel: { type: 'number', description: 'Scale: meters per pixel (e.g. 0.03048 for 1in/px, 0.0508 for ~2in/px)' },
+        feetPerPixel: { type: 'number', description: 'Scale: feet per pixel (alternative, e.g. 0.1 for 1.2in/px)' },
+        canvasWidth: { type: 'number', description: 'Canvas width in pixels' },
+        canvasHeight: { type: 'number', description: 'Canvas height in pixels' },
       },
       required: [],
     },
@@ -1530,6 +1586,9 @@ export async function sendMessage(
         } else {
           const currentState = useEventStore.getState();
           result = await executeTool(toolCall.name, toolCall.input, currentState, eventId);
+          if (!result || result.trim() === '') {
+            result = JSON.stringify({ error: true, message: `Tool "${toolCall.name}" returned an empty result.` });
+          }
           toolResultCache.set(cacheKey, result);
         }
 
@@ -1550,25 +1609,27 @@ export async function sendMessage(
     }
 
     // No more tool calls — extract the final text and return
-    const responseText = normalized.textContent;
+    const responseText = normalized.textContent || '';
 
     // Extract and persist memories from this interaction
     try {
       const event = useEventStore.getState().events.find((e) => e.id === eventId);
-      const executedToolCalls = allToolCalls.map((tc) => tc.name);
-      const candidates = extractMemories(userMessage, responseText, executedToolCalls);
-      for (const candidate of candidates) {
-        await storeMemory({
-          eventId,
-          orgId: event?.orgId ?? '',
-          type: candidate.type,
-          content: candidate.content,
-          summary: candidate.summary,
-          importance: candidate.importance,
-          source: candidate.source,
-          toolName: candidate.toolName,
-          expiresAt: null,
-        });
+      if (event) {
+        const executedToolCalls = allToolCalls.map((tc) => tc.name);
+        const candidates = extractMemories(userMessage, responseText, executedToolCalls);
+        for (const candidate of candidates) {
+          await storeMemory({
+            eventId,
+            orgId: event.orgId,
+            type: candidate.type,
+            content: candidate.content,
+            summary: candidate.summary,
+            importance: candidate.importance,
+            source: candidate.source,
+            toolName: candidate.toolName,
+            expiresAt: null,
+          });
+        }
       }
     } catch {
       // Memory extraction should never break the agent

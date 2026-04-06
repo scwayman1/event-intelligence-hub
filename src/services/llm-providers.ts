@@ -451,7 +451,7 @@ async function callAnthropic(
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Anthropic API error (${response.status}): ${errorBody}`);
+    throw new Error(`Anthropic API error (${response.status}): ${errorBody.replace(config.apiKey, '[REDACTED]')}`);
   }
 
   const data = await response.json();
@@ -515,7 +515,7 @@ async function callOpenRouter(
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`OpenRouter API error (${response.status}): ${errorBody}`);
+    throw new Error(`OpenRouter API error (${response.status}): ${errorBody.replace(config.apiKey, '[REDACTED]')}`);
   }
 
   const data = await response.json();
@@ -570,7 +570,7 @@ async function callOpenRouter(
             ? JSON.parse(args) as Record<string, unknown>
             : (args as unknown as Record<string, unknown>) ?? {};
         // Generate a fallback ID if the model doesn't provide one (some models omit it)
-        const id = tc.id || `tool_call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const id = tc.id || `tool_${crypto.randomUUID()}`;
         toolCalls.push({
           id,
           name: tc.function.name,

@@ -272,7 +272,7 @@ export async function buildMemoryContext(
     if (instructions.length > 0) {
       sections.push('STANDING INSTRUCTIONS:');
       for (const m of instructions) {
-        sections.push(`• ${m.content}`);
+        sections.push(`• ${truncate(m.content, 200)}`);
       }
       sections.push('');
     }
@@ -280,7 +280,7 @@ export async function buildMemoryContext(
     if (preferences.length > 0) {
       sections.push('PREFERENCES:');
       for (const m of preferences) {
-        sections.push(`• ${m.content}`);
+        sections.push(`• ${truncate(m.content, 200)}`);
       }
       sections.push('');
     }
@@ -289,7 +289,7 @@ export async function buildMemoryContext(
       sections.push('RECENT DECISIONS:');
       for (const m of decisions) {
         const ts = formatTimestamp(m.createdAt);
-        sections.push(`• [${ts}] ${m.content}`);
+        sections.push(`• [${ts}] ${truncate(m.content, 200)}`);
       }
       sections.push('');
     }
@@ -297,12 +297,18 @@ export async function buildMemoryContext(
     if (searchResults.length > 0) {
       sections.push('RELEVANT CONTEXT:');
       for (const m of searchResults) {
-        sections.push(`• ${m.content}`);
+        sections.push(`• ${truncate(m.content, 200)}`);
       }
       sections.push('');
     }
 
-    return sections.join('\n');
+    // Cap total memory context to prevent system prompt overflow
+    const MAX_MEMORY_CHARS = 2000;
+    let result = sections.join('\n');
+    if (result.length > MAX_MEMORY_CHARS) {
+      result = result.slice(0, MAX_MEMORY_CHARS) + '\n\n[Memory context truncated]';
+    }
+    return result;
   } catch (err) {
     console.error('buildMemoryContext unexpected error:', err);
     return '';
@@ -383,6 +389,9 @@ export function extractMemories(
 ): FranckMemoryCandidate[] {
   const candidates: FranckMemoryCandidate[] = [];
 
+  // Skip very short messages — they're unlikely to contain meaningful instructions
+  if (userMessage.length < 15) return candidates;
+
   // Check user message for instructions
   if (INSTRUCTION_PATTERNS.some((p) => p.test(userMessage))) {
     candidates.push({
@@ -452,7 +461,20 @@ export function extractMemories(
     }
   }
 
-  return candidates;
+  // Deduplicate candidates with very similar content
+  const deduped: FranckMemoryCandidate[] = [];
+  for (const candidate of candidates) {
+    const isDuplicate = deduped.some(
+      (existing) =>
+        existing.type === candidate.type &&
+        existing.content.toLowerCase() === candidate.content.toLowerCase(),
+    );
+    if (!isDuplicate) {
+      deduped.push(candidate);
+    }
+  }
+
+  return deduped;
 }
 
 function truncate(text: string, maxLen: number): string {

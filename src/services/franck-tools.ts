@@ -1667,6 +1667,9 @@ function addGuestsBulkTool(
 
   const guestsInput = input.guests as Array<Record<string, unknown>> | undefined;
   if (!guestsInput || guestsInput.length === 0) return errorResult('guests array is required and must not be empty.');
+  if (guestsInput.length > 200) {
+    return errorResult('Bulk add limited to 200 guests per call to prevent performance issues.');
+  }
 
   const store = useEventStore.getState();
   const added: Array<{ guestId: string; displayName: string }> = [];
@@ -3325,6 +3328,268 @@ function alignTablesTool(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Venue / canvas layout tools — resize tent, tables, set scale
+// ---------------------------------------------------------------------------
+
+function resizeVenueTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const store = useEventStore.getState();
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+
+  // Find the tent (or create one if it doesn't exist)
+  const tents = ctx.allObjects.filter((o) => o.type === 'tent');
+
+  // Parse dimensions — accept feet or meters
+  const widthFeet = input.widthFeet as number | undefined;
+  const heightFeet = input.heightFeet as number | undefined;
+  const widthMeters = input.widthMeters as number | undefined;
+  const heightMeters = input.heightMeters as number | undefined;
+
+  let wMeters: number | undefined;
+  let hMeters: number | undefined;
+
+  if (widthFeet != null) wMeters = widthFeet * 0.3048;
+  else if (widthMeters != null) wMeters = widthMeters;
+
+  if (heightFeet != null) hMeters = heightFeet * 0.3048;
+  else if (heightMeters != null) hMeters = heightMeters;
+
+  if (wMeters == null && hMeters == null) {
+    return errorResult('Provide venue dimensions: widthFeet/heightFeet or widthMeters/heightMeters.');
+  }
+
+  // Convert to pixels
+  const wPx = wMeters != null ? Math.round(wMeters / metersPerPixel) : undefined;
+  const hPx = hMeters != null ? Math.round(hMeters / metersPerPixel) : undefined;
+
+  // Also resize canvas to fit the venue with padding
+  const canvasPad = 60;
+  const newCanvasW = wPx != null ? wPx + canvasPad * 2 : undefined;
+  const newCanvasH = hPx != null ? hPx + canvasPad * 2 : undefined;
+
+  if (ctx.activeVersion) {
+    const versionUpdate: Record<string, number> = {};
+    if (newCanvasW != null) versionUpdate.canvasWidth = newCanvasW;
+    if (newCanvasH != null) versionUpdate.canvasHeight = newCanvasH;
+    if (Object.keys(versionUpdate).length > 0) {
+      store.updateVersion(ctx.activeVersion.id, versionUpdate);
+    }
+  }
+
+  if (tents.length > 0) {
+    // Resize the largest tent
+    const tent = tents.reduce((a, b) => (a.width * a.height > b.width * b.height ? a : b));
+    const updates: Partial<LayoutObject> = {};
+    if (wPx != null) updates.width = wPx;
+    if (hPx != null) updates.height = hPx;
+    // Center the tent on the canvas
+    if (newCanvasW != null && wPx != null) updates.x = canvasPad;
+    if (newCanvasH != null && hPx != null) updates.y = canvasPad;
+    store.updateLayoutObject(tent.id, updates);
+
+    const wFt = wMeters != null ? (wMeters / 0.3048).toFixed(0) : null;
+    const hFt = hMeters != null ? (hMeters / 0.3048).toFixed(0) : null;
+
+    return json({
+      summary: `Resized venue tent to ${wFt ? wFt + 'ft' : tent.width + 'px'} × ${hFt ? hFt + 'ft' : tent.height + 'px'}. Canvas auto-adjusted.`,
+      tentId: tent.id,
+      widthPx: updates.width ?? tent.width,
+      heightPx: updates.height ?? tent.height,
+      widthFeet: wFt,
+      heightFeet: hFt,
+      canvasWidth: newCanvasW,
+      canvasHeight: newCanvasH,
+      hint: 'Call arrange_tables to redistribute tables within the new venue size.',
+    });
+  } else {
+    // No tent exists — create one
+    const versionId = ctx.versionId;
+    if (!versionId) return errorResult('No active version to add a tent to.');
+
+    const tentW = wPx ?? 800;
+    const tentH = hPx ?? 600;
+
+    const newTent: LayoutObject = {
+      id: `lo-${crypto.randomUUID().slice(0, 8)}`,
+      versionId,
+      type: 'tent',
+      name: 'Main Venue',
+      x: canvasPad,
+      y: canvasPad,
+      width: tentW,
+      height: tentH,
+      rotation: 0,
+      capacity: 0,
+      notes: '',
+      category: '',
+      locked: false,
+      visible: true,
+      zIndex: 0,
+    };
+    store.addLayoutObject(newTent);
+
+    const wFt = wMeters != null ? (wMeters / 0.3048).toFixed(0) : null;
+    const hFt = hMeters != null ? (hMeters / 0.3048).toFixed(0) : null;
+
+    return json({
+      summary: `Created venue tent: ${wFt ? wFt + 'ft' : tentW + 'px'} × ${hFt ? hFt + 'ft' : tentH + 'px'}. Canvas auto-adjusted.`,
+      tentId: newTent.id,
+      widthPx: tentW,
+      heightPx: tentH,
+      widthFeet: wFt,
+      heightFeet: hFt,
+      canvasWidth: newCanvasW,
+      canvasHeight: newCanvasH,
+      hint: 'Call arrange_tables to place tables inside the new venue.',
+    });
+  }
+}
+
+function resizeTableTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const store = useEventStore.getState();
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+
+  const tableNumber = input.tableNumber as number | undefined;
+  let tableId = input.tableId as string | undefined;
+  const allTables = input.allTables as boolean | undefined;
+
+  // Dimension inputs
+  const diameterFeet = input.diameterFeet as number | undefined;
+  const diameterInches = input.diameterInches as number | undefined;
+  const widthFeet = input.widthFeet as number | undefined;
+  const heightFeet = input.heightFeet as number | undefined;
+
+  // Calculate pixel size
+  let wPx: number | undefined;
+  let hPx: number | undefined;
+
+  if (diameterInches != null) {
+    const meters = diameterInches * 0.0254;
+    const px = Math.round(meters / metersPerPixel);
+    wPx = px;
+    hPx = px;
+  } else if (diameterFeet != null) {
+    const meters = diameterFeet * 0.3048;
+    const px = Math.round(meters / metersPerPixel);
+    wPx = px;
+    hPx = px;
+  } else if (widthFeet != null || heightFeet != null) {
+    if (widthFeet != null) wPx = Math.round((widthFeet * 0.3048) / metersPerPixel);
+    if (heightFeet != null) hPx = Math.round((heightFeet * 0.3048) / metersPerPixel);
+  }
+
+  if (wPx == null && hPx == null) {
+    return errorResult('Provide size: diameterFeet, diameterInches, or widthFeet/heightFeet.');
+  }
+
+  if (allTables) {
+    // Resize all tables
+    const updates: Partial<LayoutObject> = {};
+    if (wPx != null) updates.width = wPx;
+    if (hPx != null) updates.height = hPx;
+
+    let count = 0;
+    for (const table of ctx.tables) {
+      store.updateLayoutObject(table.id, updates);
+      count++;
+    }
+
+    return json({
+      summary: `Resized all ${count} tables to ${wPx ?? '?'}×${hPx ?? '?'} pixels (to scale).`,
+      tablesResized: count,
+      widthPx: wPx,
+      heightPx: hPx,
+      hint: 'Call arrange_tables to re-fit tables within the venue.',
+    });
+  }
+
+  // Single table resize
+  if (!tableId && tableNumber != null) {
+    const found = ctx.tables.find((t) => t.tableNumber === tableNumber);
+    if (found) tableId = found.id;
+  }
+
+  if (!tableId) return errorResult('Provide tableId, tableNumber, or allTables=true.');
+
+  const table = ctx.tables.find((t) => t.id === tableId);
+  if (!table) return errorResult('Table not found.');
+
+  const updates: Partial<LayoutObject> = {};
+  if (wPx != null) updates.width = wPx;
+  if (hPx != null) updates.height = hPx;
+  store.updateLayoutObject(tableId, updates);
+
+  const name = table.tableNumber != null ? `Table ${table.tableNumber}` : table.name;
+  return json({
+    summary: `Resized ${name} to ${wPx ?? table.width}×${hPx ?? table.height} pixels (to scale).`,
+    tableId,
+    name,
+    widthPx: updates.width ?? table.width,
+    heightPx: updates.height ?? table.height,
+  });
+}
+
+function setCanvasScaleTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const store = useEventStore.getState();
+
+  const metersPerPixel = input.metersPerPixel as number | undefined;
+  const feetPerPixel = input.feetPerPixel as number | undefined;
+  const canvasWidth = input.canvasWidth as number | undefined;
+  const canvasHeight = input.canvasHeight as number | undefined;
+
+  if (!ctx.activeVersion) return errorResult('No active version to update.');
+
+  const versionUpdate: Record<string, number> = {};
+
+  if (metersPerPixel != null) {
+    versionUpdate.metersPerPixel = metersPerPixel;
+  } else if (feetPerPixel != null) {
+    versionUpdate.metersPerPixel = feetPerPixel * 0.3048;
+  }
+
+  if (canvasWidth != null) versionUpdate.canvasWidth = canvasWidth;
+  if (canvasHeight != null) versionUpdate.canvasHeight = canvasHeight;
+
+  if (Object.keys(versionUpdate).length === 0) {
+    return errorResult('Provide metersPerPixel, feetPerPixel, canvasWidth, or canvasHeight.');
+  }
+
+  store.updateVersion(ctx.activeVersion.id, versionUpdate);
+
+  const mpp = versionUpdate.metersPerPixel ?? ctx.activeVersion.metersPerPixel ?? 0.03048;
+  const fpp = mpp / 0.3048;
+
+  return json({
+    summary: `Canvas scale updated. 1 pixel = ${mpp.toFixed(5)} meters (${fpp.toFixed(3)} feet).`,
+    metersPerPixel: mpp,
+    feetPerPixel: fpp,
+    canvasWidth: canvasWidth ?? ctx.activeVersion.canvasWidth,
+    canvasHeight: canvasHeight ?? ctx.activeVersion.canvasHeight,
+    hint: 'After changing scale, call resize_venue and arrange_tables to re-fit the layout.',
+  });
+}
+
 function importBlackbaudTool(
   state: StoreState,
   eventId: string,
@@ -3367,6 +3632,9 @@ const TOOL_MAP: Record<
   arrange_tables: arrangeTablesTool,
   fix_layout_issues: fixLayoutIssuesTool,
   align_tables: alignTablesTool,
+  resize_venue: resizeVenueTool,
+  resize_table: resizeTableTool,
+  set_canvas_scale: setCanvasScaleTool,
   // Relationship management
   create_relationship_group: createRelationshipGroupTool,
   add_to_relationship_group: addToRelationshipGroupTool,
