@@ -146,8 +146,9 @@ export interface EventVersion {
   canvasHeight?: number;
 }
 
-export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'relationship_group' | 'custom';
+export type SeatingRuleType = 'same_tag' | 'cross_tag' | 'relationship_group' | 'custom' | 'same_table' | 'different_table' | 'adjacent' | 'front_row' | 'max_per_table' | 'min_per_table';
 export type SeatingIntent = 'same_table' | 'nearby' | 'separate';
+export type SeatingRulePriority = 'required' | 'preferred' | 'nice_to_have';
 
 export interface SeatingRule {
   id: string;
@@ -167,6 +168,22 @@ export interface SeatingRule {
   relationshipGroupId?: string;
   /** What the rule wants: same table, nearby tables, or keep apart */
   intent?: SeatingIntent;
+
+  // ── Constraint engine fields ──────────────────────────────────────
+  /** Constraint rule type (same_table, different_table, max_per_table, etc.) */
+  constraintType?: 'same_table' | 'different_table' | 'adjacent' | 'front_row' | 'max_per_table' | 'min_per_table';
+  /** Targeting: which guests does this rule apply to? */
+  targetCategory?: string;        // e.g. 'donor', 'board_member', 'vip'
+  targetTag?: string;             // e.g. 'vegetarian', 'sponsor'
+  targetOrganization?: string;    // e.g. 'Johnson Foundation'
+  /** For relationship-based rules: secondary category */
+  secondaryCategory?: string;     // e.g. for "seat donors WITH recipients"
+  /** For max_per_table: max N guests of target category per table */
+  maxCount?: number;
+  /** For min_per_table: at least N guests of target category per table */
+  minCount?: number;
+  /** Constraint priority level */
+  constraintPriority?: SeatingRulePriority;
 }
 
 // ──────────────────────────────────────────────

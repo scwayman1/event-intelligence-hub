@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import {
   GraduationCap, CheckCircle2, AlertCircle, Loader2,
   ArrowRight, ArrowLeft, Eye, Download,
   Link2, Unlink, RefreshCw, Shield,
+  Clock, Play, History, Settings,
 } from 'lucide-react';
 import type { BlackbaudConfig, BlackbaudImportResult, BlackbaudPreviewResult } from '@/types/blackbaud';
 import { previewImport, importScholarshipRecipients, importDonors } from '@/services/blackbaud-sync';
@@ -17,9 +18,52 @@ import {
   disconnectBlackbaud,
   type ConnectionStatus,
 } from '@/services/blackbaud-auth';
+import {
+  startAutoSync,
+  stopAutoSync,
+  getAutoSyncStatus,
+  runSyncNow,
+  fetchSyncHistory,
+  type AutoSyncStatus,
+  type SyncRunResult,
+  type SyncLogEntry,
+} from '@/services/blackbaud-scheduler';
 import { useEventStore } from '@/data/store';
 
 type DialogStep = 'connect' | 'preview' | 'import';
+
+const SYNC_SETTINGS_KEY = 'blackbaud-sync-settings';
+
+interface SyncSettings {
+  autoSyncEnabled: boolean;
+  intervalMinutes: number;
+}
+
+function loadSyncSettings(): SyncSettings {
+  try {
+    const saved = localStorage.getItem(SYNC_SETTINGS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        autoSyncEnabled: parsed.autoSyncEnabled ?? false,
+        intervalMinutes: parsed.intervalMinutes ?? 60,
+      };
+    }
+  } catch { /* ignore */ }
+  return { autoSyncEnabled: false, intervalMinutes: 60 };
+}
+
+function saveSyncSettings(settings: SyncSettings): void {
+  localStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+const INTERVAL_OPTIONS = [
+  { value: 15, label: '15 minutes' },
+  { value: 30, label: '30 minutes' },
+  { value: 60, label: '1 hour' },
+  { value: 240, label: '4 hours' },
+  { value: 1440, label: 'Daily' },
+] as const;
 
 interface DialogState {
   step: DialogStep;
@@ -36,6 +80,13 @@ interface DialogState {
   manualSubscriptionKey: string;
   manualAccessToken: string;
   manualEnvironment: 'sandbox' | 'production';
+  // Sync settings
+  autoSyncEnabled: boolean;
+  syncIntervalMinutes: number;
+  syncNowLoading: boolean;
+  autoSyncStatus: AutoSyncStatus | null;
+  syncHistory: SyncLogEntry[];
+  syncHistoryLoading: boolean;
 }
 
 interface BlackbaudImportDialogProps {
@@ -61,6 +112,7 @@ export default function BlackbaudImportDialog({ open, onOpenChange }: BlackbaudI
   const orgId = useEventStore((s) => s.activeOrgId || s.organizations?.[0]?.id || '');
   const hasClientId = !!import.meta.env.VITE_BLACKBAUD_CLIENT_ID;
   const manualDefaults = loadManualConfig();
+  const syncDefaults = loadSyncSettings();
 
   const [state, setState] = useState<DialogState>({
     step: 'connect',
@@ -76,6 +128,13 @@ export default function BlackbaudImportDialog({ open, onOpenChange }: BlackbaudI
     manualSubscriptionKey: manualDefaults.subscriptionKey,
     manualAccessToken: manualDefaults.accessToken,
     manualEnvironment: manualDefaults.environment,
+    // Sync settings
+    autoSyncEnabled: syncDefaults.autoSyncEnabled,
+    syncIntervalMinutes: syncDefaults.intervalMinutes,
+    syncNowLoading: false,
+    autoSyncStatus: null,
+    syncHistory: [],
+    syncHistoryLoading: false,
   });
 
   // Check connection status on open
@@ -92,6 +151,83 @@ export default function BlackbaudImportDialog({ open, onOpenChange }: BlackbaudI
       setState((s) => ({ ...s, connectionStatus: status, loading: false }));
     } catch {
       setState((s) => ({ ...s, connectionStatus: { connected: false }, loading: false }));
+    }
+  }
+
+  // Refresh auto-sync status and history when connected
+  const refreshSyncInfo = useCallback(async () => {
+    if (!orgId) return;
+    const status = getAutoSyncStatus(orgId);
+    setState((s) => ({ ...s, autoSyncStatus: status, syncHistoryLoading: true }));
+    try {
+      const history = await fetchSyncHistory(orgId, 5);
+      setState((s) => ({ ...s, syncHistory: history, syncHistoryLoading: false }));
+    } catch {
+      setState((s) => ({ ...s, syncHistoryLoading: false }));
+    }
+  }, [orgId]);
+
+  useEffect(() => {
+    if (!open || !orgId) return;
+    void refreshSyncInfo();
+  }, [open, orgId, refreshSyncInfo]);
+
+  // Handle auto-sync toggle
+  function handleAutoSyncToggle(enabled: boolean) {
+    const activeEventId = eventId || useEventStore.getState().events?.[0]?.id || '';
+    setState((s) => ({ ...s, autoSyncEnabled: enabled }));
+    const settings: SyncSettings = { autoSyncEnabled: enabled, intervalMinutes: state.syncIntervalMinutes };
+    saveSyncSettings(settings);
+
+    if (enabled && activeEventId) {
+      startAutoSync(orgId, activeEventId, state.syncIntervalMinutes);
+      toast.success(`Auto-sync enabled (every ${INTERVAL_OPTIONS.find((o) => o.value === state.syncIntervalMinutes)?.label ?? state.syncIntervalMinutes + 'min'}).`);
+    } else {
+      stopAutoSync(orgId);
+      if (!enabled) toast.info('Auto-sync disabled.');
+    }
+    setState((s) => ({ ...s, autoSyncStatus: getAutoSyncStatus(orgId) }));
+  }
+
+  function handleIntervalChange(minutes: number) {
+    setState((s) => ({ ...s, syncIntervalMinutes: minutes }));
+    const settings: SyncSettings = { autoSyncEnabled: state.autoSyncEnabled, intervalMinutes: minutes };
+    saveSyncSettings(settings);
+
+    // Restart if auto-sync is running
+    if (state.autoSyncEnabled) {
+      const activeEventId = eventId || useEventStore.getState().events?.[0]?.id || '';
+      if (activeEventId) {
+        startAutoSync(orgId, activeEventId, minutes);
+        setState((s) => ({ ...s, autoSyncStatus: getAutoSyncStatus(orgId) }));
+      }
+    }
+  }
+
+  async function handleSyncNow() {
+    const activeEventId = eventId || useEventStore.getState().events?.[0]?.id || '';
+    if (!activeEventId) {
+      toast.error('No active event selected.');
+      return;
+    }
+    setState((s) => ({ ...s, syncNowLoading: true }));
+    try {
+      const result = await runSyncNow(orgId, activeEventId);
+      if (result.success) {
+        toast.success(`Sync complete: ${result.guestsAdded} added, ${result.guestsUpdated} updated.`);
+      } else {
+        toast.warning(`Sync completed with ${result.errorCount} error(s).`);
+      }
+      setState((s) => ({
+        ...s,
+        syncNowLoading: false,
+        autoSyncStatus: getAutoSyncStatus(orgId),
+      }));
+      // Refresh history
+      void refreshSyncInfo();
+    } catch (err) {
+      toast.error(`Sync failed: ${(err as Error).message}`);
+      setState((s) => ({ ...s, syncNowLoading: false }));
     }
   }
 
@@ -307,6 +443,123 @@ export default function BlackbaudImportDialog({ open, onOpenChange }: BlackbaudI
                   <Unlink className="w-3.5 h-3.5" />
                   Disconnect
                 </Button>
+              </div>
+            )}
+
+            {/* Sync Settings — only visible when connected */}
+            {isConnected && (
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Settings className="w-4 h-4" />
+                  Sync Settings
+                </div>
+
+                {/* Auto-sync toggle + interval */}
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={state.autoSyncEnabled}
+                      onChange={(e) => handleAutoSyncToggle(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    <span className="text-sm text-foreground">Auto-sync enabled</span>
+                  </label>
+                  <select
+                    value={state.syncIntervalMinutes}
+                    onChange={(e) => handleIntervalChange(Number(e.target.value))}
+                    disabled={!state.autoSyncEnabled}
+                    className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:opacity-50"
+                  >
+                    {INTERVAL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sync Now button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={handleSyncNow}
+                  disabled={state.syncNowLoading}
+                >
+                  {state.syncNowLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                  Sync Now
+                </Button>
+
+                {/* Last sync / next sync info */}
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>
+                      Last sync:{' '}
+                      {state.autoSyncStatus?.lastSyncAt
+                        ? new Date(state.autoSyncStatus.lastSyncAt).toLocaleString()
+                        : state.connectionStatus?.connection?.last_synced_at
+                          ? new Date(state.connectionStatus.connection.last_synced_at).toLocaleString()
+                          : 'Never'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3" />
+                    <span>
+                      Next sync:{' '}
+                      {state.autoSyncStatus?.running && state.autoSyncStatus.nextSyncAt
+                        ? new Date(state.autoSyncStatus.nextSyncAt).toLocaleTimeString()
+                        : 'Not scheduled'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sync history */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1 text-xs font-medium text-foreground">
+                    <History className="w-3 h-3" />
+                    Recent Sync History
+                  </div>
+                  {state.syncHistoryLoading ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Loading...
+                    </div>
+                  ) : state.syncHistory.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-1">No sync history yet.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {state.syncHistory.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex items-center justify-between text-xs rounded px-2 py-1 bg-background border border-border"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {entry.status === 'completed' ? (
+                              <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                            ) : entry.status === 'failed' ? (
+                              <AlertCircle className="w-3 h-3 text-destructive shrink-0" />
+                            ) : (
+                              <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
+                            )}
+                            <span className="text-muted-foreground capitalize">{entry.sync_type}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">
+                              +{entry.guests_added} / ~{entry.guests_updated}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {new Date(entry.started_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

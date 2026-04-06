@@ -190,7 +190,44 @@ When the user asks about organizing the layout:
 
 CRITICAL RULE: When the user tells you venue dimensions (e.g. "40 × 80 foot tent"), ALWAYS call resize_venue with those dimensions. Never say the system can't handle it — you have the tools to resize everything.
 
+═══════════════════════════════════════════════
+  FOH & VENUE SETUP
+═══════════════════════════════════════════════
+
+Franck can set up the complete front-of-house:
+- **add_structure** — Place stages, podiums, bars, registration desks, check-in areas, photo areas, catering stations, VIP areas, dance floors, aisles, and signage. Auto-positions intelligently (stage at top, registration at entrance, bar at side).
+- **optimize_foh** — Analyze sightlines, guest flow (entrance → registration → seating → stage), table distances from stage, and suggest improvements.
+- **set_front_tables** — Designate VIP/donor/dignitary tables closest to the stage for high-visibility seating.
+- **create_event_flow** — One-shot complete FOH setup: stage, registration, dance floor, bar, photo area — all positioned automatically.
+- **remove_structure** — Remove non-table objects by name or type.
+
+When the user asks about venue setup, FOH, stage placement, or registration flow:
+1. Call create_event_flow for a complete setup, OR add_structure for individual pieces
+2. Call optimize_foh to check the layout for issues
+3. Call set_front_tables to designate premium seating near the stage
+4. Report what you created with flair
+
 You have tools to manage events, guests, seating, layout arrangement, and communications. Use them liberally.
+
+═══════════════════════════════════════════════
+  SEATING RULES ENGINE
+═══════════════════════════════════════════════
+
+Franck can enforce seating constraints:
+- **add_seating_rule** — Create rules like "No more than 2 board members per table", "Every table must have at least 1 donor", "No two VIPs at the same table", "Sponsors should be at front tables"
+- **evaluate_seating_rules** — Check current seating against all rules, report violations with details and a compliance score (0-100)
+- **auto_fix_violations** — Automatically swap guests between tables to satisfy rules
+- **list_seating_rules** / **remove_seating_rule** — Manage existing rules
+
+When the user defines a seating constraint, ALWAYS create a rule first with add_seating_rule, then evaluate with evaluate_seating_rules. If there are violations, offer to run auto_fix_violations.
+
+Rule types:
+- **different_table** — Guests of a category must NOT share a table (e.g. "no two board members together")
+- **same_table** — Guests of a category MUST share a table, optionally with a secondary category (e.g. "seat donors with recipients")
+- **max_per_table** — At most N guests of a category per table
+- **min_per_table** — At least N guests of a category per occupied table
+- **front_row** — Guests of a category should be at front tables (lowest Y)
+- **adjacent** — Guests of a category should be at neighboring tables
 
 ═══════════════════════════════════════════════
   MEMORY & CONTEXT
@@ -669,6 +706,80 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
       required: [],
     },
   },
+  // ── FOH & VENUE STRUCTURES ──────────────────────────────────────
+  {
+    name: 'add_structure',
+    description:
+      'Add a non-table structure to the layout: stage, podium, dance floor, bar, registration desk, check-in area, photo area, catering station, VIP area, aisle, or signage. Auto-positions based on type (stage at top, registration at entrance, bar at side) unless x/y are specified.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['stage', 'podium', 'dance_floor', 'bar', 'registration', 'checkin', 'photo_area', 'catering', 'vip_area', 'aisle', 'signage'],
+          description: 'The type of structure to add',
+        },
+        name: { type: 'string', description: 'Optional custom name for the structure' },
+        widthFeet: { type: 'number', description: 'Width in feet (uses sensible default if not provided)' },
+        heightFeet: { type: 'number', description: 'Height/depth in feet (uses sensible default if not provided)' },
+        x: { type: 'number', description: 'X position in pixels (auto-positioned if omitted)' },
+        y: { type: 'number', description: 'Y position in pixels (auto-positioned if omitted)' },
+      },
+      required: ['type'],
+    },
+  },
+  {
+    name: 'remove_structure',
+    description:
+      'Remove a non-table layout object (stage, bar, registration desk, etc.) by name or type.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Name of the structure to remove (partial match supported)' },
+        type: { type: 'string', description: 'Type of structure to remove (removes first match): stage, podium, dance_floor, bar, registration, checkin, photo_area, catering, vip_area, aisle, signage' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'optimize_foh',
+    description:
+      'Analyze the front-of-house layout and suggest improvements. Checks stage visibility from all tables, registration placement near entrance, logical guest flow (entrance → registration → seating → stage), identifies tables too close (< 8ft) or too far (> 60ft) from stage, detects obstructed sightlines, and suggests missing structures.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'set_front_tables',
+    description:
+      'Designate tables closest to the stage as "front" / high-visibility tables. Optionally specify a guest category (vip, donor, dignitary) to prioritize at these tables.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        count: { type: 'number', description: 'Number of front tables to designate (default: ~25% of tables, max 5)' },
+        category: { type: 'string', description: 'Guest category to prioritize at front tables (e.g. "vip", "donor", "dignitary")' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'create_event_flow',
+    description:
+      'Auto-create a complete front-of-house setup in one call. Creates stage, registration desk, dance floor, bar, and/or photo area with sensible positions relative to the venue. Stage at top-center, registration at entrance (bottom), dance floor between stage and seating, bar at side, photo area near entrance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        hasStage: { type: 'boolean', description: 'Include a stage (default: true)' },
+        hasRegistration: { type: 'boolean', description: 'Include a registration desk (default: true)' },
+        hasDanceFloor: { type: 'boolean', description: 'Include a dance floor (default: false)' },
+        hasBar: { type: 'boolean', description: 'Include a bar (default: false)' },
+        hasPhotoArea: { type: 'boolean', description: 'Include a photo area (default: false)' },
+      },
+      required: [],
+    },
+  },
   // ── RELATIONSHIP MANAGEMENT ─────────────────────────────────────
   {
     name: 'create_relationship_group',
@@ -936,6 +1047,105 @@ export const FRANCK_TOOLS: AnthropicTool[] = [
     name: 'import_blackbaud',
     description:
       'Check Blackbaud Award Management connection status and guide the user to import scholarship recipients, donors, and award data from AcademicWorks. Use when the user asks about importing from Blackbaud, AcademicWorks, or syncing scholarship data.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  // ── SEATING RULE CONSTRAINT ENGINE ─────────────────────────────────
+  {
+    name: 'add_seating_rule',
+    description:
+      'Create a seating constraint rule. Examples: "No more than 2 board members per table" (max_per_table), "Every table must have at least 1 donor" (min_per_table), "Keep all VIPs at the same table" (same_table), "No two board members at the same table" (different_table), "Sponsors should be at front tables" (front_row), "Donors and recipients should be at adjacent tables" (adjacent).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['same_table', 'different_table', 'adjacent', 'front_row', 'max_per_table', 'min_per_table'],
+          description: 'Rule type: same_table (must share table), different_table (must not share table), max_per_table (cap per table), min_per_table (minimum per table), front_row (seat at front), adjacent (seat at neighboring tables)',
+        },
+        targetCategory: {
+          type: 'string',
+          description: 'Guest category this rule targets: donor, scholarship_recipient, family, board_member, vip, staff, sponsor, volunteer, dignitary, other',
+        },
+        targetTag: {
+          type: 'string',
+          description: 'Relationship tag this rule targets (e.g. "vegetarian", "thornton-scholar")',
+        },
+        targetOrganization: {
+          type: 'string',
+          description: 'Organization name this rule targets (e.g. "Johnson Foundation")',
+        },
+        secondaryCategory: {
+          type: 'string',
+          description: 'For same_table rules: the second category to pair with (e.g. seat donors WITH scholarship_recipient)',
+        },
+        maxCount: {
+          type: 'number',
+          description: 'For max_per_table: maximum guests of target type per table (e.g. 2)',
+        },
+        minCount: {
+          type: 'number',
+          description: 'For min_per_table: minimum guests of target type per occupied table (e.g. 1)',
+        },
+        priority: {
+          type: 'string',
+          enum: ['required', 'preferred', 'nice_to_have'],
+          description: 'Rule priority: required (must be satisfied), preferred (should be), nice_to_have (optional). Default: preferred.',
+        },
+        description: {
+          type: 'string',
+          description: 'Human-readable description of the rule (e.g. "No more than 2 board members per table")',
+        },
+      },
+      required: ['type', 'description'],
+    },
+  },
+  {
+    name: 'list_seating_rules',
+    description:
+      'List all seating constraint rules for the current event with their enabled status, type, and targeting criteria.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'remove_seating_rule',
+    description:
+      'Remove a seating constraint rule by ID or by matching its description text.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ruleId: {
+          type: 'string',
+          description: 'The rule ID to remove (use list_seating_rules to find IDs)',
+        },
+        description: {
+          type: 'string',
+          description: 'Partial description match to find and remove the rule (alternative to ruleId)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'evaluate_seating_rules',
+    description:
+      'Run all enabled seating constraint rules against the current seating arrangement. Returns a compliance score (0-100), list of violations with details, and suggested fixes. Use after auto_seat_guests or anytime the user asks if rules are satisfied.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'auto_fix_violations',
+    description:
+      'Automatically fix seating rule violations by moving guests between tables. Evaluates current violations, generates fix suggestions, and applies them. Returns before/after scores and details of changes made.',
     input_schema: {
       type: 'object' as const,
       properties: {},

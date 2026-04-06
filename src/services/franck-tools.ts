@@ -37,6 +37,12 @@ import {
 } from '@/services/franck-autopilot';
 
 import {
+  evaluateRules,
+  calculateRuleScore,
+  suggestFixes,
+} from '@/services/seating-rules';
+
+import {
   arrangeGrid,
   arrangeCircle,
   arrangeRows,
@@ -45,7 +51,7 @@ import {
   type ArrangeableObject,
 } from '@/lib/arrangement-engine';
 
-import type { Guest, GuestCategory, RSVPStatus, AppEvent, EventVersion, LayoutObject, RelationshipGroup, RelationshipMembership, RelationshipType } from '@/types/events';
+import type { Guest, GuestCategory, RSVPStatus, AppEvent, EventVersion, LayoutObject, LayoutObjectType, RelationshipGroup, RelationshipMembership, RelationshipType, SeatingRule, SeatingRulePriority } from '@/types/events';
 
 // ---------------------------------------------------------------------------
 // Store state snapshot type
@@ -630,6 +636,29 @@ function autoSeatGuests(
     }
   }
 
+  // ── Post-seating rule evaluation ──────────────────────────────────
+  // After seating completes, evaluate any enabled constraint rules and
+  // include violations in the result so the LLM can report them.
+  const eventRules = state.seatingRules?.filter(
+    (r: SeatingRule) => r.eventId === eventId && r.enabled && r.constraintType,
+  ) ?? [];
+  const freshAssignments = useEventStore.getState().seatingAssignments.filter(
+    (a) => a.versionId === ctx.versionId,
+  );
+  let ruleEvaluation: { score: number; violations: Array<{ ruleDescription: string; priority: string; tableNumber: number; details: string }> } | undefined;
+  if (eventRules.length > 0) {
+    const ruleResult = calculateRuleScore(eventRules, ctx.guests, freshAssignments, ctx.tables);
+    ruleEvaluation = {
+      score: ruleResult.score,
+      violations: ruleResult.violations.slice(0, 20).map((v) => ({
+        ruleDescription: v.ruleDescription,
+        priority: v.priority,
+        tableNumber: v.tableNumber,
+        details: v.details,
+      })),
+    };
+  }
+
   return json({
     applied,
     totalProposed: proposal.assignments.length,
@@ -650,8 +679,9 @@ function autoSeatGuests(
     score: proposal.score,
     proposalSummary: proposal.summary,
     algorithmLog: proposal.log.slice(-5),
-    summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.${applyErrors.length > 0 ? ` (${applyErrors.length} errors during apply)` : ''}`,
-    instruction: 'IMPORTANT: Report these results to the user NOW. Show the summary, highlight notable placements (donors with scholars), and give the score. Do NOT describe a plan — the seating is DONE.',
+    ruleEvaluation,
+    summary: `Seated ${applied} guest${applied === 1 ? '' : 's'} across ${proposal.summary.tablesUsed} table${proposal.summary.tablesUsed === 1 ? '' : 's'}. Assignments are now live.${applyErrors.length > 0 ? ` (${applyErrors.length} errors during apply)` : ''}${ruleEvaluation ? ` Rule compliance: ${ruleEvaluation.score}/100 (${ruleEvaluation.violations.length} violation${ruleEvaluation.violations.length === 1 ? '' : 's'}).` : ''}`,
+    instruction: 'IMPORTANT: Report these results to the user NOW. Show the summary, highlight notable placements (donors with scholars), and give the score. If there are rule violations, mention them and suggest running auto_fix_violations. Do NOT describe a plan — the seating is DONE.',
   });
 }
 
@@ -3640,6 +3670,828 @@ function importBlackbaudTool(
   });
 }
 
+// ---------------------------------------------------------------------------
+// FOH & Venue Structure Tools
+// ---------------------------------------------------------------------------
+
+/** Valid non-table structure types that add_structure accepts. */
+const STRUCTURE_TYPES: LayoutObjectType[] = [
+  'stage', 'podium', 'dance_floor', 'bar', 'registration', 'checkin',
+  'photo_area', 'catering', 'vip_area', 'aisle', 'signage',
+];
+
+/** Default real-world sizes (meters) for each structure type. */
+const DEFAULT_STRUCTURE_SIZES: Record<string, { w: number; h: number }> = {
+  stage:        { w: 5.49, h: 2.74 },   // ~18ft x 9ft
+  podium:       { w: 0.6,  h: 0.6 },
+  dance_floor:  { w: 5.49, h: 5.49 },   // ~18ft x 18ft
+  bar:          { w: 2.44, h: 0.76 },   // 8ft x 2.5ft
+  registration: { w: 2.44, h: 0.76 },
+  checkin:      { w: 2.44, h: 0.76 },
+  photo_area:   { w: 3.0,  h: 1.5 },
+  catering:     { w: 2.44, h: 1.22 },
+  vip_area:     { w: 4.0,  h: 3.0 },
+  aisle:        { w: 6.0,  h: 1.2 },
+  signage:      { w: 1.2,  h: 0.6 },
+};
+
+/** Human-readable labels for structure types. */
+const STRUCTURE_LABELS: Record<string, string> = {
+  stage: 'Stage', podium: 'Podium', dance_floor: 'Dance Floor', bar: 'Bar',
+  registration: 'Registration Desk', checkin: 'Check-In Desk',
+  photo_area: 'Photo Area', catering: 'Catering Station',
+  vip_area: 'VIP Area', aisle: 'Aisle', signage: 'Signage',
+};
+
+function addStructureTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const structType = input.type as string | undefined;
+  if (!structType || !STRUCTURE_TYPES.includes(structType as LayoutObjectType)) {
+    return errorResult(
+      `Parameter 'type' is required and must be one of: ${STRUCTURE_TYPES.join(', ')}`,
+    );
+  }
+
+  const store = useEventStore.getState();
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+  const canvasW = ctx.activeVersion?.canvasWidth ?? 1200;
+  const canvasH = ctx.activeVersion?.canvasHeight ?? 800;
+
+  // Find the tent/venue boundary for positioning
+  const tents = ctx.allObjects.filter((o) => o.type === 'tent');
+  const tent = tents.length > 0
+    ? tents.reduce((a, b) => (a.width * a.height > b.width * b.height ? a : b))
+    : null;
+  const venueX = tent?.x ?? 60;
+  const venueY = tent?.y ?? 60;
+  const venueW = tent?.width ?? (canvasW - 120);
+  const venueH = tent?.height ?? (canvasH - 120);
+
+  // Calculate pixel dimensions from feet or fallback to defaults
+  const defaults = DEFAULT_STRUCTURE_SIZES[structType] ?? { w: 2.0, h: 1.0 };
+  const widthFeet = input.widthFeet as number | undefined;
+  const heightFeet = input.heightFeet as number | undefined;
+
+  const wMeters = widthFeet != null ? widthFeet * 0.3048 : defaults.w;
+  const hMeters = heightFeet != null ? heightFeet * 0.3048 : defaults.h;
+
+  const wPx = Math.max(20, Math.round(wMeters / metersPerPixel));
+  const hPx = Math.max(10, Math.round(hMeters / metersPerPixel));
+
+  // Auto-position based on type if x/y not provided
+  let posX = input.x as number | undefined;
+  let posY = input.y as number | undefined;
+
+  if (posX == null || posY == null) {
+    switch (structType) {
+      case 'stage':
+      case 'podium':
+        // Top-center of venue
+        posX = posX ?? venueX + Math.round((venueW - wPx) / 2);
+        posY = posY ?? venueY + 10;
+        break;
+      case 'registration':
+      case 'checkin':
+        // Bottom-center (entrance)
+        posX = posX ?? venueX + Math.round((venueW - wPx) / 2);
+        posY = posY ?? venueY + venueH - hPx - 10;
+        break;
+      case 'bar':
+        // Right side of venue
+        posX = posX ?? venueX + venueW - wPx - 15;
+        posY = posY ?? venueY + Math.round(venueH / 2 - hPx / 2);
+        break;
+      case 'dance_floor':
+        // Between stage area and center
+        posX = posX ?? venueX + Math.round((venueW - wPx) / 2);
+        posY = posY ?? venueY + Math.round(venueH * 0.2);
+        break;
+      case 'photo_area':
+        // Near entrance, left side
+        posX = posX ?? venueX + 15;
+        posY = posY ?? venueY + venueH - hPx - 30;
+        break;
+      case 'catering':
+        // Left side of venue
+        posX = posX ?? venueX + 15;
+        posY = posY ?? venueY + Math.round(venueH / 2 - hPx / 2);
+        break;
+      default:
+        // Center of venue
+        posX = posX ?? venueX + Math.round((venueW - wPx) / 2);
+        posY = posY ?? venueY + Math.round((venueH - hPx) / 2);
+        break;
+    }
+  }
+
+  const customName = input.name as string | undefined;
+  const label = STRUCTURE_LABELS[structType] ?? structType;
+  const name = customName ?? label;
+
+  const id = `lo-${crypto.randomUUID().slice(0, 8)}`;
+
+  const layoutObj: LayoutObject = {
+    id,
+    versionId: ctx.versionId,
+    type: structType as LayoutObjectType,
+    name,
+    x: posX,
+    y: posY,
+    width: wPx,
+    height: hPx,
+    rotation: 0,
+    capacity: 0,
+    notes: '',
+    category: 'structure',
+    locked: false,
+    visible: true,
+    zIndex: 50,
+  };
+
+  store.addLayoutObject(layoutObj);
+
+  const wFt = (wMeters / 0.3048).toFixed(1);
+  const hFt = (hMeters / 0.3048).toFixed(1);
+
+  return json({
+    summary: `Added ${name} (${wFt}ft x ${hFt}ft) at position (${posX}, ${posY}).`,
+    objectId: id,
+    name,
+    type: structType,
+    widthFeet: wFt,
+    heightFeet: hFt,
+    widthPx: wPx,
+    heightPx: hPx,
+    x: posX,
+    y: posY,
+  });
+}
+
+function removeStructureTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const nameFilter = input.name as string | undefined;
+  const typeFilter = input.type as string | undefined;
+
+  if (!nameFilter && !typeFilter) {
+    return errorResult("Provide 'name' or 'type' to identify the structure to remove.");
+  }
+
+  // Find non-table objects
+  const structures = ctx.allObjects.filter(
+    (o) => o.type !== 'round_table' && o.type !== 'rect_table' && o.type !== 'tent' && o.type !== 'chair',
+  );
+
+  let target: LayoutObject | undefined;
+
+  if (nameFilter) {
+    const lower = nameFilter.toLowerCase();
+    target = structures.find((o) => o.name.toLowerCase() === lower)
+      ?? structures.find((o) => o.name.toLowerCase().includes(lower));
+  }
+
+  if (!target && typeFilter) {
+    target = structures.find((o) => o.type === typeFilter);
+  }
+
+  if (!target) {
+    const available = structures.map((o) => `${o.name} (${o.type})`).join(', ') || '(none)';
+    return errorResult(`No matching structure found. Available structures: ${available}`);
+  }
+
+  const store = useEventStore.getState();
+  store.removeLayoutObject(target.id);
+
+  return json({
+    summary: `Removed ${target.name} (${target.type}).`,
+    removedId: target.id,
+    removedName: target.name,
+    removedType: target.type,
+  });
+}
+
+function optimizeFohTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+  const feetPerPixel = metersPerPixel / 0.3048;
+
+  const canvasW = ctx.activeVersion?.canvasWidth ?? 1200;
+  const canvasH = ctx.activeVersion?.canvasHeight ?? 800;
+
+  const structures = ctx.allObjects.filter(
+    (o) => o.type !== 'round_table' && o.type !== 'rect_table' && o.type !== 'chair',
+  );
+
+  const stages = structures.filter((o) => o.type === 'stage' || o.type === 'podium');
+  const registrations = structures.filter((o) => o.type === 'registration' || o.type === 'checkin');
+  const bars = structures.filter((o) => o.type === 'bar');
+  const danceFloors = structures.filter((o) => o.type === 'dance_floor');
+
+  const issues: { severity: 'error' | 'warning' | 'info'; message: string }[] = [];
+  const suggestions: string[] = [];
+
+  // --- Check for stage/podium ---
+  if (stages.length === 0) {
+    issues.push({ severity: 'warning', message: 'No stage or podium found in layout.' });
+    suggestions.push('Add a stage at the top-center of the venue using add_structure(type: "stage").');
+  }
+
+  // --- Check for registration ---
+  if (registrations.length === 0) {
+    issues.push({ severity: 'warning', message: 'No registration or check-in area found.' });
+    suggestions.push('Add a registration desk near the entrance using add_structure(type: "registration").');
+  } else {
+    // Registration should be near the bottom (entrance)
+    for (const reg of registrations) {
+      const regCenterY = reg.y + reg.height / 2;
+      if (regCenterY < canvasH * 0.5) {
+        issues.push({
+          severity: 'info',
+          message: `${reg.name} is positioned in the upper half — typically registration belongs near the entrance (bottom).`,
+        });
+      }
+    }
+  }
+
+  // --- Check for bar ---
+  if (bars.length === 0) {
+    suggestions.push('Consider adding a bar using add_structure(type: "bar").');
+  }
+
+  // --- Analyze table sightlines to stage ---
+  if (stages.length > 0 && ctx.tables.length > 0) {
+    const stage = stages[0];
+    const stageCX = stage.x + stage.width / 2;
+    const stageCY = stage.y + stage.height / 2;
+
+    const minDistFt = 8;
+    const maxDistFt = 60;
+    const minDistPx = minDistFt / feetPerPixel;
+    const maxDistPx = maxDistFt / feetPerPixel;
+
+    const tooClose: string[] = [];
+    const tooFar: string[] = [];
+
+    for (const table of ctx.tables) {
+      const tableCX = table.x + table.width / 2;
+      const tableCY = table.y + table.height / 2;
+      const dist = Math.sqrt((tableCX - stageCX) ** 2 + (tableCY - stageCY) ** 2);
+
+      const tableName = table.tableNumber != null ? `Table ${table.tableNumber}` : table.name;
+
+      if (dist < minDistPx) {
+        tooClose.push(tableName);
+      } else if (dist > maxDistPx) {
+        tooFar.push(tableName);
+      }
+    }
+
+    if (tooClose.length > 0) {
+      issues.push({
+        severity: 'error',
+        message: `Tables too close to stage (< ${minDistFt}ft): ${tooClose.join(', ')}. Guests may be uncomfortable.`,
+      });
+    }
+    if (tooFar.length > 0) {
+      issues.push({
+        severity: 'warning',
+        message: `Tables far from stage (> ${maxDistFt}ft): ${tooFar.join(', ')}. Visibility may be poor.`,
+      });
+    }
+
+    // Check for obstructed sightlines: structures between tables and stage
+    const obstructors = structures.filter(
+      (o) => o.type !== 'stage' && o.type !== 'podium' && o.type !== 'tent' &&
+             o.type !== 'aisle' && o.type !== 'signage',
+    );
+    for (const table of ctx.tables) {
+      const tableCX = table.x + table.width / 2;
+      const tableCY = table.y + table.height / 2;
+      for (const obs of obstructors) {
+        const obsCX = obs.x + obs.width / 2;
+        const obsCY = obs.y + obs.height / 2;
+        // Simple check: obstruction is between table and stage in Y
+        const betweenY =
+          (obsCY > stageCY && obsCY < tableCY) || (obsCY < stageCY && obsCY > tableCY);
+        if (betweenY) {
+          // Check if roughly in line (within half the obstruction width)
+          const dx = Math.abs(obsCX - tableCX);
+          if (dx < obs.width) {
+            const tableName = table.tableNumber != null ? `Table ${table.tableNumber}` : table.name;
+            issues.push({
+              severity: 'info',
+              message: `${tableName} may have sightline blocked by ${obs.name} (${obs.type}).`,
+            });
+            break; // one issue per table is enough
+          }
+        }
+      }
+    }
+  }
+
+  // --- Check logical flow: entrance (bottom) → registration → seating → stage (top) ---
+  if (stages.length > 0 && registrations.length > 0) {
+    const stageY = stages[0].y;
+    const regY = registrations[0].y;
+    if (regY < stageY) {
+      issues.push({
+        severity: 'warning',
+        message: 'Registration is positioned above/before the stage. Typically the flow is: entrance (bottom) → registration → seating → stage (top).',
+      });
+    }
+  }
+
+  // --- Dance floor placement ---
+  if (danceFloors.length > 0 && stages.length > 0) {
+    const dfCY = danceFloors[0].y + danceFloors[0].height / 2;
+    const stageCY = stages[0].y + stages[0].height / 2;
+    if (dfCY < stageCY) {
+      issues.push({
+        severity: 'info',
+        message: 'Dance floor is positioned behind the stage. It is usually placed between the stage and the seating area.',
+      });
+    }
+  }
+
+  const structureSummary = structures
+    .filter((o) => o.type !== 'tent')
+    .map((o) => ({ name: o.name, type: o.type, x: o.x, y: o.y }));
+
+  return json({
+    summary: `FOH analysis complete: ${issues.length} issue(s) found, ${suggestions.length} suggestion(s).`,
+    tableCount: ctx.tables.length,
+    structures: structureSummary,
+    issues,
+    suggestions,
+  });
+}
+
+function setFrontTablesTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  if (ctx.tables.length === 0) {
+    return errorResult('No tables exist in the layout.');
+  }
+
+  // Find stage for reference
+  const stages = ctx.allObjects.filter((o) => o.type === 'stage' || o.type === 'podium');
+  let referenceY: number;
+  if (stages.length > 0) {
+    // Use stage center as reference — closer Y means closer to stage
+    referenceY = stages[0].y + stages[0].height / 2;
+  } else {
+    // No stage — assume top of canvas is "front"
+    referenceY = 0;
+  }
+
+  const count = (input.count as number) ?? Math.min(Math.ceil(ctx.tables.length * 0.25), 5);
+  const category = input.category as string | undefined;
+
+  // Sort tables by distance to the stage (Y-coordinate primarily)
+  const sorted = [...ctx.tables].sort((a, b) => {
+    const aDist = Math.abs((a.y + a.height / 2) - referenceY);
+    const bDist = Math.abs((b.y + b.height / 2) - referenceY);
+    return aDist - bDist;
+  });
+
+  const frontTables = sorted.slice(0, Math.min(count, sorted.length));
+
+  const store = useEventStore.getState();
+  const frontTableInfo: { tableNumber: number | undefined; name: string; distance: number }[] = [];
+
+  for (const table of frontTables) {
+    // Mark tables with a "front" / VIP note
+    const noteAddition = category
+      ? `Front table — ${category} priority`
+      : 'Front table — high visibility';
+    const existingNotes = table.notes ?? '';
+    const newNotes = existingNotes.includes('Front table')
+      ? existingNotes
+      : (existingNotes ? existingNotes + '; ' : '') + noteAddition;
+
+    store.updateLayoutObject(table.id, { notes: newNotes });
+
+    const dist = Math.abs((table.y + table.height / 2) - referenceY);
+    frontTableInfo.push({
+      tableNumber: table.tableNumber,
+      name: table.tableNumber != null ? `Table ${table.tableNumber}` : table.name,
+      distance: Math.round(dist),
+    });
+  }
+
+  return json({
+    summary: `Designated ${frontTables.length} front table(s) nearest the ${stages.length > 0 ? 'stage' : 'top of venue'}.`,
+    frontTables: frontTableInfo,
+    category: category ?? null,
+    stageFound: stages.length > 0,
+  });
+}
+
+function createEventFlowTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const store = useEventStore.getState();
+  const metersPerPixel = ctx.activeVersion?.metersPerPixel ?? 0.03048;
+  const canvasW = ctx.activeVersion?.canvasWidth ?? 1200;
+  const canvasH = ctx.activeVersion?.canvasHeight ?? 800;
+
+  // Find tent/venue for positioning
+  const tents = ctx.allObjects.filter((o) => o.type === 'tent');
+  const tent = tents.length > 0
+    ? tents.reduce((a, b) => (a.width * a.height > b.width * b.height ? a : b))
+    : null;
+  const venueX = tent?.x ?? 60;
+  const venueY = tent?.y ?? 60;
+  const venueW = tent?.width ?? (canvasW - 120);
+  const venueH = tent?.height ?? (canvasH - 120);
+
+  const hasStage = (input.hasStage as boolean) ?? true;
+  const hasRegistration = (input.hasRegistration as boolean) ?? true;
+  const hasDanceFloor = (input.hasDanceFloor as boolean) ?? false;
+  const hasBar = (input.hasBar as boolean) ?? false;
+  const hasPhotoArea = (input.hasPhotoArea as boolean) ?? false;
+
+  const created: { name: string; type: string; x: number; y: number }[] = [];
+
+  function makeObj(
+    type: LayoutObjectType,
+    name: string,
+    wMeters: number,
+    hMeters: number,
+    x: number,
+    y: number,
+  ) {
+    const wPx = Math.max(20, Math.round(wMeters / metersPerPixel));
+    const hPx = Math.max(10, Math.round(hMeters / metersPerPixel));
+    const obj: LayoutObject = {
+      id: `lo-${crypto.randomUUID().slice(0, 8)}`,
+      versionId: ctx.versionId,
+      type,
+      name,
+      x,
+      y,
+      width: wPx,
+      height: hPx,
+      rotation: 0,
+      capacity: 0,
+      notes: '',
+      category: 'structure',
+      locked: false,
+      visible: true,
+      zIndex: 50,
+    };
+    store.addLayoutObject(obj);
+    created.push({ name, type, x, y });
+  }
+
+  // Stage at top-center
+  if (hasStage) {
+    const sw = DEFAULT_STRUCTURE_SIZES.stage.w;
+    const sh = DEFAULT_STRUCTURE_SIZES.stage.h;
+    const swPx = Math.round(sw / metersPerPixel);
+    const x = venueX + Math.round((venueW - swPx) / 2);
+    const y = venueY + 10;
+    makeObj('stage', 'Main Stage', sw, sh, x, y);
+  }
+
+  // Dance floor between stage and center
+  if (hasDanceFloor) {
+    const dw = DEFAULT_STRUCTURE_SIZES.dance_floor.w;
+    const dh = DEFAULT_STRUCTURE_SIZES.dance_floor.h;
+    const dwPx = Math.round(dw / metersPerPixel);
+    const dhPx = Math.round(dh / metersPerPixel);
+    const x = venueX + Math.round((venueW - dwPx) / 2);
+    const stageOffset = hasStage ? Math.round(DEFAULT_STRUCTURE_SIZES.stage.h / metersPerPixel) + 20 : 10;
+    const y = venueY + stageOffset + 10;
+    makeObj('dance_floor', 'Dance Floor', dw, dh, x, y);
+  }
+
+  // Bar at right side
+  if (hasBar) {
+    const bw = DEFAULT_STRUCTURE_SIZES.bar.w;
+    const bh = DEFAULT_STRUCTURE_SIZES.bar.h;
+    const bwPx = Math.round(bw / metersPerPixel);
+    const x = venueX + venueW - bwPx - 15;
+    const y = venueY + Math.round(venueH * 0.4);
+    makeObj('bar', 'Bar', bw, bh, x, y);
+  }
+
+  // Registration at bottom-center (entrance)
+  if (hasRegistration) {
+    const rw = DEFAULT_STRUCTURE_SIZES.registration.w;
+    const rh = DEFAULT_STRUCTURE_SIZES.registration.h;
+    const rwPx = Math.round(rw / metersPerPixel);
+    const rhPx = Math.round(rh / metersPerPixel);
+    const x = venueX + Math.round((venueW - rwPx) / 2);
+    const y = venueY + venueH - rhPx - 10;
+    makeObj('registration', 'Registration', rw, rh, x, y);
+  }
+
+  // Photo area near entrance, left side
+  if (hasPhotoArea) {
+    const pw = DEFAULT_STRUCTURE_SIZES.photo_area.w;
+    const ph = DEFAULT_STRUCTURE_SIZES.photo_area.h;
+    const phPx = Math.round(ph / metersPerPixel);
+    const x = venueX + 15;
+    const y = venueY + venueH - phPx - 30;
+    makeObj('photo_area', 'Photo Area', pw, ph, x, y);
+  }
+
+  return json({
+    summary: `Created ${created.length} FOH structure(s): ${created.map((c) => c.name).join(', ')}.`,
+    created,
+    hint: 'Use optimize_foh to check sightlines and flow, or set_front_tables to designate VIP tables.',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Seating Rule Constraint Tools
+// ---------------------------------------------------------------------------
+
+function addSeatingRuleTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const event = state.events.find((e) => e.id === eventId);
+  if (!event) return eventNotFoundError(eventId);
+
+  const constraintType = input.type as string | undefined;
+  if (!constraintType) return errorResult('Parameter "type" is required (same_table, different_table, max_per_table, min_per_table, front_row, adjacent).');
+
+  const validTypes = ['same_table', 'different_table', 'adjacent', 'front_row', 'max_per_table', 'min_per_table'];
+  if (!validTypes.includes(constraintType)) {
+    return errorResult(`Invalid rule type "${constraintType}". Valid types: ${validTypes.join(', ')}`);
+  }
+
+  const description = typeof input.description === 'string' ? input.description : `${constraintType} rule`;
+  const priority = (typeof input.priority === 'string' ? input.priority : 'preferred') as SeatingRulePriority;
+  const validPriorities = ['required', 'preferred', 'nice_to_have'];
+  if (!validPriorities.includes(priority)) {
+    return errorResult(`Invalid priority "${priority}". Valid: ${validPriorities.join(', ')}`);
+  }
+
+  const rule: SeatingRule = {
+    id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    eventId,
+    name: description,
+    description,
+    enabled: true,
+    priority: priority === 'required' ? 100 : priority === 'preferred' ? 50 : 10,
+    constraintType: constraintType as SeatingRule['constraintType'],
+    targetCategory: typeof input.targetCategory === 'string' ? input.targetCategory : undefined,
+    targetTag: typeof input.targetTag === 'string' ? input.targetTag : undefined,
+    targetOrganization: typeof input.targetOrganization === 'string' ? input.targetOrganization : undefined,
+    secondaryCategory: typeof input.secondaryCategory === 'string' ? input.secondaryCategory : undefined,
+    maxCount: typeof input.maxCount === 'number' ? input.maxCount : undefined,
+    minCount: typeof input.minCount === 'number' ? input.minCount : undefined,
+    constraintPriority: priority,
+  };
+
+  const store = useEventStore.getState();
+  store.addSeatingRule(rule);
+
+  return json({
+    success: true,
+    rule: {
+      id: rule.id,
+      type: rule.constraintType,
+      description: rule.description,
+      priority: rule.constraintPriority,
+      targetCategory: rule.targetCategory,
+      targetTag: rule.targetTag,
+      targetOrganization: rule.targetOrganization,
+      secondaryCategory: rule.secondaryCategory,
+      maxCount: rule.maxCount,
+      minCount: rule.minCount,
+      enabled: rule.enabled,
+    },
+    summary: `Seating rule created: "${rule.description}" (${rule.constraintPriority} priority)`,
+  });
+}
+
+function listSeatingRulesTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const event = state.events.find((e) => e.id === eventId);
+  if (!event) return eventNotFoundError(eventId);
+
+  const rules = (state.seatingRules ?? []).filter(
+    (r: SeatingRule) => r.eventId === eventId && r.constraintType,
+  );
+
+  if (rules.length === 0) {
+    return json({
+      rules: [],
+      summary: 'No seating constraint rules defined for this event. Use add_seating_rule to create rules like "no more than 2 board members per table".',
+    });
+  }
+
+  return json({
+    rules: rules.map((r: SeatingRule) => ({
+      id: r.id,
+      type: r.constraintType,
+      description: r.description,
+      priority: r.constraintPriority ?? 'preferred',
+      enabled: r.enabled,
+      targetCategory: r.targetCategory,
+      targetTag: r.targetTag,
+      targetOrganization: r.targetOrganization,
+      secondaryCategory: r.secondaryCategory,
+      maxCount: r.maxCount,
+      minCount: r.minCount,
+    })),
+    summary: `${rules.length} seating rule(s) defined. ${rules.filter((r: SeatingRule) => r.enabled).length} enabled.`,
+  });
+}
+
+function removeSeatingRuleTool(
+  state: StoreState,
+  eventId: string,
+  input: ToolInput,
+): string {
+  const event = state.events.find((e) => e.id === eventId);
+  if (!event) return eventNotFoundError(eventId);
+
+  const ruleId = typeof input.ruleId === 'string' ? input.ruleId : undefined;
+  const descriptionMatch = typeof input.description === 'string' ? input.description.toLowerCase() : undefined;
+
+  const rules = (state.seatingRules ?? []).filter(
+    (r: SeatingRule) => r.eventId === eventId && r.constraintType,
+  );
+
+  let toRemove: SeatingRule | undefined;
+  if (ruleId) {
+    toRemove = rules.find((r: SeatingRule) => r.id === ruleId);
+  } else if (descriptionMatch) {
+    toRemove = rules.find((r: SeatingRule) => r.description.toLowerCase().includes(descriptionMatch));
+  }
+
+  if (!toRemove) {
+    return errorResult(
+      ruleId
+        ? `No seating rule found with ID "${ruleId}".`
+        : `No seating rule found matching "${descriptionMatch}". Use list_seating_rules to see available rules.`,
+    );
+  }
+
+  const store = useEventStore.getState();
+  store.removeSeatingRule(toRemove.id);
+
+  return json({
+    success: true,
+    removedRuleId: toRemove.id,
+    removedDescription: toRemove.description,
+    summary: `Removed seating rule: "${toRemove.description}"`,
+  });
+}
+
+function evaluateSeatingRulesTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const rules = (state.seatingRules ?? []).filter(
+    (r: SeatingRule) => r.eventId === eventId && r.enabled && r.constraintType,
+  );
+
+  if (rules.length === 0) {
+    return json({
+      score: 100,
+      violations: [],
+      satisfied: 0,
+      total: 0,
+      summary: 'No seating constraint rules are defined. Use add_seating_rule to create rules.',
+    });
+  }
+
+  if (ctx.assignments.length === 0) {
+    return errorResult('No seating assignments exist to evaluate. Seat guests first using auto_seat_guests.');
+  }
+
+  const result = calculateRuleScore(rules, ctx.guests, ctx.assignments, ctx.tables);
+  const suggestions = suggestFixes(result.violations, ctx.guests, ctx.assignments, ctx.tables);
+
+  return json({
+    score: result.score,
+    satisfied: result.satisfied,
+    total: result.total,
+    violations: result.violations.slice(0, 30).map((v) => ({
+      ruleDescription: v.ruleDescription,
+      priority: v.priority,
+      tableNumber: v.tableNumber,
+      details: v.details,
+    })),
+    suggestedFixes: suggestions.slice(0, 10).map((f) => ({
+      action: f.action,
+      moveGuestId: f.moveGuestId,
+      fromTableId: f.fromTableId,
+      toTableId: f.toTableId,
+    })),
+    summary: `Rule compliance: ${result.score}/100. ${result.satisfied}/${result.total} rules satisfied. ${result.violations.length} violation(s) found.`,
+  });
+}
+
+function autoFixViolationsTool(
+  state: StoreState,
+  eventId: string,
+  _input: ToolInput,
+): string {
+  const ctx = getEventContext(state, eventId);
+  if (!ctx) return eventNotFoundError(eventId);
+
+  const rules = (state.seatingRules ?? []).filter(
+    (r: SeatingRule) => r.eventId === eventId && r.enabled && r.constraintType,
+  );
+
+  if (rules.length === 0) {
+    return json({ summary: 'No seating constraint rules defined. Nothing to fix.' });
+  }
+
+  if (ctx.assignments.length === 0) {
+    return errorResult('No seating assignments exist. Seat guests first.');
+  }
+
+  // Evaluate current state
+  const result = calculateRuleScore(rules, ctx.guests, ctx.assignments, ctx.tables);
+  if (result.violations.length === 0) {
+    return json({
+      score: result.score,
+      fixed: 0,
+      remaining: 0,
+      summary: `All ${result.total} seating rules are satisfied! Score: ${result.score}/100.`,
+    });
+  }
+
+  // Get suggested fixes and apply them
+  const suggestions = suggestFixes(result.violations, ctx.guests, ctx.assignments, ctx.tables);
+  const store = useEventStore.getState();
+  let fixed = 0;
+  const fixDetails: string[] = [];
+
+  for (const fix of suggestions) {
+    try {
+      store.moveGuestToTable(fix.moveGuestId, fix.toTableId, ctx.versionId);
+      fixed++;
+      fixDetails.push(fix.action);
+    } catch {
+      // Skip fixes that fail (e.g., table full)
+    }
+  }
+
+  // Re-evaluate after fixes
+  const freshAssignments = useEventStore.getState().seatingAssignments.filter(
+    (a) => a.versionId === ctx.versionId,
+  );
+  const afterResult = calculateRuleScore(rules, ctx.guests, freshAssignments, ctx.tables);
+
+  return json({
+    scoreBefore: result.score,
+    scoreAfter: afterResult.score,
+    fixed,
+    remaining: afterResult.violations.length,
+    fixesApplied: fixDetails,
+    remainingViolations: afterResult.violations.slice(0, 10).map((v) => ({
+      ruleDescription: v.ruleDescription,
+      priority: v.priority,
+      details: v.details,
+    })),
+    summary: `Applied ${fixed} fix(es). Score: ${result.score}/100 → ${afterResult.score}/100. ${afterResult.violations.length} violation(s) remaining.`,
+  });
+}
+
 const TOOL_MAP: Record<
   string,
   (state: StoreState, eventId: string, input: ToolInput) => string | Promise<string>
@@ -3662,6 +4514,12 @@ const TOOL_MAP: Record<
   resize_venue: resizeVenueTool,
   resize_table: resizeTableTool,
   set_canvas_scale: setCanvasScaleTool,
+  // FOH & venue structures
+  add_structure: addStructureTool,
+  remove_structure: removeStructureTool,
+  optimize_foh: optimizeFohTool,
+  set_front_tables: setFrontTablesTool,
+  create_event_flow: createEventFlowTool,
   // Relationship management
   create_relationship_group: createRelationshipGroupTool,
   add_to_relationship_group: addToRelationshipGroupTool,
@@ -3699,6 +4557,12 @@ const TOOL_MAP: Record<
   get_event_checklist: getEventChecklistTool,
   suggest_next_actions: suggestNextActionsTool,
   import_blackbaud: importBlackbaudTool,
+  // Seating rule constraint tools
+  add_seating_rule: addSeatingRuleTool,
+  list_seating_rules: listSeatingRulesTool,
+  remove_seating_rule: removeSeatingRuleTool,
+  evaluate_seating_rules: evaluateSeatingRulesTool,
+  auto_fix_violations: autoFixViolationsTool,
 };
 
 /**
@@ -3825,6 +4689,16 @@ export function summarizeToolResult(toolName: string, result: string): string {
         return `Checklist: ${data.passCount ?? 0} pass, ${data.failCount ?? 0} fail, ${data.warningCount ?? 0} warning`;
       case 'suggest_next_actions':
         return `${data.suggestions?.length ?? 0} suggested actions`;
+      case 'add_structure':
+        return `Added ${data.name ?? 'structure'} (${data.type ?? 'unknown'})`;
+      case 'remove_structure':
+        return `Removed ${data.removedName ?? 'structure'}`;
+      case 'optimize_foh':
+        return `FOH analysis: ${data.issues?.length ?? 0} issues, ${data.suggestions?.length ?? 0} suggestions`;
+      case 'set_front_tables':
+        return `Designated ${data.frontTables?.length ?? 0} front tables`;
+      case 'create_event_flow':
+        return `Created ${data.created?.length ?? 0} FOH structures`;
       default:
         return `${toolName} completed`;
     }
