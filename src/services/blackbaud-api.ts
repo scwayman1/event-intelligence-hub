@@ -62,6 +62,49 @@ function buildUrl(path: string, params?: Record<string, string | number | undefi
   return url.toString();
 }
 
+/** Convert raw Blackbaud API errors into actionable, human-friendly messages. */
+function friendlyApiError(status: number, body: string): string {
+  // Try to extract Blackbaud's structured message
+  let upstream = body;
+  try {
+    const parsed = JSON.parse(body);
+    upstream = parsed.message || parsed.title || body;
+  } catch {
+    // not JSON, use as-is
+  }
+
+  const lower = upstream.toLowerCase();
+
+  if (status === 401) {
+    if (lower.includes('subscription')) {
+      return (
+        'Your Blackbaud subscription key is invalid, expired, or tied to an inactive subscription. ' +
+        'Visit https://developer.blackbaud.com/subscriptions to confirm your SKY API subscription is active, ' +
+        'then copy your Primary key into the Connect step. (The subscription key is separate from your OAuth client ID.)'
+      );
+    }
+    return (
+      'Authentication failed (401). Your OAuth token may have expired — try disconnecting and reconnecting Blackbaud.'
+    );
+  }
+  if (status === 403) {
+    return (
+      'Blackbaud denied access (403). Your account may not have permission to read constituents or gifts. ' +
+      'Check your Blackbaud user role and the scopes granted during OAuth.'
+    );
+  }
+  if (status === 404) {
+    return `Blackbaud resource not found (404). ${upstream}`;
+  }
+  if (status === 429) {
+    return 'Blackbaud rate limit hit (429). Wait a minute and try again, or reduce the import batch size.';
+  }
+  if (status >= 500) {
+    return `Blackbaud server error (${status}). This is on their side — try again in a few minutes.`;
+  }
+  return `Blackbaud API error ${status}: ${upstream}`;
+}
+
 async function skyGet<T>(config: BlackbaudConfig, path: string, params?: Record<string, string | number | undefined>): Promise<ApiResult<T>> {
   try {
     const url = buildUrl(path, params);
@@ -72,7 +115,7 @@ async function skyGet<T>(config: BlackbaudConfig, path: string, params?: Record<
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      return fail(`Blackbaud API error ${response.status}: ${body || response.statusText}`);
+      return fail(friendlyApiError(response.status, body || response.statusText));
     }
 
     const data = (await response.json()) as T;
