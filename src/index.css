@@ -159,3 +159,102 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-[hsl(200,80%,60%)];
   }
 }
+
+/* ─── Franck Delight Animations ────────────────────────────────────────── */
+
+@keyframes franck-msg-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.franck-msg-in {
+  animation: franck-msg-in 320ms cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+
+@keyframes franck-dot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0) scale(0.85);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-4px) scale(1);
+    opacity: 1;
+  }
+}
+
+.franck-dot {
+  animation: franck-dot-bounce 1.2s infinite ease-in-out;
+}
+.franck-dot:nth-child(2) { animation-delay: 0.15s; }
+.franck-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes franck-avatar-think {
+  0%, 100% { transform: rotate(-4deg); }
+  50%      { transform: rotate(4deg); }
+}
+.franck-avatar-think { animation: franck-avatar-think 1.6s ease-in-out infinite; }
+
+@keyframes franck-avatar-celebrate {
+  0%   { transform: scale(1) rotate(0deg); }
+  20%  { transform: scale(1.2) rotate(-12deg); }
+  40%  { transform: scale(1.15) rotate(12deg); }
+  60%  { transform: scale(1.2) rotate(-8deg); }
+  80%  { transform: scale(1.1) rotate(6deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.franck-avatar-celebrate { animation: franck-avatar-celebrate 900ms ease-in-out; }
+
+@keyframes franck-avatar-alarmed {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-2px) rotate(-3deg); }
+  40%, 80% { transform: translateX(2px) rotate(3deg); }
+}
+.franck-avatar-alarmed { animation: franck-avatar-alarmed 0.6s ease-in-out infinite; }
+
+@keyframes franck-avatar-idle {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
+}
+.franck-avatar-idle { animation: franck-avatar-idle 3s ease-in-out infinite; }
+
+@keyframes franck-avatar-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 38, 211, 0.0); }
+  50%      { box-shadow: 0 0 14px 2px rgba(192, 38, 211, 0.55); }
+}
+.franck-avatar-glow { animation: franck-avatar-glow 1.6s ease-in-out infinite; }
+
+@keyframes franck-confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx, 0px), var(--ty, 140px)) rotate(var(--rot, 360deg));
+  }
+}
+.franck-confetti-piece {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  pointer-events: none;
+  animation: franck-confetti-fall 1400ms cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+}
+
+@keyframes franck-sparkle-pop {
+  0%   { opacity: 0; transform: scale(0) rotate(0deg); }
+  40%  { opacity: 1; transform: scale(1.2) rotate(45deg); }
+  100% { opacity: 0; transform: scale(0.6) rotate(90deg); }
+}
+.franck-sparkle {
+  position: absolute;
+  pointer-events: none;
+  animation: franck-sparkle-pop 1100ms ease-out forwards;
+}

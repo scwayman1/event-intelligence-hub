@@ -37,7 +37,21 @@ import { toast } from 'sonner';
   Mail,
   Mic,
   MicOff,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import { FranckAvatar, type FranckMood } from './FranckAvatar';
+import { FranckTypingIndicator } from './FranckTypingIndicator';
+import { FranckCelebration } from './FranckCelebration';
+import {
+  isSoundEnabled,
+  setSoundEnabled,
+  playMessage,
+  playSend,
+  playFlourish,
+  playError,
+  primeAudio,
+} from '@/services/franck-sounds';
 import {
   sendMessage,
   createConversation,
@@ -344,6 +358,57 @@ export function FranckChat({ eventId }: FranckChatProps) {
   // Capabilities panel state
   const [showCapabilities, setShowCapabilities] = useState(false);
 
+  // ── Delight: celebration burst + sound toggle + avatar mood ─────────
+  const [celebrationTrigger, setCelebrationTrigger] = useState(0);
+  const [soundsOn, setSoundsOn] = useState(() => isSoundEnabled());
+  const lastCelebrationRef = useRef(0);
+
+  const toggleSounds = useCallback(() => {
+    setSoundsOn((prev) => {
+      const next = !prev;
+      setSoundEnabled(next);
+      return next;
+    });
+  }, []);
+
+  /** Determine if a finished assistant message deserves a celebration */
+  const shouldCelebrate = useCallback((msg: ChatMessage): boolean => {
+    if (msg.workflowName) return true;
+    if (msg.chainName) return true;
+    const tools = msg.toolsUsed ?? [];
+    return tools.some((t) =>
+      [
+        'auto_seat_guests',
+        'run_refinement_loop',
+        'create_event_flow',
+        'optimize_foh',
+        'arrange_tables',
+        'auto_fix_violations',
+      ].includes(t),
+    );
+  }, []);
+
+  /** Fire celebration burst (debounced to avoid spam) */
+  const fireCelebration = useCallback(() => {
+    const now = Date.now();
+    if (now - lastCelebrationRef.current < 800) return;
+    lastCelebrationRef.current = now;
+    setCelebrationTrigger((n) => n + 1);
+    playFlourish();
+  }, []);
+
+  // Avatar mood based on current state
+  const lastMessage = messages[messages.length - 1];
+  const recentError = lastMessage?.id.startsWith('error-');
+  const headerMood: FranckMood = useMemo(() => {
+    if (isLoading || isRefining) return 'thinking';
+    if (recentError) return 'alarmed';
+    if (lastMessage && shouldCelebrate(lastMessage) && Date.now() - lastMessage.timestamp < 4000) {
+      return 'celebrating';
+    }
+    return 'idle';
+  }, [isLoading, isRefining, recentError, lastMessage, shouldCelebrate]);
+
   // Persist messages whenever they change
   useEffect(() => {
     saveMessages(eventId, messages);
@@ -573,6 +638,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
       setInput('');
       setIsLoading(true);
       setLoadingMsgIndex(0);
+      playSend();
 
       try {
         // Ensure we have a conversation
@@ -623,6 +689,10 @@ export function FranckChat({ eventId }: FranckChatProps) {
           chainName: result.chainName,
         };
         setMessages((prev) => [...prev, assistantMsg]);
+        playMessage();
+        if (shouldCelebrate(assistantMsg)) {
+          fireCelebration();
+        }
       } catch (err) {
         console.error('Franck error:', err);
         const errMessage = err instanceof Error ? err.message : String(err);
@@ -657,13 +727,14 @@ export function FranckChat({ eventId }: FranckChatProps) {
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, errorMsg]);
+        playError();
       } finally {
         setIsLoading(false);
         setActiveToolName(null);
         setExecutedTools([]);
       }
     },
-    [input, isLoading, keyStored, conversation, eventId]
+    [input, isLoading, keyStored, conversation, eventId, shouldCelebrate, fireCelebration]
   );
 
   // ── Retry handler — re-sends the last user message ─────────────────────
@@ -862,17 +933,20 @@ export function FranckChat({ eventId }: FranckChatProps) {
   const renderMessage = (msg: ChatMessage) => {
     const isUser = msg.role === 'user';
 
+    const isError = msg.id.startsWith('error-');
+    const msgMood: FranckMood = isError
+      ? 'alarmed'
+      : shouldCelebrate(msg)
+        ? 'celebrating'
+        : 'speaking';
+
     return (
       <div
         key={msg.id}
-        className={cn('flex gap-2 mb-4', isUser ? 'justify-end' : 'justify-start')}
+        className={cn('flex gap-2 mb-4 franck-msg-in', isUser ? 'justify-end' : 'justify-start')}
       >
         {/* Franck avatar */}
-        {!isUser && (
-          <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
-            F
-          </Badge>
-        )}
+        {!isUser && <FranckAvatar mood={msgMood} size="sm" />}
 
         <div className="flex flex-col max-w-[80%] min-w-0 overflow-hidden">
           {/* Workflow/Chain badge above the message */}
@@ -957,7 +1031,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
       {/* Floating Action Button */}
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { primeAudio(); setIsOpen(true); }}
           className={cn(
             'fixed bottom-6 right-6 z-50',
             'flex items-center gap-2 px-5 py-3 rounded-full',
@@ -985,12 +1059,13 @@ export function FranckChat({ eventId }: FranckChatProps) {
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
       >
+        {/* Celebration overlay — confetti burst when Franck pulls off something big */}
+        <FranckCelebration trigger={celebrationTrigger} />
+
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+        <div className="relative flex items-center justify-between px-5 py-4 border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-9 w-9 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
+            <FranckAvatar mood={headerMood} size="md" />
             <div>
               <h2 className="text-sm font-semibold leading-none">
                 Franck Eggelhoffer 🎩
@@ -1032,6 +1107,21 @@ export function FranckChat({ eventId }: FranckChatProps) {
             >
               <Zap className="h-3.5 w-3.5" />
               {isRefining ? 'Refining...' : 'Auto-Pilot'}
+            </Button>
+
+            {/* Sound toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleSounds}
+              title={soundsOn ? 'Mute Franck' : 'Unmute Franck'}
+            >
+              {soundsOn ? (
+                <Volume2 className="h-4 w-4 text-violet-400" />
+              ) : (
+                <VolumeX className="h-4 w-4 text-muted-foreground" />
+              )}
             </Button>
 
             {/* Clear chat */}
@@ -1345,27 +1435,16 @@ export function FranckChat({ eventId }: FranckChatProps) {
 
             {/* Loading indicator */}
             {isLoading && (
-              <div className="flex gap-2 mb-4 justify-start">
-                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
-                  F
-                </Badge>
+              <div className="flex gap-2 mb-4 justify-start franck-msg-in">
+                <FranckAvatar mood="thinking" size="sm" />
                 <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-1.5">
-                  {/* Active tool execution indicator */}
-                  {activeToolName ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-fuchsia-400" />
-                      <span className="text-fuchsia-400 font-medium">
-                        {'\uD83D\uDD27'} Executing: {activeToolName.replace(/_/g, ' ')}...
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span className="italic">
-                        {LOADING_MESSAGES[loadingMsgIndex]}
-                      </span>
-                    </div>
-                  )}
+                  <FranckTypingIndicator
+                    override={
+                      activeToolName
+                        ? `🔧 ${activeToolName.replace(/_/g, ' ')}`
+                        : null
+                    }
+                  />
                   {/* Show list of already-executed tools during long chains */}
                   {executedTools.length > 1 && (
                     <div className="text-[11px] text-muted-foreground/70 ml-5 space-y-0.5">
@@ -1394,9 +1473,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             {/* Workflow step progress indicator */}
             {workflowProgress && (
               <div className="flex gap-2 mb-4 justify-start">
-                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
-                  F
-                </Badge>
+                <FranckAvatar mood="thinking" size="sm" />
                 <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-2">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
@@ -1447,9 +1524,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             {/* Chain step progress indicator */}
             {chainProgress && chainProgress.phase !== 'done' && (
               <div className="flex gap-2 mb-4 justify-start">
-                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
-                  F
-                </Badge>
+                <FranckAvatar mood="thinking" size="sm" />
                 <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-2">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
@@ -1500,9 +1575,7 @@ export function FranckChat({ eventId }: FranckChatProps) {
             {/* Auto-Pilot refinement progress */}
             {isRefining && (
               <div className="flex gap-2 mb-4 justify-start">
-                <Badge className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-violet-600 text-white text-xs border-0">
-                  F
-                </Badge>
+                <FranckAvatar mood="thinking" size="sm" />
                 <div className="rounded-2xl rounded-bl-md bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground space-y-1.5">
                   <div className="flex items-center gap-2">
                     <Zap className="h-3.5 w-3.5 text-violet-400 animate-pulse" />
